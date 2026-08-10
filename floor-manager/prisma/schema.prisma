@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  layouts     Layout[]
+  products    Product[]
+
+  @@map("projects")
+}
+
+model Layout {
+  id             String     @id @default(cuid())
+  projectId      String     @map("project_id")
+  name           String
+  widthM         Float      @map("width_m")
+  heightM        Float      @map("height_m")
+  backgroundFile String?    @map("background_file")
+  gridSize       Float      @default(1.0) @map("grid_size")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots      Snapshot[]
+
+  @@map("layouts")
+}
+
+model Product {
+  id             String     @id @default(cuid())
+  projectId      String     @map("project_id")
+  name           String
+  code           String
+  weightKg       Float?     @map("weight_kg")
+  areaM2         Float?     @map("area_m2")
+  processStage   String?    @map("process_stage")
+  category       String     @default("san_pham")
+  color          String     @default("#58a6ff")
+  file2dUrl      String?    @map("file_2d_url")
+  file3dUrl      String?    @map("file_3d_url")
+  thumbnail      String?
+  sharepointLink String?    @map("sharepoint_link")
+  metadata       Json?
+  createdAt      DateTime   @default(now()) @map("created_at")
+  project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  positions      Position[]
+
+  @@map("products")
+}
+
+model Snapshot {
+  id        String     @id @default(cuid())
+  layoutId  String     @map("layout_id")
+  date      DateTime   @db.Date
+  note      String?
+  createdAt DateTime   @default(now()) @map("created_at")
+  createdBy String?    @map("created_by")
+  layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  positions Position[]
+
+  @@unique([layoutId, date])
+  @@map("snapshots")
+}
+
+model Position {
+  id         String   @id @default(cuid())
+  snapshotId String   @map("snapshot_id")
+  productId  String   @map("product_id")
+  x          Float
+  y          Float
+  rotation   Float    @default(0)
+  scale      Float    @default(1.0)
+  snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, productId])
+  @@map("positions")
+}
