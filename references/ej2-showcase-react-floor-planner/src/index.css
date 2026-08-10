@@ -1,0 +1,344 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.diagram-menu-control {
+    text-align: left;
+    margin-left: 11px;
+    }  
+  #diagram-menu {
+    float: left;
+    margin-right: 0px;
+    background-color: #046AE5;
+    color:#ffffff;
+  }
+  
+  #diagram-menu li {
+  transition: color 0.2s ease; /* Smooth transition for color change */
+  }
+
+  #diagram-menu li:hover {
+  color: #046AE5; /* Text turns blue when hovered over */
+  cursor: pointer; /* Changes cursor to hand pointer on hover */
+  }
+.e-menu-wrapper .e-menu{
+  margin-top: -5px!important;
+  color: white !important;
+  }
+  .e-menu-wrapper ul .e-menu-item .e-caret, .e-menu-container ul .e-menu-item .e-caret {
+  visibility: collapse !important;
+  }
+
+/* Footer styles scoped to the sample root */
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(90.4deg, #154db9 0.03%, #081b3f 11.56%, #081b3f 85.56%, #154db9 99.97%);
+  border: 1px solid #D8DEE9;
+  z-index: 100;
+  padding: 12px;
+  height: 72px;
+  font-family: sans-serif;;
+}
+.footer-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+.diagram-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+}
+.footer-content {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+.footer-content .title span {
+  font-weight: 400;
+  font-size: 16px;
+  color: #e1e3e7;
+}
+.footer-content .title span .main-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #ffffff;
+}
+.footer-content .buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-content .e-trial-btn::before {
+  content: 'Start Free Trial';
+  font-family: sans-serif;;
+}
+.footer-content .e-trial-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFF30F;
+  color: #0F172A;
+  border: transparent;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  height: 40px;
+  box-shadow: none;
+}
+.footer-content .e-demo-btn {
+  display: flex;
+  align-items: center;
+  background-color: transparent;
+  border: transparent;
+  color: white;
+  border-radius: 6px;
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: .7px;
+  height: 40px;
+  box-shadow: none;
+  text-transform: none;
+}
+.footer-content .e-demo-btn:hover {
+  background-color: #173D87;
+}
+.footer-content .e-trial-btn::after {
+  content: "\e773";
+  font-family: 'e-icons';
+  transform: rotate(180deg);
+}
+.footer-content .e-primary:hover {
+  background: #F1E50B;
+  color: #0F172A;
+}
+.footer-content .e-primary:focus {
+  background: #F1E50B;
+  color: #0F172A;
+}
+.promotion-text {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  margin-right: 1.5rem;
+}
+/* Responsive handling for footer */
+@media screen and (max-width: 1140px), screen and (max-device-width: 1140px) {
+  .footer-content .title {
+    display: flex;
+    flex-direction: column;
+  }
+  .footer-content .title span,
+  .footer-content .title span .main-title {
+    font-size: 14px;
+  }
+}
+/* Hide extra footer text on smaller screens */
+@media screen and (max-width: 900px), screen and (max-device-width: 900px) {
+  .e-ribbon .help-pane-content,
+  .footer-content .title span:last-child {
+    display: none;
+  }
+}
+@media screen and (max-width: 730px) {
+  .footer-content .buttons .e-demo-btn {
+    display: none;
+  }
+  .footer-content .buttons .e-trial-btn::before {
+    content: 'Free Trial';
+  }
+  .footer-content .buttons .e-trial-btn::after {
+    content: none;
+  }
+}
+/* Hide Request Demo button on small screens + increase footer size */
+@media screen and (max-device-width: 730px) {
+  .footer {
+    height: 90px; /* Increased footer height */
+  }
+  .footer-content .buttons .e-demo-btn {
+    display: none;
+  }
+  .footer-content .buttons .e-trial-btn::before {
+    content: 'Free Trial';
+    font-size: 20px;
+  }
+  .footer-content .buttons .e-trial-btn::after {
+    content: none;
+  }
+  .footer-content .title span,
+  .footer-content .title span .main-title {
+    font-size: 26px; /* Bigger font for mobile */
+  }
+}
+/* Hide the promotion text */
+@media screen and (max-width: 620px), screen and (max-device-width: 620px) {
+  .promotion-text {
+    display: none;
+  }
+}
+
+.draw-icon {
+  width: 12px; /* Adjust width as needed */
+  height: 12px; /* Adjust height as needed */
+  display: inline-block; /* Essential for the icon to be visible */
+  vertical-align: middle; /* Aligns with text if present */
+}
+
+.icon-wall {
+  background-image: url("../public/assets/dbstyle/common_images/wall.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px; /* Adjust size as needed */
+}
+
+.icon-room {
+  background-image: url("../public/assets/dbstyle/common_images/room.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+}
+
+.e-btn-group .unit-btn + label,
+.e-btn-group .unit-btn + .e-btn {
+  text-transform: lowercase;
+}
+
+.e-btn-group .unit-btn:checked + label,
+.e-btn-group .unit-btn:checked + .e-btn {
+background-color: rgb(0, 96, 170) !important;
+color: #fff !important;
+border-color: rgb(0, 96, 170) !important;
+}
+
+/* Dialog Template Styles */
+
+.db-diagram-template-parent-text {
+  font-size: 12px;
+  color: black;
+  padding: 8px 0px;
+  padding-left: 16px;
+  cursor: pointer;
+  height: 30px;
+}
+
+.db-diagram-template-parent-text.active {
+  background-color: #EEEEEE;
+  color: #046AE5;
+}
+
+.db-diagram-template-parent-text:hover {
+  background-color: #EEEEEE;
+}
+
+.db-diagram-template-parent-text span {
+  pointer-events: none;
+}
+
+.temp-left-pane {
+  border-right:1px solid #D4D4D4; 
+  height: 424px;
+  padding: 0px;
+}
+
+.temp-right-pane {
+  height: 424px;
+}
+
+#openTemplateDialog .e-dlg-content {
+  padding: 0px;
+}
+
+
+.db-diagram-template-div {
+  padding: 10px 0px 10px 10px;
+  float: left;
+}
+
+.db-diagram-template-image-div {
+  height: 160px;
+  width: 160px;
+  background: #fff;
+  border: 1px solid #D5D5D5;
+  cursor: pointer;
+}
+
+.db-diagram-template-svg-blank-image {
+  background-color: white;
+  background-size: contain;
+  background-repeat: no-repeat;
+  width: 32px;
+  height: 32px;
+  background-position: center;
+  margin: 64px;
+  pointer-events: none;
+}
+
+.db-diagram-template-svg-image {
+    background-color: white;
+    background-size: contain;
+    background-repeat: no-repeat;
+    width: 135px;
+    height: 135px;
+    background-position: center;
+    margin: 11.5px;
+    pointer-events: none;
+}
+
+.db-diagram-template-image {
+    background-color: white;
+    background-size: contain;
+    background-repeat: no-repeat;
+    width: 135px;
+    height: 135px;
+    background-position: center;
+    margin: 11.5px;
+    pointer-events: none;
+}
+
+.db-diagram-template-image:hover {
+    border-color: #333333;
+}
+
+.db-diagram-template-text {
+  height: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: black;
+  padding-top: 5px;
+}
+
+.db-diagram-template-text span {
+  display: block;
+  width: 160px;
+  text-align: center;
+}
+
+
+
+
