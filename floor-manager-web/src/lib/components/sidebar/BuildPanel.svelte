@@ -9,7 +9,6 @@
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, generateThumbnail, getThumbnail, preloadThumbnails } from '$lib/utils/furnitureThumbnails';
   import { onMount } from 'svelte';
-  import { createProjectFromRoomPlan, extractRoomJsonFromZip, ORTHO_VERSION } from '$lib/utils/roomplanImport';
   import { currentProject, loadProject } from '$lib/stores/project';
 
   // AreaSummaryPanel moved to top bar dialog
@@ -25,14 +24,6 @@
       generateThumbnail(file).then(() => { thumbsReady++; });
     }
   });
-
-  // RoomPlan import dialog state
-  let showImportDialog = $state(false);
-  let importFileName = $state('');
-  let importJsonData: any = $state(null);
-  let optStraighten = $state(true);
-  let optOrthogonal = $state(true);
-  let optMergeDistance = $state(15);
 
   function setTool(tool: Tool) {
     selectedTool.set(tool);
@@ -229,54 +220,6 @@
     input.click();
   }
 
-  async function onImportRoomPlan() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json,.zip';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        let jsonData: any;
-        if (file.name.endsWith('.zip')) {
-          jsonData = await extractRoomJsonFromZip(file);
-        } else {
-          const text = await file.text();
-          jsonData = JSON.parse(text);
-        }
-        importJsonData = jsonData;
-        importFileName = file.name.replace(/\.(json|zip)$/, '');
-        showImportDialog = true;
-      } catch (e: any) {
-        alert('Failed to read RoomPlan file: ' + e.message);
-      }
-    };
-    input.click();
-  }
-
-  function confirmImport() {
-    if (!importJsonData) return;
-    try {
-      // Create a new project for the imported data instead of merging into current
-      const projectName = importFileName ? importFileName.replace(/\.(json|zip)$/i, '') : 'RoomPlan Import';
-      const newProject = createProjectFromRoomPlan(importJsonData, projectName, {
-        straighten: optStraighten,
-        orthogonal: optOrthogonal,
-        mergeDistance: optMergeDistance,
-      });
-      loadProject(newProject);
-    } catch (e: any) {
-      alert('Failed to import RoomPlan: ' + e.message);
-    }
-    showImportDialog = false;
-    importJsonData = null;
-  }
-
-  function cancelImport() {
-    showImportDialog = false;
-    importJsonData = null;
-  }
-
   // --- Hover Preview Tooltip ---
   let hoveredItem = $state<FurnitureDef | null>(null);
   let hoverTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
@@ -467,19 +410,6 @@
             <div class="text-xs text-gray-400">Floor plan background</div>
           </div>
         </button>
-        <button
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-gray-50 text-gray-700"
-          onclick={onImportRoomPlan}
-        >
-          <div class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          </div>
-          <div class="text-left">
-            <div class="font-medium">Import RoomPlan</div>
-            <div class="text-xs text-gray-400">iOS LiDAR scan (.json/.zip)</div>
-          </div>
-        </button>
-
         <button
           class="w-full flex items-center justify-between px-1 py-2 mt-3"
           onclick={() => constructionOpen = !constructionOpen}
@@ -778,40 +708,3 @@
   </div>
 {/if}
 
-<!-- RoomPlan Import Options Dialog -->
-{#if showImportDialog}
-  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick={cancelImport}>
-    <div class="bg-white rounded-xl shadow-2xl w-80 p-5" onclick={(e) => e.stopPropagation()}>
-      <h3 class="text-sm font-bold text-gray-800 mb-1">Import RoomPlan</h3>
-      <p class="text-xs text-gray-400 mb-4">{importFileName}</p>
-
-      <div class="space-y-3">
-        <label class="flex items-start gap-2.5 cursor-pointer">
-          <input type="checkbox" bind:checked={optStraighten} class="accent-blue-500 mt-0.5" />
-          <div>
-            <div class="text-sm font-medium text-gray-700">Straighten walls</div>
-            <div class="text-xs text-gray-400">Snap near-horizontal/vertical walls to axis</div>
-          </div>
-        </label>
-
-        <label class="flex items-start gap-2.5 cursor-pointer">
-          <input type="checkbox" bind:checked={optOrthogonal} class="accent-blue-500 mt-0.5" />
-          <div>
-            <div class="text-sm font-medium text-gray-700">Enforce orthogonal <span class="text-xs text-blue-400 font-mono">{ORTHO_VERSION}</span></div>
-            <div class="text-xs text-gray-400">Force all walls to 90°/180° angles</div>
-          </div>
-        </label>
-
-        <label class="block">
-          <div class="text-xs text-gray-500 mb-1">Corner merge distance (cm)</div>
-          <input type="number" bind:value={optMergeDistance} min="0" max="50" step="5" class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
-        </label>
-      </div>
-
-      <div class="flex gap-2 mt-5">
-        <button onclick={cancelImport} class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-        <button onclick={confirmImport} class="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors">Import</button>
-      </div>
-    </div>
-  </div>
-{/if}

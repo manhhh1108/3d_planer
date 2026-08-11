@@ -168,7 +168,7 @@
           <span class="text-2xl">📂</span>
           <div>
             <div class="font-semibold text-gray-800">Import a Plan</div>
-            <div class="text-xs text-gray-400">Load a JSON or RoomPlan file</div>
+            <div class="text-xs text-gray-400">Load a JSON project file</div>
           </div>
         </button>
 
