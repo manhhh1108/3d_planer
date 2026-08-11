@@ -1,25 +1,16 @@
 <script lang="ts">
   import { selectedTool, placingFurnitureId, setBackgroundImage } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
-  import { furnitureCatalog, furnitureCategories } from '$lib/utils/furnitureCatalog';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
-  import { getModelFile, generateThumbnail, getThumbnail, preloadThumbnails } from '$lib/utils/furnitureThumbnails';
-  import { onMount } from 'svelte';
-  import { currentProject, loadProject } from '$lib/stores/project';
+  import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
+  import { productCatalog } from '$lib/stores/productCatalog';
 
-  // AreaSummaryPanel moved to top bar dialog
   let activeTab = $state<'draw' | 'objects'>('objects');
-  let constructionOpen = $state(true);
   let selectedCategory = $state<string>('All');
   let thumbsReady = $state(0); // increment to trigger reactivity
 
-  onMount(() => {
-    // Preload thumbnails, re-render as each completes
-    const files = new Set(furnitureCatalog.map(f => getModelFile(f.id)).filter(Boolean) as string[]);
-    for (const file of files) {
-      generateThumbnail(file).then(() => { thumbsReady++; });
-    }
-  });
+  let catalogItems = $derived($productCatalog);
+  let categories = $derived([...new Set($productCatalog.map((f) => f.category))]);
 
   function setTool(tool: Tool) {
     selectedTool.set(tool);
@@ -53,7 +44,7 @@
   }
 
   let recentItems = $derived(
-    recentIds.map(id => furnitureCatalog.find(f => f.id === id)).filter(Boolean) as FurnitureDef[]
+    recentIds.map(id => catalogItems.find(f => f.id === id)).filter(Boolean) as FurnitureDef[]
   );
 
   // --- Favorites (localStorage) ---
@@ -72,7 +63,7 @@
   }
 
   let favoriteItems = $derived(
-    favoriteIds.map(id => furnitureCatalog.find(f => f.id === id)).filter(Boolean) as FurnitureDef[]
+    favoriteIds.map(id => catalogItems.find(f => f.id === id)).filter(Boolean) as FurnitureDef[]
   );
 
   let filtered = $derived(
@@ -80,7 +71,7 @@
       const s = search.toLowerCase();
       let items = selectedCategory === 'Favorites'
         ? favoriteItems
-        : furnitureCatalog.filter((f) => {
+        : catalogItems.filter((f) => {
             const matchCat = selectedCategory === 'All' || f.category === selectedCategory;
             return matchCat;
           });
@@ -154,20 +145,8 @@
   }
 
   const categoryColors: Record<string, string> = {
-    'Living Room': '#a78bfa',
-    'Bedroom': '#60a5fa',
-    'Kitchen': '#f87171',
-    'Bathroom': '#93c5fd',
-    'Office': '#34d399',
-    'Dining': '#f59e0b',
-    'Decor': '#c2956b',
-    'Lighting': '#fbbf24',
-    'Outdoor Furniture': '#b45309',
-    'Landscaping': '#16a34a',
-    'Fencing': '#a16207',
-    'Structures': '#6b7280',
-    'Electrical': '#2563eb',
-    'Plumbing': '#0ea5e9',
+    'Sản phẩm': '#2563eb',
+    'Thiết bị': '#7e22ce',
   };
 </script>
 
@@ -260,7 +239,7 @@
         <div class="relative">
           <input
             type="text"
-            placeholder="Search furniture..."
+            placeholder="Tìm sản phẩm..."
             class="w-full px-3 py-2 pr-8 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
             bind:value={search}
           />
@@ -287,7 +266,7 @@
             class="px-2 py-0.5 rounded-full text-[10px] font-medium {selectedCategory === 'Favorites' ? 'bg-pink-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"
             onclick={() => selectedCategory = 'Favorites'}
           >♥ Favorites{favoriteIds.length ? ` (${favoriteIds.length})` : ''}</button>
-          {#each furnitureCategories as cat}
+          {#each categories as cat}
             <button
               class="px-2 py-0.5 rounded-full text-[10px] font-medium {selectedCategory === cat ? 'text-white' : 'text-gray-600 hover:bg-gray-200'}"
               style={selectedCategory === cat ? `background-color: ${categoryColors[cat] ?? '#6b7280'}` : 'background-color: #f3f4f6'}
