@@ -282,3 +282,17 @@ floor-manager/
 ## Wireframe Mockups
 
 Co san tai: `mockups/index.html` - 5 man hinh chinh (Dashboard, San pham, Layout 2D, 3D Viewer, Bao cao)
+
+## UI Theme
+
+Theme lay theo `references/open3dFloorplan` (quyet dinh ngay 2026-08-11):
+
+- **Top bar**: gradient slate `#0f172a -> #1e293b`, cao 48px, chu trang, nav dang pill (`bg-white/15`, active = nen trang chu slate)
+- **Panel/card**: nen trang, border `#e5e7eb`, bo goc 10-12px, shadow nhe
+- **Accent**: xanh duong `#2563eb` (hover `#1d4ed8`), trang thai active dung `#eff6ff` + vien `#bfdbfe`
+- **Text**: slate-800 `#1e293b` (chinh), gray-500 `#6b7280` (phu), gray-400 `#9ca3af` (label uppercase 11px)
+- **Canvas 2D**: nen trang, grid xam nhat `#e5e7eb`, block to mau pastel (blue-100/green-50/amber-50/red-50) vien dam
+- **Badge/chip**: pill bo tron full, nen pastel + chu dam cung tong (cong doan: Han=amber, Son=green, Lap rap=blue, Cat=red)
+- **Stat cards**: nen pastel blue-50/green-50/amber-50/purple-50, so dam mau 700
+- **Mode toggle 2D/3D**: pill, active = nen slate-800 chu trang
+- **Font**: system-ui stack, 14px base
