@@ -99,6 +99,39 @@ export const api = {
 			http<ApiLayout>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/layouts/${id}`, { method: 'DELETE' }),
 	},
+	reports: {
+		summary: (layoutId: string, date: string) =>
+			http<{
+				snapshot: ApiSnapshot;
+				totalArea: number;
+				totalWeight: number;
+				layoutArea: number;
+				usageRate: number;
+			}>(`/reports/summary?layoutId=${layoutId}&date=${date}`),
+		byProcess: (layoutId: string, date: string) =>
+			http<
+				{
+					processStage: string;
+					count: number;
+					totalArea: number;
+					totalWeight: number;
+					areaPercent: number;
+				}[]
+			>(`/reports/by-process?layoutId=${layoutId}&date=${date}`),
+		occupation: (projectId: string) =>
+			http<
+				{
+					productName: string;
+					productCode: string;
+					layoutName: string;
+					startDate: string;
+					endDate: string;
+					days: number;
+					areaM2: number;
+					areaDays: number;
+				}[]
+			>(`/reports/occupation?projectId=${projectId}`),
+	},
 	snapshots: {
 		list: (layoutId: string) => http<ApiSnapshot[]>(`/snapshots?layoutId=${layoutId}`),
 		get: (id: string) => http<ApiSnapshot>(`/snapshots/${id}`),
