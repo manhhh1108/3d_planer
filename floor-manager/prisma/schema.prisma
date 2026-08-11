@@ -70,13 +70,14 @@ model Snapshot {
 }
 
 model Position {
-  id         String   @id @default(cuid())
-  snapshotId String   @map("snapshot_id")
-  productId  String   @map("product_id")
-  x          Float
-  y          Float
-  rotation   Float    @default(0)
-  scale      Float    @default(1.0)
+  id          String   @id @default(cuid())
+  snapshotId  String   @map("snapshot_id")
+  productId   String   @map("product_id")
+  x           Float
+  y           Float
+  rotation    Float    @default(0)
+  scale       Float    @default(1.0)
+  orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
   snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 

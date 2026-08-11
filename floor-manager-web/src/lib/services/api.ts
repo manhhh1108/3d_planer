@@ -55,6 +55,7 @@ export interface ApiPosition {
 	y: number;
 	rotation: number;
 	scale: number;
+	orientation: string;
 	product?: ApiProduct;
 }
 
@@ -139,7 +140,14 @@ export const api = {
 			layoutId: string;
 			date: string;
 			note?: string;
-			positions: { productId: string; x: number; y: number; rotation?: number; scale?: number }[];
+			positions: {
+				productId: string;
+				x: number;
+				y: number;
+				rotation?: number;
+				scale?: number;
+				orientation?: string;
+			}[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
 	},
 };
