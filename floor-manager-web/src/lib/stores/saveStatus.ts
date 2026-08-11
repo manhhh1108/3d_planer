@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { currentProject } from './project';
 import { getActiveStore } from '$lib/services/datastore';
 import { saveSnapshot } from '$lib/stores/versionHistory';
+import { isTimelineReadonly } from './timeline';
 
 export type SaveState = 'saved' | 'unsaved' | 'saving';
 
@@ -29,6 +30,7 @@ export function initAutoSave() {
 
 /** Mark project as dirty (unsaved). */
 export function markDirty() {
+  if (isTimelineReadonly()) return; // đang xem snapshot cũ — không auto-save
   saveState.set('unsaved');
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -53,6 +55,7 @@ function captureThumbnail(projectId: string) {
 }
 
 async function autoSave() {
+  if (isTimelineReadonly()) return;
   const p = get(currentProject);
   if (!p) return;
   saveState.set('saving');
@@ -69,6 +72,7 @@ async function autoSave() {
 
 /** Manual save */
 export async function manualSave() {
+  if (isTimelineReadonly()) return; // không lưu khi đang xem ngày cũ
   if (debounceTimer) clearTimeout(debounceTimer);
   const p = get(currentProject);
   if (!p) return;

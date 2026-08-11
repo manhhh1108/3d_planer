@@ -9,6 +9,9 @@
   import { exportDXF, exportDWG } from '$lib/utils/cadExport';
   import SettingsDialog from './SettingsDialog.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
+  import { timelineReadonly } from '$lib/stores/timeline';
+
+  let { saveLabel = 'Save' }: { saveLabel?: string } = $props();
 
   let settingsOpen = $state(false);
 
@@ -447,8 +450,13 @@
       Unsaved •
     {/if}
   </span>
-  <button onclick={save} class="px-3 py-1.5 max-md:px-2.5 text-sm bg-white text-slate-800 font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-sm">
-    Save
+  <button
+    onclick={save}
+    disabled={$timelineReadonly}
+    class="px-3 py-1.5 max-md:px-2.5 text-sm bg-white text-slate-800 font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+    title={$timelineReadonly ? 'Đang xem snapshot cũ — về hôm nay để lưu' : ''}
+  >
+    {saveLabel}
   </button>
 </div>
 
