@@ -12,7 +12,7 @@
 
   const tourSteps = [
     { title: 'Left Sidebar', desc: 'Browse furniture and room presets', icon: '📦' },
-    { title: 'Canvas', desc: "Draw walls with 'W' key, drag to place items", icon: '✏️' },
+    { title: 'Canvas', desc: 'Drag products from the sidebar onto the layout', icon: '✏️' },
     { title: 'Top Bar', desc: 'Switch between 2D and 3D views', icon: '🔄' },
     { title: 'Status Bar', desc: 'Toggle grid, snap, and other options', icon: '⚙️' },
   ];

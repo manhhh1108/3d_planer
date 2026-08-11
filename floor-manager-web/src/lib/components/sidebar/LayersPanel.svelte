@@ -1,7 +1,6 @@
 <script lang="ts">
   import { activeFloor, selectedElementId, layerVisibility } from '$lib/stores/project';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
-  import { getEntourageDef } from '$lib/utils/entourageCatalog';
   import type { Floor } from '$lib/models/types';
 
   let floor: Floor | null = $state(null);
@@ -40,48 +39,12 @@
     const cats: Category[] = [];
 
     cats.push({
-      key: 'walls', label: 'Walls', icon: '🧱',
-      items: floor.walls.map((w, i) => ({ id: w.id, label: `Wall ${i + 1}`, icon: '─' })),
-    });
-
-    cats.push({
-      key: 'doors', label: 'Doors', icon: '🚪',
-      items: floor.doors.map((d, i) => ({ id: d.id, label: `${d.type} door ${i + 1}`, icon: '🚪' })),
-    });
-
-    cats.push({
-      key: 'windows', label: 'Windows', icon: '🪟',
-      items: floor.windows.map((w, i) => ({ id: w.id, label: `${w.type} window ${i + 1}`, icon: '🪟' })),
-    });
-
-    cats.push({
-      key: 'furniture', label: 'Furniture', icon: '🪑',
+      key: 'furniture', label: 'Products', icon: '📦',
       items: floor.furniture.map((fi) => {
         const cat = getCatalogItem(fi.catalogId);
         return { id: fi.id, label: cat?.name ?? fi.catalogId, icon: cat?.icon ?? '📦' };
       }),
     });
-
-    if (floor.entourage?.length) {
-      cats.push({
-        key: 'entourage', label: 'Entourage', icon: '🌳',
-        items: floor.entourage.map((en, i) => ({ id: en.id, label: getEntourageDef(en.defId)?.name ?? `Custom ${i + 1}`, icon: '🌳' })),
-      });
-    }
-
-    if (floor.stairs?.length) {
-      cats.push({
-        key: 'stairs', label: 'Stairs', icon: '🪜',
-        items: floor.stairs.map((s, i) => ({ id: s.id, label: `Stair ${i + 1} (${s.direction})`, icon: '🪜' })),
-      });
-    }
-
-    if (floor.columns?.length) {
-      cats.push({
-        key: 'columns', label: 'Columns', icon: '🏛️',
-        items: floor.columns.map((c, i) => ({ id: c.id, label: `${c.shape} column ${i + 1}`, icon: '🏛️' })),
-      });
-    }
 
     if (floor.guides?.length) {
       cats.push({
