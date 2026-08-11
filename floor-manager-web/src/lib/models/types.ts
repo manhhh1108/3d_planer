@@ -53,12 +53,16 @@ export interface Window {
   type: 'standard' | 'fixed' | 'casement' | 'sliding' | 'bay';
 }
 
+/** Mặt tiếp sàn của block: bottom = đáy (mặc định), side = nằm nghiêng (mặt bên), end = dựng đứng (mặt đầu) */
+export type BlockOrientation = 'bottom' | 'side' | 'end';
+
 export interface FurnitureItem {
   id: string;
   catalogId: string;
   position: Point;
   rotation: number;
   scale: { x: number; y: number; z: number };
+  orientation?: BlockOrientation;
   // Per-item overrides (optional — falls back to catalog defaults)
   color?: string;
   width?: number;   // cm

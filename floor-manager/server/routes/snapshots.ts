@@ -48,6 +48,7 @@ router.post('/', async (req: Request, res: Response) => {
         y: number;
         rotation?: number;
         scale?: number;
+        orientation?: string;
       }>;
     };
 
@@ -67,6 +68,7 @@ router.post('/', async (req: Request, res: Response) => {
             y: p.y,
             rotation: p.rotation ?? 0,
             scale: p.scale ?? 1.0,
+            orientation: p.orientation ?? 'bottom',
           })),
         },
       },
@@ -81,6 +83,7 @@ router.post('/', async (req: Request, res: Response) => {
             y: p.y,
             rotation: p.rotation ?? 0,
             scale: p.scale ?? 1.0,
+            orientation: p.orientation ?? 'bottom',
           })),
         },
       },
