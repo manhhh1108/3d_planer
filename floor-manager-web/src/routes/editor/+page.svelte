@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode } from '$lib/stores/project';
-  import { localStore } from '$lib/services/datastore';
+  import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
+  import { markClean } from '$lib/stores/saveStatus';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
   import PropertiesPanel from '$lib/components/sidebar/PropertiesPanel.svelte';
@@ -51,10 +52,30 @@
     }
   });
 
+  let loadError = $state<string | null>(null);
+
   onMount(() => {
     (async () => {
       const url = new URL(window.location.href);
 
+      const layoutId = url.searchParams.get('layoutId');
+      if (layoutId) {
+        // Chế độ backend: 1 layout của backend = 1 project của editor
+        setActiveStore(backendStore);
+        try {
+          const project = await backendStore.load(layoutId);
+          if (!project) throw new Error('Không tìm thấy layout');
+          currentProject.set(project);
+          markClean();
+        } catch (e: any) {
+          loadError = e?.message ?? 'Không tải được layout từ server';
+        }
+        ready = true;
+        return;
+      }
+
+      // Chế độ local (demo/offline) như bản gốc
+      setActiveStore(localStore);
       const id = url.searchParams.get('id');
       if (id) {
         const project = await localStore.load(id);
@@ -80,7 +101,7 @@
     const unsub = currentProject.subscribe((p) => {
       if (!p) return;
       clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => localStore.save(p), 500);
+      saveTimeout = setTimeout(() => getActiveStore().save(p), 2000);
     });
     return () => { unsub(); clearTimeout(saveTimeout); };
   });
@@ -353,5 +374,15 @@
 {:else}
   <div class="h-screen flex flex-col items-center justify-center gap-3">
     <p class="text-gray-400">Loading...</p>
+  </div>
+{/if}
+
+{#if loadError}
+  <div class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md bg-red-50 border border-red-200 text-red-700 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3" role="alert">
+    <div class="flex-1 text-sm">
+      <p class="font-semibold">Không tải được layout</p>
+      <p>{loadError} — kiểm tra backend đã chạy chưa (http://localhost:4000)</p>
+    </div>
+    <button class="text-red-400 hover:text-red-600 text-lg leading-none" onclick={() => loadError = null} aria-label="Đóng">✕</button>
   </div>
 {/if}
