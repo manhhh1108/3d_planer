@@ -1,21 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
-  import { currentProject, viewMode, undo, redo, addFloor, removeFloor, setActiveFloor, updateProjectName, loadProject, createDefaultProject, snapEnabled, canvasZoom, panMode, showFurnitureStore, layerVisibility, importFloorIntoCurrentProject, activeFloor, selectedElementId, elevationWallId, elevationPickMode } from '$lib/stores/project';
+  import { currentProject, viewMode, undo, redo, updateProjectName, loadProject, createDefaultProject, snapEnabled, canvasZoom, panMode, showFurnitureStore, layerVisibility, elevationWallId } from '$lib/stores/project';
   import { localStore } from '$lib/services/datastore';
   import { get } from 'svelte/store';
   import type { Floor, Project } from '$lib/models/types';
   import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
   import { exportDXF, exportDWG } from '$lib/utils/cadExport';
   import SettingsDialog from './SettingsDialog.svelte';
-  import AreaSummaryPanel from '$lib/components/sidebar/AreaSummaryPanel.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
-  import { initVersionHistory, snapshotOnAction } from '$lib/stores/versionHistory';
-  import VersionHistoryPanel from './VersionHistoryPanel.svelte';
 
   let settingsOpen = $state(false);
-  let areaOpen = $state(false);
-  let versionHistoryOpen = $state(false);
 
   let projectName = $state('');
   let mode = $state<'2d' | '3d'>('2d');
@@ -43,39 +38,6 @@
     viewMode.set(m);
   }
 
-  /** Switch the 2D canvas area to the integrated elevation view.
-   *  With a wall selected it opens that wall; otherwise it stays in Plan and
-   *  arms pick mode — the next wall clicked in the canvas opens its elevation.
-   *  In 3D this switches back to 2D first. */
-  function enterElevation() {
-    if (mode === '3d') viewMode.set('2d');
-    const floor = get(activeFloor);
-    const selId = get(selectedElementId);
-    const wall = selId ? floor?.walls.find((w) => w.id === selId) : undefined;
-    if (wall) {
-      elevationPickMode.set(false);
-      selectedElementId.set(wall.id);
-      elevationWallId.set(wall.id);
-    } else {
-      // No wall selected — prompt the user to pick one on the plan canvas
-      elevationPickMode.update((v) => !v); // pressing again cancels
-    }
-    moreOpen = false;
-  }
-
-  /** Return the 2D canvas area to the plan view */
-  function exitElevation() {
-    elevationWallId.set(null);
-    elevationPickMode.set(false);
-    moreOpen = false;
-  }
-
-  /** Mobile overflow item: toggle between plan and elevation */
-  function toggleElevationView() {
-    if (get(elevationWallId)) exitElevation();
-    else enterElevation();
-  }
-
   function onNameBlur() {
     editingName = false;
     updateProjectName(projectName);
@@ -83,15 +45,6 @@
 
   function onNameKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-  }
-
-  function onAddFloor() {
-    addFloor(`Floor ${floors.length}`);
-  }
-
-  function onRemoveFloor(id: string) {
-    if (floors.length <= 1) return;
-    removeFloor(id);
   }
 
   async function save() {
@@ -193,7 +146,6 @@
 
   onMount(() => {
     initAutoSave();
-    initVersionHistory();
 
     // Update relative timestamp every 15s
     const interval = setInterval(updateLastSavedText, 15000);
@@ -209,8 +161,6 @@
     function handleKeydown(e: KeyboardEvent) {
       if (exportOpen) exportOpen = false;
       if (e.key === 'Escape' && moreOpen) moreOpen = false;
-      if (e.key === 'Escape' && versionHistoryOpen) versionHistoryOpen = false;
-      if (e.key === 'Escape' && areaOpen) areaOpen = false;
     }
     document.addEventListener('click', handleClickOutside, true);
     document.addEventListener('keydown', handleKeydown, true);
@@ -293,25 +243,6 @@
 
   <div class="h-5 w-px bg-white/20 max-md:hidden"></div>
 
-  <!-- Floor selector as buttons (in overflow menu on mobile) -->
-  <div class="flex items-center gap-1 max-md:hidden">
-    {#each floors as fl}
-      <button
-        class="px-2 py-0.5 text-xs rounded transition-colors {fl.id === activeFloorId ? 'bg-white text-slate-800 font-semibold' : 'text-white/80 hover:bg-white/10'}"
-        onclick={() => setActiveFloor(fl.id)}
-        ondblclick={() => onRemoveFloor(fl.id)}
-        title={fl.id === activeFloorId ? 'Active floor (dbl-click to remove)' : 'Click to switch, dbl-click to remove'}
-      >{fl.name}</button>
-    {/each}
-    <button
-      onclick={onAddFloor}
-      class="text-white/80 hover:text-white text-xs hover:bg-white/10 px-1.5 py-0.5 rounded transition-colors"
-      title="Add Floor"
-      aria-label="Add Floor"
-    >+</button>
-    <span class="text-white/40 text-[10px] ml-1">{floors.length}F</span>
-  </div>
-
   <div class="flex-1"></div>
 
   <button onclick={undo} class="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors" title="Undo (Ctrl+Z)" aria-label="Undo">
@@ -371,31 +302,6 @@
 
   <div class="h-5 w-px bg-white/20 max-md:hidden"></div>
 
-  <!-- Plan / Elevation sub-toggle (2D only) — sits left of the 2D/3D pill so the
-       two switches read as a family; mobile (<md) uses the overflow menu instead -->
-  {#if mode === '2d'}
-    <div class="flex bg-white/15 rounded-full p-0.5 max-md:hidden">
-      <button
-        onclick={exitElevation}
-        class="px-3 py-1 text-xs font-semibold rounded-full transition-colors flex items-center gap-1.5 {!$elevationWallId ? 'bg-white text-slate-800' : 'text-white/80 hover:text-white'}"
-        title="Plan view — top-down floor plan"
-        aria-pressed={!$elevationWallId}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 12h8"/><path d="M11 12v9"/><path d="M15 3v6"/></svg>
-        <span>Plan</span>
-      </button>
-      <button
-        onclick={enterElevation}
-        class="px-3 py-1 text-xs font-semibold rounded-full transition-colors flex items-center gap-1.5 {$elevationWallId ? 'bg-white text-slate-800' : $elevationPickMode ? 'bg-blue-500 text-white' : 'text-white/80 hover:text-white'}"
-        title={$elevationPickMode ? 'Pick a wall in the plan to view its elevation — press again or Esc to cancel' : 'Elevation view — the selected wall face-on, or pick one on the plan'}
-        aria-pressed={!!$elevationWallId || $elevationPickMode}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9H3z"/><rect x="10" y="14" width="4" height="6"/><rect x="5.5" y="13" width="3" height="3"/></svg>
-        <span>Elevation</span>
-      </button>
-    </div>
-  {/if}
-
   <!-- 2D/3D pill toggle -->
   <div class="flex bg-white/15 rounded-full p-0.5">
     <button
@@ -431,26 +337,6 @@
     </div>
   {/if}
 
-  <!-- Version History button -->
-  <button
-    onclick={() => versionHistoryOpen = true}
-    class="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors max-md:hidden"
-    title="Version History"
-    aria-label="Version History"
-  >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-  </button>
-
-  <!-- Area summary button -->
-  <button
-    onclick={() => areaOpen = true}
-    class="px-2 py-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors max-md:hidden"
-    title="Area Summary"
-    aria-label="Area Summary"
-  >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
-  </button>
-
   <!-- Settings button -->
   <button
     onclick={() => settingsOpen = true}
@@ -473,16 +359,6 @@
     </button>
     {#if moreOpen}
       <div class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 w-56 z-50 max-h-[70vh] overflow-y-auto">
-        {#if floors.length > 1 || mode === '2d'}
-          <div class="px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Floors</div>
-          {#each floors as fl}
-            <button class="w-full px-3 py-2 text-sm hover:bg-gray-100 text-left flex items-center gap-2 {fl.id === activeFloorId ? 'text-blue-600 font-semibold' : 'text-gray-700'}" onclick={() => { setActiveFloor(fl.id); moreOpen = false; }}>
-              {fl.name}{fl.id === activeFloorId ? ' ✓' : ''}
-            </button>
-          {/each}
-          <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => { onAddFloor(); }}>+ Add Floor</button>
-          <div class="h-px bg-gray-100 my-1"></div>
-        {/if}
         {#if mode === '2d'}
           <div class="px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">View</div>
           <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => canvasZoom.update(z => Math.min(10, z * 1.25))}>Zoom In</button>
@@ -493,9 +369,6 @@
           <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => layerVisibility.update(v => ({ ...v, furniture: !v.furniture }))}>{$showFurnitureStore ? '✓ ' : ''}Show Furniture</button>
           <div class="h-px bg-gray-100 my-1"></div>
         {/if}
-        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={toggleElevationView}>{$elevationWallId ? '✓ ' : ''}Elevation View</button>
-        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => { versionHistoryOpen = true; moreOpen = false; }}>Version History</button>
-        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => { areaOpen = true; moreOpen = false; }}>Area Summary</button>
         <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left" onclick={() => { settingsOpen = true; moreOpen = false; }}>Settings</button>
       </div>
     {/if}
@@ -580,20 +453,3 @@
 </div>
 
 <SettingsDialog bind:open={settingsOpen} />
-<VersionHistoryPanel bind:open={versionHistoryOpen} />
-
-{#if areaOpen}
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onclick={() => areaOpen = false} onkeydown={(e) => { if (e.key === 'Escape') areaOpen = false; }}>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="bg-white rounded-xl shadow-2xl w-[420px] max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-hidden" onclick={(e) => e.stopPropagation()}>
-    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-      <h2 class="text-base font-semibold text-gray-800">📐 Area Summary</h2>
-      <button onclick={() => areaOpen = false} class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-    </div>
-    <div class="overflow-y-auto max-h-[calc(80vh-52px)] p-1">
-      <AreaSummaryPanel />
-    </div>
-  </div>
-</div>
-{/if}
