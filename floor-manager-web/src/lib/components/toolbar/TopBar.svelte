@@ -7,7 +7,6 @@
   import type { Floor, Project } from '$lib/models/types';
   import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
   import { exportDXF, exportDWG } from '$lib/utils/cadExport';
-  import { importRoomPlan } from '$lib/utils/roomplanImport';
   import SettingsDialog from './SettingsDialog.svelte';
   import AreaSummaryPanel from '$lib/components/sidebar/AreaSummaryPanel.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
@@ -232,12 +231,7 @@
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        // Detect RoomPlan format (has walls array with dimensions, or rooms/doors/windows at top level)
-        if (data.walls && Array.isArray(data.walls) && data.walls[0]?.dimensions) {
-          // RoomPlan JSON — import into current project
-          const floor = importRoomPlan(data, { straighten: true, orthogonal: true });
-          importFloorIntoCurrentProject(floor);
-        } else if (data.floors && data.id) {
+        if (data.floors && data.id) {
           // Validate project structure
           if (!Array.isArray(data.floors) || data.floors.length === 0) {
             alert('Invalid project file: "floors" must be a non-empty array.');
@@ -257,7 +251,7 @@
           if (data.updatedAt) data.updatedAt = new Date(data.updatedAt);
           loadProject(data as Project);
         } else {
-          alert('Unrecognized file format. Expected a project file or Apple RoomPlan JSON.');
+          alert('Unrecognized file format. Expected a project file.');
         }
       } catch (e: any) {
         alert('Failed to import: ' + e.message);
