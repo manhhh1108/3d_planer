@@ -30,6 +30,7 @@
 	"dependencies": {
 		"dxf-writer": "^1.18.4",
 		"jspdf": "^4.1.0",
+		"jspdf-autotable": "^5.0.8",
 		"jszip": "^3.10.1"
 	}
 }

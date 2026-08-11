@@ -1,0 +1,346 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { base } from '$app/paths';
+  import { api, type ApiLayout, type ApiSnapshot } from '$lib/services/api';
+  import { jsPDF } from 'jspdf';
+  import autoTable from 'jspdf-autotable';
+
+  const projectId = $page.params.projectId ?? '';
+
+  type Tab = 'summary' | 'process' | 'occupation';
+  let tab = $state<Tab>('summary');
+
+  let projectName = $state('');
+  let layouts = $state<ApiLayout[]>([]);
+  let selectedLayoutId = $state('');
+  let snapshots = $state<ApiSnapshot[]>([]);
+  let selectedDate = $state('');
+  let loading = $state(true);
+
+  // Data
+  let summary = $state<Awaited<ReturnType<typeof api.reports.summary>> | null>(null);
+  let byProcess = $state<Awaited<ReturnType<typeof api.reports.byProcess>>>([]);
+  let occupation = $state<Awaited<ReturnType<typeof api.reports.occupation>>>([]);
+
+  const STAGE_COLORS: Record<string, string> = {
+    'Hàn': 'bg-amber-50 text-amber-700',
+    'Sơn': 'bg-green-50 text-green-700',
+    'Lắp ráp': 'bg-blue-50 text-blue-700',
+    'Cắt': 'bg-red-50 text-red-600',
+  };
+
+  onMount(async () => {
+    try {
+      const proj = await api.projects.get(projectId);
+      projectName = proj.name;
+      layouts = proj.layouts;
+      if (layouts.length > 0) {
+        selectedLayoutId = layouts[0].id;
+        await onLayoutChange();
+      }
+      occupation = await api.reports.occupation(projectId);
+    } finally {
+      loading = false;
+    }
+  });
+
+  async function onLayoutChange() {
+    snapshots = await api.snapshots.list(selectedLayoutId);
+    if (snapshots.length > 0) {
+      selectedDate = snapshots[0].date.slice(0, 10);
+      await loadReports();
+    } else {
+      selectedDate = '';
+      summary = null;
+      byProcess = [];
+    }
+  }
+
+  async function loadReports() {
+    if (!selectedLayoutId || !selectedDate) return;
+    try {
+      [summary, byProcess] = await Promise.all([
+        api.reports.summary(selectedLayoutId, selectedDate),
+        api.reports.byProcess(selectedLayoutId, selectedDate),
+      ]);
+    } catch {
+      summary = null;
+      byProcess = [];
+    }
+  }
+
+  function fmt(d: string) {
+    return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+  }
+
+  const layoutName = $derived(layouts.find((l) => l.id === selectedLayoutId)?.name ?? '');
+
+  /** Xuất PDF (font mặc định của jsPDF không có dấu tiếng Việt -> dùng không dấu) */
+  function exportPDF() {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text(`Floor Manager - Bao cao`, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Du an: ${stripDiacritics(projectName)}`, 14, 22);
+
+    if (tab === 'summary' && summary) {
+      doc.text(`Tong hop mat bang: ${stripDiacritics(layoutName)} - Ngay ${fmt(selectedDate)}`, 14, 28);
+      autoTable(doc, {
+        startY: 34,
+        head: [['STT', 'San pham', 'Ma', 'Vi tri (X, Y)', 'Dien tich (m2)', 'Khoi luong (T)', 'Cong doan']],
+        body: (summary.snapshot.positions ?? []).map((p, i) => [
+          i + 1,
+          stripDiacritics(p.product?.name ?? ''),
+          p.product?.code ?? '',
+          `${p.x.toFixed(1)}, ${p.y.toFixed(1)}`,
+          p.product?.areaM2 ?? '',
+          p.product?.weightKg ? (p.product.weightKg / 1000).toFixed(1) : '',
+          stripDiacritics(p.product?.processStage ?? ''),
+        ]),
+        foot: [[
+          '', 'Tong cong', '', '',
+          summary.totalArea.toFixed(1),
+          (summary.totalWeight / 1000).toFixed(1),
+          `Su dung: ${summary.usageRate}%`,
+        ]],
+      });
+      doc.save(`bao-cao-mat-bang-${selectedDate}.pdf`);
+    } else if (tab === 'process') {
+      doc.text(`Thong ke theo cong doan: ${stripDiacritics(layoutName)} - Ngay ${fmt(selectedDate)}`, 14, 28);
+      autoTable(doc, {
+        startY: 34,
+        head: [['Cong doan', 'So san pham', 'Tong dien tich (m2)', 'Tong khoi luong (T)', 'Ty le dien tich (%)']],
+        body: byProcess.map((r) => [
+          stripDiacritics(r.processStage),
+          r.count,
+          r.totalArea.toFixed(1),
+          (r.totalWeight / 1000).toFixed(1),
+          `${r.areaPercent}%`,
+        ]),
+      });
+      doc.save(`bao-cao-cong-doan-${selectedDate}.pdf`);
+    } else {
+      doc.text(`Thoi gian chiem dung mat bang`, 14, 28);
+      autoTable(doc, {
+        startY: 34,
+        head: [['San pham', 'Ma', 'Layout', 'Tu ngay', 'Den ngay', 'So ngay', 'Dien tich (m2)', 'm2 x ngay']],
+        body: occupation.map((r) => [
+          stripDiacritics(r.productName),
+          r.productCode,
+          stripDiacritics(r.layoutName),
+          fmt(r.startDate),
+          fmt(r.endDate),
+          r.days,
+          r.areaM2,
+          r.areaDays,
+        ]),
+        foot: [['', '', '', '', '', '', 'Tong', occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)]],
+      });
+      doc.save(`bao-cao-chiem-dung.pdf`);
+    }
+  }
+
+  function stripDiacritics(s: string): string {
+    return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+  }
+</script>
+
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+      <a href={`${base}/project/${projectId}`} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        {projectName || 'Dự án'}
+      </a>
+      <div class="h-5 w-px bg-white/20"></div>
+      <h1 class="text-xl font-bold text-white flex-1">Báo cáo</h1>
+      <button onclick={exportPDF} class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
+        🖨 Xuất PDF
+      </button>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-6 py-8">
+    {#if loading}
+      <div class="text-center py-16 text-gray-400">Đang tải...</div>
+    {:else}
+      <!-- Controls -->
+      <div class="flex flex-wrap items-center gap-3 mb-6">
+        <div class="flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+          <button class="px-4 py-1.5 rounded-lg text-sm transition-colors {tab === 'summary' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500 hover:text-gray-700'}" onclick={() => tab = 'summary'}>Tổng hợp mặt bằng</button>
+          <button class="px-4 py-1.5 rounded-lg text-sm transition-colors {tab === 'process' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500 hover:text-gray-700'}" onclick={() => tab = 'process'}>Theo công đoạn</button>
+          <button class="px-4 py-1.5 rounded-lg text-sm transition-colors {tab === 'occupation' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500 hover:text-gray-700'}" onclick={() => tab = 'occupation'}>Thời gian chiếm dụng</button>
+        </div>
+        {#if tab !== 'occupation'}
+          <select bind:value={selectedLayoutId} onchange={onLayoutChange} class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400">
+            {#each layouts as l}<option value={l.id}>{l.name}</option>{/each}
+          </select>
+          <select bind:value={selectedDate} onchange={loadReports} class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400">
+            {#each snapshots as s}<option value={s.date.slice(0, 10)}>{fmt(s.date.slice(0, 10))}</option>{/each}
+          </select>
+        {/if}
+      </div>
+
+      {#if tab === 'summary'}
+        {#if summary}
+          <!-- Stat cards -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div class="rounded-xl p-4 text-center bg-blue-50">
+              <div class="text-2xl font-bold text-blue-700">{summary.snapshot.positions?.length ?? 0}</div>
+              <div class="text-xs text-blue-500 font-medium mt-1">Sản phẩm trên mặt bằng</div>
+            </div>
+            <div class="rounded-xl p-4 text-center bg-green-50">
+              <div class="text-2xl font-bold text-green-700">{summary.totalArea.toFixed(1)} m²</div>
+              <div class="text-xs text-green-600 font-medium mt-1">Tổng diện tích chiếm</div>
+            </div>
+            <div class="rounded-xl p-4 text-center bg-amber-50">
+              <div class="text-2xl font-bold text-amber-700">{summary.layoutArea.toFixed(0)} m²</div>
+              <div class="text-xs text-amber-500 font-medium mt-1">Diện tích mặt bằng</div>
+            </div>
+            <div class="rounded-xl p-4 text-center bg-purple-50">
+              <div class="text-2xl font-bold text-purple-700">{summary.usageRate}%</div>
+              <div class="text-xs text-purple-400 font-medium mt-1">Tỷ lệ sử dụng</div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+            <div class="px-5 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
+              Tổng hợp mặt bằng · {layoutName} · Ngày {fmt(selectedDate)}
+            </div>
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                  <th class="px-4 py-2.5">STT</th>
+                  <th class="px-4 py-2.5">Sản phẩm</th>
+                  <th class="px-4 py-2.5">Mã</th>
+                  <th class="px-4 py-2.5">Vị trí (X, Y)</th>
+                  <th class="px-4 py-2.5">Diện tích (m²)</th>
+                  <th class="px-4 py-2.5">Khối lượng (T)</th>
+                  <th class="px-4 py-2.5">Công đoạn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each summary.snapshot.positions ?? [] as p, i}
+                  <tr class="border-b border-gray-100 last:border-0">
+                    <td class="px-4 py-2.5 text-gray-500">{i + 1}</td>
+                    <td class="px-4 py-2.5 font-medium text-gray-800">{p.product?.name}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{p.product?.code}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{p.x.toFixed(1)}, {p.y.toFixed(1)}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{p.product?.areaM2 ?? '—'}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{p.product?.weightKg ? (p.product.weightKg / 1000).toFixed(1) : '—'}</td>
+                    <td class="px-4 py-2.5">
+                      {#if p.product?.processStage}
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-medium {STAGE_COLORS[p.product.processStage] ?? 'bg-gray-100 text-gray-600'}">{p.product.processStage}</span>
+                      {:else}—{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr class="bg-gray-50 font-bold text-gray-800 border-t border-gray-200">
+                  <td class="px-4 py-2.5" colspan="4">Tổng cộng</td>
+                  <td class="px-4 py-2.5">{summary.totalArea.toFixed(1)}</td>
+                  <td class="px-4 py-2.5">{(summary.totalWeight / 1000).toFixed(1)}</td>
+                  <td class="px-4 py-2.5"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        {:else}
+          <div class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
+            Chưa có snapshot cho mặt bằng này — mở editor và bấm "Lưu Snapshot"
+          </div>
+        {/if}
+
+      {:else if tab === 'process'}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <div class="px-5 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
+            Thống kê theo công đoạn · {layoutName} · Ngày {selectedDate ? fmt(selectedDate) : '—'}
+          </div>
+          {#if byProcess.length === 0}
+            <div class="text-center py-12 text-gray-400 text-sm">Không có dữ liệu</div>
+          {:else}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                  <th class="px-4 py-2.5">Công đoạn</th>
+                  <th class="px-4 py-2.5">Số sản phẩm</th>
+                  <th class="px-4 py-2.5">Tổng diện tích (m²)</th>
+                  <th class="px-4 py-2.5">Tổng khối lượng (T)</th>
+                  <th class="px-4 py-2.5">Tỷ lệ diện tích</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each byProcess as r}
+                  <tr class="border-b border-gray-100 last:border-0">
+                    <td class="px-4 py-2.5">
+                      <span class="px-2.5 py-0.5 rounded-full text-[11px] font-medium {STAGE_COLORS[r.processStage] ?? 'bg-gray-100 text-gray-600'}">{r.processStage}</span>
+                    </td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.count}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.totalArea.toFixed(1)}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{(r.totalWeight / 1000).toFixed(1)}</td>
+                    <td class="px-4 py-2.5">
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1 max-w-[120px] h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div class="h-full bg-blue-500 rounded-full" style="width: {r.areaPercent}%"></div>
+                        </div>
+                        <span class="text-gray-600 text-xs font-medium">{r.areaPercent}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+
+      {:else}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <div class="px-5 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
+            Thời gian chiếm dụng mặt bằng (toàn dự án)
+          </div>
+          {#if occupation.length === 0}
+            <div class="text-center py-12 text-gray-400 text-sm">Không có dữ liệu — cần ít nhất 1 snapshot</div>
+          {:else}
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                  <th class="px-4 py-2.5">Sản phẩm</th>
+                  <th class="px-4 py-2.5">Mã</th>
+                  <th class="px-4 py-2.5">Layout</th>
+                  <th class="px-4 py-2.5">Từ ngày</th>
+                  <th class="px-4 py-2.5">Đến ngày</th>
+                  <th class="px-4 py-2.5">Số ngày</th>
+                  <th class="px-4 py-2.5">Diện tích (m²)</th>
+                  <th class="px-4 py-2.5">m² × ngày</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each occupation as r}
+                  <tr class="border-b border-gray-100 last:border-0">
+                    <td class="px-4 py-2.5 font-medium text-gray-800">{r.productName}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.productCode}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.layoutName}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{fmt(r.startDate)}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{fmt(r.endDate)}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.days}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.areaM2}</td>
+                    <td class="px-4 py-2.5 font-medium text-gray-800">{r.areaDays}</td>
+                  </tr>
+                {/each}
+              </tbody>
+              <tfoot>
+                <tr class="bg-gray-50 font-bold text-gray-800 border-t border-gray-200">
+                  <td class="px-4 py-2.5" colspan="7">Tổng m² × ngày</td>
+                  <td class="px-4 py-2.5">{occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          {/if}
+        </div>
+      {/if}
+    {/if}
+  </div>
+</div>

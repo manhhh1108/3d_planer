@@ -2,231 +2,119 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
-  import { localStore } from '$lib/services/datastore';
-  import { createDefaultProject, currentProject } from '$lib/stores/project';
-  import WelcomeScreen from '$lib/components/WelcomeScreen.svelte';
-  import { houseTemplates } from '$lib/utils/houseTemplates';
+  import { api, type ApiProject } from '$lib/services/api';
 
-  let projects = $state<{ id: string; name: string; updatedAt: string }[]>([]);
-  let thumbnails = $state<Record<string, string | null>>({});
-  let showWelcome = $state(false);
+  let projects = $state<ApiProject[]>([]);
+  let loading = $state(true);
+  let loadError = $state<string | null>(null);
+
+  let showCreateModal = $state(false);
+  let newName = $state('');
+  let newDesc = $state('');
   let confirmDeleteId = $state<string | null>(null);
-  let renamingId = $state<string | null>(null);
-  let renameValue = $state('');
-  let contextMenuId = $state<string | null>(null);
-  let showTemplateModal = $state(false);
 
-  onMount(async () => {
-    projects = await localStore.list();
-    // Sort by most recent
-    projects.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    // Load thumbnails
-    const thumbs: Record<string, string | null> = {};
-    for (const p of projects) {
-      thumbs[p.id] = localStore.getThumbnail(p.id);
+  async function refresh() {
+    loading = true;
+    loadError = null;
+    try {
+      projects = await api.projects.list();
+    } catch (e: any) {
+      loadError = 'Không kết nối được backend (http://localhost:4000). Chạy: npm run server trong floor-manager/';
+    } finally {
+      loading = false;
     }
-    thumbnails = thumbs;
-    const seen = localStorage.getItem('hasSeenWelcome');
-    if (!seen && projects.length === 0) {
-      showWelcome = true;
-    }
-  });
-
-  async function createFromTemplate(index: number) {
-    const template = houseTemplates[index];
-    const p = template.create();
-    currentProject.set(p);
-    await localStore.save(p);
-    showTemplateModal = false;
-    goto(`${base}/editor?id=${p.id}`);
   }
 
-  async function newProject() {
-    const p = createDefaultProject('Untitled Project');
-    currentProject.set(p);
-    await localStore.save(p);
-    goto(`${base}/editor?id=${p.id}`);
+  onMount(refresh);
+
+  async function createProject() {
+    if (!newName.trim()) return;
+    const p = await api.projects.create({ name: newName.trim(), description: newDesc.trim() || undefined });
+    showCreateModal = false;
+    newName = '';
+    newDesc = '';
+    goto(`${base}/project/${p.id}`);
   }
 
   async function deleteProject(id: string) {
-    await localStore.delete(id);
+    await api.projects.remove(id);
     confirmDeleteId = null;
-    projects = (await localStore.list()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }
-
-  async function duplicateProject(id: string) {
-    const dup = await localStore.duplicate(id);
-    if (dup) {
-      projects = (await localStore.list()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      thumbnails = { ...thumbnails, [dup.id]: localStore.getThumbnail(dup.id) };
-    }
-    contextMenuId = null;
-  }
-
-  async function startRename(id: string, currentName: string) {
-    renamingId = id;
-    renameValue = currentName;
-    contextMenuId = null;
-    await new Promise(r => setTimeout(r, 50));
-    const input = document.getElementById('rename-input') as HTMLInputElement;
-    input?.focus();
-    input?.select();
-  }
-
-  async function commitRename(id: string) {
-    if (renameValue.trim()) {
-      const p = await localStore.load(id);
-      if (p) {
-        p.name = renameValue.trim();
-        p.updatedAt = new Date();
-        await localStore.save(p);
-        projects = (await localStore.list()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      }
-    }
-    renamingId = null;
+    await refresh();
   }
 
   function formatDate(d: string) {
-    const date = new Date(d);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'Just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 7) return `${diffDay}d ago`;
-    return date.toLocaleDateString();
+    return new Date(d).toLocaleDateString('vi-VN');
   }
 </script>
-
-<svelte:window onclick={() => { contextMenuId = null; }} />
-
-{#if showWelcome}
-  <WelcomeScreen onDismiss={() => { showWelcome = false; localStore.list().then(p => { projects = p.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()); }); }} />
-{/if}
 
 <div class="min-h-screen bg-gray-50">
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-white">Floor Plan Editor</h1>
-        <p class="text-sm text-white/50 mt-0.5">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
-      </div>
       <div class="flex items-center gap-3">
-        <button
-          onclick={() => showTemplateModal = true}
-          class="px-4 py-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 font-medium text-sm transition-all flex items-center gap-2 border border-white/20"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          Templates
-        </button>
-        <button
-          onclick={newProject}
-          class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm shadow-lg shadow-blue-500/25 transition-all hover:shadow-blue-500/40 flex items-center gap-2"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Project
-        </button>
+        <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white text-lg font-bold">◧</div>
+        <div>
+          <h1 class="text-2xl font-bold text-white">Floor Manager</h1>
+          <p class="text-sm text-white/50 mt-0.5">Quản lý mặt bằng sản xuất · {projects.length} dự án</p>
+        </div>
       </div>
+      <button
+        onclick={() => showCreateModal = true}
+        class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Tạo dự án mới
+      </button>
     </div>
   </div>
 
   <div class="max-w-5xl mx-auto px-6 py-8">
-    {#if projects.length === 0}
+    {#if loadError}
+      <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-sm">
+        <p class="font-semibold">Lỗi kết nối</p>
+        <p>{loadError}</p>
+        <button onclick={refresh} class="mt-2 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700">Thử lại</button>
+      </div>
+    {:else if loading}
+      <div class="text-center py-24 text-gray-400">Đang tải...</div>
+    {:else if projects.length === 0}
       <div class="text-center py-24">
-        <div class="w-16 h-16 bg-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-gray-400"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-        </div>
-        <p class="text-lg text-gray-400 font-medium">No projects yet</p>
-        <p class="text-sm text-gray-300 mt-1">Create your first floor plan to get started</p>
-        <div class="mt-6 flex items-center gap-3 justify-center">
-          <button onclick={newProject} class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
-            Create Project
-          </button>
-          <button onclick={() => showTemplateModal = true} class="px-5 py-2.5 bg-white text-gray-700 rounded-lg hover:bg-gray-100 font-semibold text-sm border border-gray-200">
-            Start from Template
-          </button>
-        </div>
+        <div class="text-5xl mb-4">🏗</div>
+        <p class="text-lg text-gray-400 font-medium">Chưa có dự án nào</p>
+        <p class="text-sm text-gray-400 mt-1">Tạo dự án đầu tiên để bắt đầu quản lý mặt bằng</p>
+        <button onclick={() => showCreateModal = true} class="mt-6 px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
+          Tạo dự án
+        </button>
       </div>
     {:else}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {#each projects as project}
-          <div class="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-gray-300 transition-all duration-200 relative">
-            <!-- Thumbnail -->
-            <a href={`${base}/editor?id=${project.id}`} class="block">
-              <div class="aspect-[4/3] bg-gray-100 relative overflow-hidden">
-                {#if thumbnails[project.id]}
-                  <img src={thumbnails[project.id]} alt="" class="w-full h-full object-contain" />
-                {:else}
-                  <div class="w-full h-full flex items-center justify-center">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="text-gray-300"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                  </div>
-                {/if}
+          <div class="group bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-blue-200 transition-all duration-200 relative">
+            <a href={`${base}/project/${project.id}`} class="block">
+              <h3 class="font-semibold text-gray-800 truncate pr-8">{project.name}</h3>
+              <p class="text-sm text-gray-400 mt-1 line-clamp-2 min-h-[2.5rem]">{project.description ?? 'Không có mô tả'}</p>
+              <div class="flex gap-2 mt-3">
+                <span class="text-[11px] text-gray-500 bg-gray-100 rounded-md px-2 py-0.5">📦 {project._count?.products ?? 0} sản phẩm</span>
+                <span class="text-[11px] text-gray-500 bg-gray-100 rounded-md px-2 py-0.5">🗺 {project._count?.layouts ?? 0} mặt bằng</span>
               </div>
+              <p class="text-[11px] text-gray-400 mt-3">Cập nhật: {formatDate(project.updatedAt)}</p>
             </a>
-
-            <!-- Info -->
-            <div class="p-4">
-              {#if renamingId === project.id}
-                <input
-                  id="rename-input"
-                  type="text"
-                  bind:value={renameValue}
-                  onblur={() => commitRename(project.id)}
-                  onkeydown={(e) => { if (e.key === 'Enter') commitRename(project.id); if (e.key === 'Escape') renamingId = null; }}
-                  class="font-semibold text-gray-800 text-sm bg-blue-50 border border-blue-300 rounded px-2 py-1 w-full outline-none"
-                />
-              {:else}
-                <a href={`${base}/editor?id=${project.id}`} class="block">
-                  <h3 class="font-semibold text-gray-800 text-sm truncate">{project.name || 'Untitled Project'}</h3>
-                </a>
-              {/if}
-              <p class="text-xs text-gray-400 mt-1">{formatDate(project.updatedAt)}</p>
-            </div>
-
-            <!-- Actions menu button -->
-            <button
-              onclick={(e) => { e.stopPropagation(); contextMenuId = contextMenuId === project.id ? null : project.id; }}
-              class="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur rounded-lg shadow-sm border border-gray-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="text-gray-500"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-            </button>
-
-            <!-- Context menu -->
-            {#if contextMenuId === project.id}
-              <div
-                class="absolute top-12 right-3 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-40 z-50"
-                onclick={(e) => e.stopPropagation()}
-              >
-                <button onclick={() => { goto(`${base}/editor?id=${project.id}`); }} class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                  Open
-                </button>
-                <button onclick={() => startRename(project.id, project.name)} class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-                  Rename
-                </button>
-                <button onclick={() => duplicateProject(project.id)} class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  Duplicate
-                </button>
-                <div class="h-px bg-gray-100 my-1"></div>
-                {#if confirmDeleteId === project.id}
-                  <div class="px-3 py-2 flex items-center gap-2">
-                    <span class="text-xs text-gray-500">Delete?</span>
-                    <button onclick={() => deleteProject(project.id)} class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Yes</button>
-                    <button onclick={() => confirmDeleteId = null} class="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">No</button>
-                  </div>
-                {:else}
-                  <button onclick={() => { confirmDeleteId = project.id; }} class="w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 text-left flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    Delete
-                  </button>
-                {/if}
+            <!-- Delete -->
+            {#if confirmDeleteId === project.id}
+              <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
+                <span class="text-xs text-gray-500">Xóa?</span>
+                <button onclick={() => deleteProject(project.id)} class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
+                <button onclick={() => confirmDeleteId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
               </div>
+            {:else}
+              <button
+                onclick={() => confirmDeleteId = project.id}
+                class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                title="Xóa dự án"
+                aria-label="Xóa dự án"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
             {/if}
           </div>
         {/each}
@@ -234,29 +122,33 @@
     {/if}
   </div>
 
-  <!-- Template Modal -->
-  {#if showTemplateModal}
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onclick={() => showTemplateModal = false}>
-      <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full mx-4" onclick={(e) => e.stopPropagation()}>
-        <div class="flex items-center justify-between mb-2">
-          <h2 class="text-2xl font-bold text-gray-800">Floor Plan Templates</h2>
-          <button onclick={() => showTemplateModal = false} class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-        </div>
-        <p class="text-sm text-gray-400 mb-6">Complete house layouts with walls, doors & windows</p>
-        <div class="space-y-3">
-          {#each houseTemplates as t, i}
-            <button
-              onclick={() => createFromTemplate(i)}
-              class="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
-            >
-              <span class="text-3xl">{t.icon}</span>
-              <div class="flex-1 min-w-0">
-                <div class="font-semibold text-gray-800">{t.name}</div>
-                <div class="text-xs text-gray-400">{t.description}</div>
-              </div>
-              <span class="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-lg shrink-0">{t.area}</span>
-            </button>
-          {/each}
+  <!-- Create Modal -->
+  {#if showCreateModal}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={() => showCreateModal = false} onkeydown={(e) => { if (e.key === 'Escape') showCreateModal = false; }} role="dialog" tabindex="-1">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Tạo dự án mới</h2>
+        <label class="block mb-3">
+          <span class="text-xs font-medium text-gray-500">Tên dự án *</span>
+          <input
+            type="text"
+            bind:value={newName}
+            placeholder="VD: Dự án Cầu Long Biên"
+            class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            onkeydown={(e) => { if (e.key === 'Enter') createProject(); }}
+          />
+        </label>
+        <label class="block mb-5">
+          <span class="text-xs font-medium text-gray-500">Mô tả</span>
+          <textarea
+            bind:value={newDesc}
+            rows="2"
+            placeholder="Mô tả ngắn về dự án..."
+            class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none resize-none"
+          ></textarea>
+        </label>
+        <div class="flex gap-2 justify-end">
+          <button onclick={() => showCreateModal = false} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Hủy</button>
+          <button onclick={createProject} disabled={!newName.trim()} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">Tạo dự án</button>
         </div>
       </div>
     </div>
