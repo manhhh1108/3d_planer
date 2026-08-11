@@ -13,6 +13,8 @@
   import AlignmentToolbar from '$lib/components/editor/AlignmentToolbar.svelte';
   import UndoHistoryPanel from '$lib/components/editor/UndoHistoryPanel.svelte';
   import CommandPalette from '$lib/components/editor/CommandPalette.svelte';
+  import TimelineBar from '$lib/components/editor/TimelineBar.svelte';
+  import { timelineReadonly } from '$lib/stores/timeline';
   import ElevationView from '$lib/components/editor/ElevationView.svelte';
   import PrintLayout from '$lib/components/editor/PrintLayout.svelte';
   import OnboardingTooltip from '$lib/components/OnboardingTooltip.svelte';
@@ -53,6 +55,7 @@
   });
 
   let loadError = $state<string | null>(null);
+  let backendLayoutId = $state<string | null>(null);
 
   onMount(() => {
     (async () => {
@@ -61,6 +64,7 @@
       const layoutId = url.searchParams.get('layoutId');
       if (layoutId) {
         // Chế độ backend: 1 layout của backend = 1 project của editor
+        backendLayoutId = layoutId;
         setActiveStore(backendStore);
         try {
           const project = await backendStore.load(layoutId);
@@ -111,7 +115,7 @@
 
 {#if ready}
   <div class="h-screen flex flex-col overflow-hidden">
-    <TopBar />
+    <TopBar saveLabel={backendLayoutId ? 'Lưu Snapshot' : 'Save'} />
     <div class="flex flex-1 overflow-hidden">
       {#if mode === '2d'}
         <!-- Build panel: inline sidebar on md+, off-canvas drawer on phones -->
@@ -141,18 +145,25 @@
             <div class="flex items-center justify-center h-full text-slate-400">Loading 3D viewer…</div>
           {/if}
         {/if}
+        {#if $timelineReadonly && mode === '2d'}
+          <!-- Chặn thao tác chuột khi đang xem snapshot ngày cũ -->
+          <div class="absolute inset-0 z-30 cursor-not-allowed" aria-hidden="true"></div>
+        {/if}
       </div>
       {#if showLayers && mode === '2d'}
         <LayersPanel />
       {/if}
       <PropertiesPanel is3D={mode === '3d'} />
     </div>
+    {#if backendLayoutId}
+      <TimelineBar layoutId={backendLayoutId} />
+    {/if}
   </div>
 
   <!-- Tools drawer FAB (mobile only) -->
   {#if mode === '2d'}
     <button
-      class="md:hidden fixed bottom-4 left-4 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg active:bg-blue-700 transition-colors z-40 flex items-center justify-center"
+      class="md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-4 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg active:bg-blue-700 transition-colors z-40 flex items-center justify-center"
       onclick={() => buildPanelOpen = !buildPanelOpen}
       title="Tools"
       aria-label="Toggle tools panel"
@@ -164,7 +175,7 @@
   <!-- Layers toggle button -->
   {#if mode === '2d'}
     <button
-      class="max-md:hidden fixed bottom-4 left-14 w-8 h-8 rounded-full shadow-lg hover:bg-slate-600 transition-colors z-50 text-sm"
+      class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-14 w-8 h-8 rounded-full shadow-lg hover:bg-slate-600 transition-colors z-50 text-sm"
       class:bg-blue-600={showLayers}
       class:text-white={showLayers}
       class:bg-slate-700={!showLayers}
@@ -177,7 +188,7 @@
 
   <!-- Undo History toggle button -->
   <button
-    class="max-md:hidden fixed bottom-4 left-24 w-8 h-8 rounded-full shadow-lg hover:bg-slate-600 transition-colors z-50 text-sm"
+    class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-24 w-8 h-8 rounded-full shadow-lg hover:bg-slate-600 transition-colors z-50 text-sm"
     class:bg-blue-600={showUndoHistory}
     class:text-white={showUndoHistory}
     class:bg-slate-700={!showUndoHistory}
@@ -191,7 +202,7 @@
 
   <!-- Help button (desktop only — keyboard shortcuts are meaningless on touch) -->
   <button
-    class="max-md:hidden fixed bottom-4 left-4 w-8 h-8 rounded-full bg-slate-700 text-white text-sm font-bold shadow-lg hover:bg-slate-600 transition-colors z-50"
+    class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-4 w-8 h-8 rounded-full bg-slate-700 text-white text-sm font-bold shadow-lg hover:bg-slate-600 transition-colors z-50"
     onclick={() => showHelp = !showHelp}
     title="Keyboard Shortcuts (?)"
     aria-label="Keyboard Shortcuts"
