@@ -15,7 +15,6 @@
   import CommandPalette from '$lib/components/editor/CommandPalette.svelte';
   import TimelineBar from '$lib/components/editor/TimelineBar.svelte';
   import { timelineReadonly } from '$lib/stores/timeline';
-  import ElevationView from '$lib/components/editor/ElevationView.svelte';
   import PrintLayout from '$lib/components/editor/PrintLayout.svelte';
   import OnboardingTooltip from '$lib/components/OnboardingTooltip.svelte';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
@@ -134,10 +133,6 @@
         {#if mode === '2d'}
           <FloorPlanCanvas />
           <AlignmentToolbar />
-          {#if $elevationWallId}
-            <!-- Integrated elevation view replaces the plan canvas area (sidebars stay) -->
-            <ElevationView />
-          {/if}
         {:else}
           {#if ThreeViewer}
             <ThreeViewer />
