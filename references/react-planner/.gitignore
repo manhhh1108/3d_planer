@@ -1,8 +1,0 @@
-.idea
-npm-debug.log
-node_modules
-demo/dist/*
-!demo/dist/index.html
-es
-lib
-.vscode
