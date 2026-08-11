@@ -1,4 +1,7 @@
 import type { Project } from '$lib/models/types';
+import { api } from './api';
+import { layoutToProject, projectToPositions, todayStr } from './mapping';
+import { loadProductCatalog } from '$lib/stores/productCatalog';
 
 export interface DataStore {
   save(project: Project): Promise<void>;
@@ -107,3 +110,56 @@ export const localStore: DataStore = {
     try { return localStorage.getItem(`floorplan_thumb_${id}`); } catch { return null; }
   },
 };
+
+/**
+ * Backend store: Project của editor = 1 Layout của backend (project.id == layoutId).
+ * save() upsert snapshot của NGÀY HÔM NAY qua POST /api/snapshots.
+ */
+export const backendStore: DataStore = {
+  async save(project) {
+    await api.snapshots.save({
+      layoutId: project.id,
+      date: todayStr(),
+      positions: projectToPositions(project),
+    });
+  },
+
+  async load(layoutId) {
+    const layout = await api.layouts.get(layoutId);
+    if (!layout) return null;
+    // Catalog sản phẩm phải sẵn sàng trước khi canvas render các block
+    await loadProductCatalog(layout.projectId);
+    const snapshots = await api.snapshots.list(layoutId);
+    const latest = snapshots[0] ? await api.snapshots.get(snapshots[0].id) : null;
+    return layoutToProject(layout, latest);
+  },
+
+  async list() {
+    return []; // danh sách layout xem ở Dashboard (theo project), không dùng ở đây
+  },
+
+  async delete(layoutId) {
+    await api.layouts.remove(layoutId);
+  },
+
+  async duplicate() {
+    return null; // chưa hỗ trợ nhân bản layout từ editor
+  },
+
+  saveThumbnail(id: string, dataUrl: string) {
+    try { localStorage.setItem(`floorplan_thumb_${id}`, dataUrl); } catch {}
+  },
+
+  getThumbnail(id: string): string | null {
+    try { return localStorage.getItem(`floorplan_thumb_${id}`); } catch { return null; }
+  },
+};
+
+/** Store đang hoạt động: editor đặt backendStore khi mở qua ?layoutId= */
+let activeStore: DataStore = localStore;
+export function setActiveStore(store: DataStore) {
+  activeStore = store;
+}
+export function getActiveStore(): DataStore {
+  return activeStore;
+}
