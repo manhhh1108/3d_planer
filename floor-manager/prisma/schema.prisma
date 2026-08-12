@@ -6,13 +6,23 @@ datasource db {
   provider = "postgresql"
 }
 
+model Site {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  layouts   Layout[]
+
+  @@map("sites")
+}
+
 model Project {
   id          String    @id @default(cuid())
   name        String
   description String?
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
-  layouts     Layout[]
   products    Product[]
 
   @@map("projects")
@@ -20,14 +30,14 @@ model Project {
 
 model Layout {
   id             String     @id @default(cuid())
-  projectId      String     @map("project_id")
+  siteId         String     @map("site_id")
   name           String
   widthM         Float      @map("width_m")
   heightM        Float      @map("height_m")
   backgroundFile String?    @map("background_file")
   gridSize       Float      @default(1.0) @map("grid_size")
   createdAt      DateTime   @default(now()) @map("created_at")
-  project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]
 
   @@map("layouts")

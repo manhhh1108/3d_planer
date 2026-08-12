@@ -7,7 +7,7 @@ if (!process.env.DATABASE_URL?.includes('_test')) {
 
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "positions","snapshots","layouts","products","projects" CASCADE'
+    'TRUNCATE TABLE "positions","snapshots","layouts","sites","products","projects" CASCADE'
   );
 });
 
