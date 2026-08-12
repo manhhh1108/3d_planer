@@ -34,7 +34,7 @@ async function seedSharedLayout() {
     date: '2026-08-03',
     positions: [{ productId: prodA.id, x: 1, y: 1 }],
   });
-  return { layout, projA, projB };
+  return { layout, projA, projB, prodA, prodB };
 }
 
 describe('reports/occupation', () => {
@@ -43,6 +43,25 @@ describe('reports/occupation', () => {
     const res = await request(app).get('/api/reports/occupation');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
+
+    // prodA present in both snapshots: Aug 1 → Aug 3, 2 days
+    const rowA = res.body.find((r: any) => r.productCode === 'A1');
+    expect(rowA).toMatchObject({
+      startDate: '2026-08-01',
+      endDate: '2026-08-03',
+      days: 2,
+      areaM2: 20,
+      areaDays: 40,
+    });
+    // prodB gone by Aug 3: period closes at previous snapshot date, min 1 day
+    const rowB = res.body.find((r: any) => r.productCode === 'B1');
+    expect(rowB).toMatchObject({
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+      days: 1,
+      areaM2: 30,
+      areaDays: 30,
+    });
   });
 
   it('filters by product project on a shared layout and includes projectName', async () => {
@@ -57,6 +76,25 @@ describe('reports/occupation', () => {
   it('still filters by layoutId', async () => {
     const { layout } = await seedSharedLayout();
     const res = await request(app).get(`/api/reports/occupation?layoutId=${layout.id}`);
+    expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
+  });
+
+  it('starts a new period when a product reappears after absence', async () => {
+    const { layout, prodB } = await seedSharedLayout();
+    await request(app).post('/api/snapshots').send({
+      layoutId: layout.id,
+      date: '2026-08-05',
+      positions: [{ productId: prodB.id, x: 5, y: 5 }],
+    });
+
+    const res = await request(app).get('/api/reports/occupation');
+    expect(res.status).toBe(200);
+    const rowsB = res.body.filter((r: any) => r.productCode === 'B1');
+    expect(rowsB).toHaveLength(2);
+    expect(rowsB.map((r: any) => [r.startDate, r.endDate])).toEqual([
+      ['2026-08-01', '2026-08-01'],
+      ['2026-08-05', '2026-08-05'],
+    ]);
   });
 });
