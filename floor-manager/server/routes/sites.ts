@@ -76,7 +76,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
     await prisma.site.delete({ where: { id: req.params.id } });
     res.status(204).send();
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2003') {
+      return res.status(409).json({ error: 'Site has layouts — delete them first' });
+    }
     res.status(500).json({ error: String(err) });
   }
 });
