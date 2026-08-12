@@ -84,7 +84,9 @@ export function meshesToFootprint(
       const y = pos[vi * 3 + 1] * unitScale;
       const z = pos[vi * 3 + 2] * unitScale;
       // trả về [ngang1, ngang2, cao]
-      return upAxis === 'z' ? [x, y, z] : [x, z, y];
+      // Y-up (web-ifc/glTF) sinh từ Z-up bằng (x,y,z)->(x,z,-y), nên đảo ngược:
+      // ngang2 = -z để footprint KHÔNG bị lật gương so với nguồn Z-up.
+      return upAxis === 'z' ? [x, y, z] : [x, -z, y];
     };
     for (let i = 0; i < idx.length; i += 3) {
       const a = proj(idx[i]);
