@@ -25,8 +25,8 @@ export function productToDef(p: ApiProduct): FurnitureDef {
 export const productCatalog = writable<FurnitureDef[]>([]);
 export const productsById = writable<Map<string, ApiProduct>>(new Map());
 
-export async function loadProductCatalog(projectId: string): Promise<void> {
-	const products = await api.products.list(projectId);
+export async function loadProductCatalog(): Promise<void> {
+	const products = await api.products.list();
 	const defs = products.map(productToDef);
 	productCatalog.set(defs);
 	productsById.set(new Map(products.map((p) => [p.id, p])));

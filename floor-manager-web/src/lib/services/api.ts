@@ -16,7 +16,17 @@ export interface ApiProject {
 	description: string | null;
 	createdAt: string;
 	updatedAt: string;
-	_count?: { layouts: number; products: number };
+	_count?: { products: number };
+}
+
+export interface ApiSite {
+	id: string;
+	name: string;
+	address: string | null;
+	active: boolean;
+	createdAt: string;
+	_count?: { layouts: number };
+	layouts?: (ApiLayout & { _count?: { snapshots: number } })[];
 }
 
 export interface ApiProduct {
@@ -38,7 +48,7 @@ export interface ApiProduct {
 
 export interface ApiLayout {
 	id: string;
-	projectId: string;
+	siteId: string;
 	name: string;
 	widthM: number;
 	heightM: number;
@@ -71,15 +81,25 @@ export const api = {
 	projects: {
 		list: () => http<ApiProject[]>('/projects'),
 		get: (id: string) =>
-			http<ApiProject & { layouts: ApiLayout[]; products: ApiProduct[] }>(`/projects/${id}`),
+			http<ApiProject & { products: ApiProduct[] }>(`/projects/${id}`),
 		create: (data: { name: string; description?: string }) =>
 			http<ApiProject>('/projects', { method: 'POST', body: JSON.stringify(data) }),
 		update: (id: string, data: { name?: string; description?: string }) =>
 			http<ApiProject>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/projects/${id}`, { method: 'DELETE' }),
 	},
+	sites: {
+		list: () => http<ApiSite[]>('/sites'),
+		get: (id: string) => http<ApiSite>(`/sites/${id}`),
+		create: (data: { name: string; address?: string }) =>
+			http<ApiSite>('/sites', { method: 'POST', body: JSON.stringify(data) }),
+		update: (id: string, data: { name?: string; address?: string; active?: boolean }) =>
+			http<ApiSite>(`/sites/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+		remove: (id: string) => http<void>(`/sites/${id}`, { method: 'DELETE' }),
+	},
 	products: {
-		list: (projectId: string) => http<ApiProduct[]>(`/products?projectId=${projectId}`),
+		list: (projectId?: string) =>
+			http<ApiProduct[]>(projectId ? `/products?projectId=${projectId}` : '/products'),
 		create: (data: Partial<ApiProduct> & { projectId: string; name: string; code: string }) =>
 			http<ApiProduct>('/products', { method: 'POST', body: JSON.stringify(data) }),
 		update: (id: string, data: Partial<ApiProduct>) =>
@@ -87,16 +107,17 @@ export const api = {
 		remove: (id: string) => http<void>(`/products/${id}`, { method: 'DELETE' }),
 	},
 	layouts: {
-		list: (projectId: string) => http<ApiLayout[]>(`/layouts?projectId=${projectId}`),
+		list: (siteId?: string) =>
+			http<ApiLayout[]>(siteId ? `/layouts?siteId=${siteId}` : '/layouts'),
 		get: (id: string) => http<ApiLayout>(`/layouts/${id}`),
 		create: (data: {
-			projectId: string;
+			siteId: string;
 			name: string;
 			widthM: number;
 			heightM: number;
 			gridSize?: number;
 		}) => http<ApiLayout>('/layouts', { method: 'POST', body: JSON.stringify(data) }),
-		update: (id: string, data: Partial<Omit<ApiLayout, 'id' | 'projectId' | 'snapshots'>>) =>
+		update: (id: string, data: Partial<Omit<ApiLayout, 'id' | 'siteId' | 'snapshots'>>) =>
 			http<ApiLayout>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/layouts/${id}`, { method: 'DELETE' }),
 	},
@@ -119,11 +140,12 @@ export const api = {
 					areaPercent: number;
 				}[]
 			>(`/reports/by-process?layoutId=${layoutId}&date=${date}`),
-		occupation: (projectId: string) =>
+		occupation: (projectId?: string) =>
 			http<
 				{
 					productName: string;
 					productCode: string;
+					projectName: string;
 					layoutName: string;
 					startDate: string;
 					endDate: string;
@@ -131,7 +153,7 @@ export const api = {
 					areaM2: number;
 					areaDays: number;
 				}[]
-			>(`/reports/occupation?projectId=${projectId}`),
+			>(projectId ? `/reports/occupation?projectId=${projectId}` : '/reports/occupation'),
 	},
 	snapshots: {
 		list: (layoutId: string) => http<ApiSnapshot[]>(`/snapshots?layoutId=${layoutId}`),

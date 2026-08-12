@@ -128,7 +128,7 @@ export const backendStore: DataStore = {
     const layout = await api.layouts.get(layoutId);
     if (!layout) return null;
     // Catalog sản phẩm phải sẵn sàng trước khi canvas render các block
-    await loadProductCatalog(layout.projectId);
+    await loadProductCatalog();
     const snapshots = await api.snapshots.list(layoutId);
     const latest = snapshots[0] ? await api.snapshots.get(snapshots[0].id) : null;
     return layoutToProject(layout, latest);
