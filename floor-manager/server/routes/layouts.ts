@@ -3,12 +3,12 @@ import prisma from '../db.js';
 
 const router = Router();
 
-// GET /?projectId=xxx — list layouts with snapshot count
+// GET /?siteId=xxx — list layouts with snapshot count
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { projectId } = req.query;
+    const { siteId } = req.query;
     const layouts = await prisma.layout.findMany({
-      where: projectId ? { projectId: String(projectId) } : undefined,
+      where: siteId ? { siteId: String(siteId) } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { snapshots: true } },
