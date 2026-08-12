@@ -27,6 +27,10 @@ docker compose up -d postgres
 #   DATABASE_URL="postgresql://floormanager:floormanager123@localhost:5432/floormanager"
 #   PORT=4000
 npx prisma migrate deploy && npx prisma generate
+# DB cũ đã tạo bằng `prisma db push` (chưa có bảng _prisma_migrations):
+# baseline init trước rồi mới deploy để migration backfill Site chạy được:
+#   npx prisma migrate resolve --applied 20260810145925_init
+#   npx prisma migrate deploy
 
 # 2. Backend (port 4000)
 npm install
