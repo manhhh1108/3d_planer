@@ -77,32 +77,28 @@ router.get('/by-process', async (req: Request, res: Response) => {
   }
 });
 
-// GET /occupation?projectId=xxx&layoutId=xxx
+// GET /occupation?projectId=xxx&layoutId=xxx — both optional
+// projectId now filters by the PRODUCT's project (layouts are cross-project)
 router.get('/occupation', async (req: Request, res: Response) => {
   try {
     const { projectId, layoutId } = req.query as { projectId?: string; layoutId?: string };
-    if (!projectId && !layoutId) {
-      return res.status(400).json({ error: 'projectId or layoutId is required' });
-    }
 
-    let layoutIds: string[] = [];
+    let layoutIds: string[];
     if (layoutId) {
       layoutIds = [layoutId];
     } else {
-      const layouts = await prisma.layout.findMany({
-        where: { projectId: projectId! },
-        select: { id: true },
-      });
+      const layouts = await prisma.layout.findMany({ select: { id: true } });
       layoutIds = layouts.map((l) => l.id);
     }
-
     if (layoutIds.length === 0) return res.json([]);
 
     const snapshots = await prisma.snapshot.findMany({
       where: { layoutId: { in: layoutIds } },
       orderBy: { date: 'asc' },
       include: {
-        positions: { include: { product: true } },
+        positions: {
+          include: { product: { include: { project: { select: { name: true } } } } },
+        },
         layout: true,
       },
     });
@@ -110,12 +106,21 @@ router.get('/occupation', async (req: Request, res: Response) => {
     type OccupationPeriod = {
       productName: string;
       productCode: string;
+      projectName: string;
       layoutName: string;
       startDate: string;
       endDate: string;
       days: number;
       areaM2: number;
       areaDays: number;
+    };
+
+    type ActiveInfo = {
+      startDate: Date;
+      productName: string;
+      productCode: string;
+      projectName: string;
+      areaM2: number;
     };
 
     const periods: OccupationPeriod[] = [];
@@ -131,58 +136,56 @@ router.get('/occupation', async (req: Request, res: Response) => {
       if (layoutSnapshots.length === 0) continue;
       const layoutName = layoutSnapshots[0].layout.name;
 
-      const active = new Map<string, { startDate: Date; productName: string; productCode: string; areaM2: number }>();
+      const active = new Map<string, ActiveInfo>();
+
+      const pushPeriod = (info: ActiveInfo, endDate: Date) => {
+        const days = Math.max(1, Math.round((endDate.getTime() - info.startDate.getTime()) / 86400000));
+        periods.push({
+          layoutName,
+          productName: info.productName,
+          productCode: info.productCode,
+          projectName: info.projectName,
+          areaM2: info.areaM2,
+          startDate: info.startDate.toISOString().slice(0, 10),
+          endDate: endDate.toISOString().slice(0, 10),
+          days,
+          areaDays: Math.round(info.areaM2 * days * 10) / 10,
+        });
+      };
 
       for (let i = 0; i < layoutSnapshots.length; i++) {
         const snap = layoutSnapshots[i];
         const snapDate = new Date(snap.date);
-        const presentProductIds = new Set(snap.positions.map((p) => p.productId));
+        // filter theo dự án của product (nếu có query projectId)
+        const relevant = snap.positions.filter(
+          (p) => !projectId || p.product.projectId === projectId
+        );
+        const presentProductIds = new Set(relevant.map((p) => p.productId));
 
-        for (const [productId, info] of active) {
-          if (!presentProductIds.has(productId)) {
+        for (const [pid, info] of active) {
+          if (!presentProductIds.has(pid)) {
             const prevSnap = layoutSnapshots[i - 1];
-            const endDate = prevSnap ? new Date(prevSnap.date) : snapDate;
-            const days = Math.max(1, Math.round((endDate.getTime() - info.startDate.getTime()) / 86400000));
-            periods.push({
-              layoutName,
-              productName: info.productName,
-              productCode: info.productCode,
-              areaM2: info.areaM2,
-              startDate: info.startDate.toISOString().slice(0, 10),
-              endDate: endDate.toISOString().slice(0, 10),
-              days,
-              areaDays: Math.round(info.areaM2 * days * 10) / 10,
-            });
-            active.delete(productId);
+            pushPeriod(info, prevSnap ? new Date(prevSnap.date) : snapDate);
+            active.delete(pid);
           }
         }
 
-        for (const pos of snap.positions) {
+        for (const pos of relevant) {
           if (!active.has(pos.productId)) {
             active.set(pos.productId, {
               startDate: snapDate,
               productName: pos.product.name,
               productCode: pos.product.code,
+              projectName: pos.product.project.name,
               areaM2: pos.product.areaM2 ?? 0,
             });
           }
         }
       }
 
-      const lastSnap = layoutSnapshots[layoutSnapshots.length - 1];
-      const lastDate = new Date(lastSnap.date);
+      const lastDate = new Date(layoutSnapshots[layoutSnapshots.length - 1].date);
       for (const [, info] of active) {
-        const days = Math.max(1, Math.round((lastDate.getTime() - info.startDate.getTime()) / 86400000));
-        periods.push({
-          layoutName,
-          productName: info.productName,
-          productCode: info.productCode,
-          areaM2: info.areaM2,
-          startDate: info.startDate.toISOString().slice(0, 10),
-          endDate: lastDate.toISOString().slice(0, 10),
-          days,
-          areaDays: Math.round(info.areaM2 * days * 10) / 10,
-        });
+        pushPeriod(info, lastDate);
       }
     }
 
