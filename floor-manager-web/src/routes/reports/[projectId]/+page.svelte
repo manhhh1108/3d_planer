@@ -32,9 +32,12 @@
 
   onMount(async () => {
     try {
-      const proj = await api.projects.get(projectId);
+      const [proj, allLayouts] = await Promise.all([
+        api.projects.get(projectId),
+        api.layouts.list(),
+      ]);
       projectName = proj.name;
-      layouts = proj.layouts;
+      layouts = allLayouts;
       if (layouts.length > 0) {
         selectedLayoutId = layouts[0].id;
         await onLayoutChange();
@@ -124,10 +127,11 @@
       doc.text(`Thoi gian chiem dung mat bang`, 14, 28);
       autoTable(doc, {
         startY: 34,
-        head: [['San pham', 'Ma', 'Layout', 'Tu ngay', 'Den ngay', 'So ngay', 'Dien tich (m2)', 'm2 x ngay']],
+        head: [['San pham', 'Ma', 'Du an', 'Layout', 'Tu ngay', 'Den ngay', 'So ngay', 'Dien tich (m2)', 'm2 x ngay']],
         body: occupation.map((r) => [
           stripDiacritics(r.productName),
           r.productCode,
+          stripDiacritics(r.projectName),
           stripDiacritics(r.layoutName),
           fmt(r.startDate),
           fmt(r.endDate),
@@ -135,7 +139,7 @@
           r.areaM2,
           r.areaDays,
         ]),
-        foot: [['', '', '', '', '', '', 'Tong', occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)]],
+        foot: [['', '', '', '', '', '', '', 'Tong', occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)]],
       });
       doc.save(`bao-cao-chiem-dung.pdf`);
     }
@@ -150,9 +154,9 @@
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-      <a href={base || '/'} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
+      <a href={`${base}/products/${projectId}`} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        Trang chủ
+        Sản phẩm
       </a>
       <div class="h-5 w-px bg-white/20"></div>
       <h1 class="text-xl font-bold text-white flex-1">Báo cáo</h1>
@@ -309,6 +313,7 @@
                 <tr class="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
                   <th class="px-4 py-2.5">Sản phẩm</th>
                   <th class="px-4 py-2.5">Mã</th>
+                  <th class="px-4 py-2.5">Dự án</th>
                   <th class="px-4 py-2.5">Layout</th>
                   <th class="px-4 py-2.5">Từ ngày</th>
                   <th class="px-4 py-2.5">Đến ngày</th>
@@ -322,6 +327,7 @@
                   <tr class="border-b border-gray-100 last:border-0">
                     <td class="px-4 py-2.5 font-medium text-gray-800">{r.productName}</td>
                     <td class="px-4 py-2.5 text-gray-500">{r.productCode}</td>
+                    <td class="px-4 py-2.5 text-gray-500">{r.projectName}</td>
                     <td class="px-4 py-2.5 text-gray-500">{r.layoutName}</td>
                     <td class="px-4 py-2.5 text-gray-500">{fmt(r.startDate)}</td>
                     <td class="px-4 py-2.5 text-gray-500">{fmt(r.endDate)}</td>
@@ -333,7 +339,7 @@
               </tbody>
               <tfoot>
                 <tr class="bg-gray-50 font-bold text-gray-800 border-t border-gray-200">
-                  <td class="px-4 py-2.5" colspan="7">Tổng m² × ngày</td>
+                  <td class="px-4 py-2.5" colspan="8">Tổng m² × ngày</td>
                   <td class="px-4 py-2.5">{occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)}</td>
                 </tr>
               </tfoot>
