@@ -24,7 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const layout = await prisma.layout.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         snapshots: {
           orderBy: { date: 'desc' },
@@ -53,7 +53,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const layout = await prisma.layout.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: req.body,
     });
     res.json(layout);
@@ -65,7 +65,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 // DELETE /:id — delete layout
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.layout.delete({ where: { id: req.params.id } });
+    await prisma.layout.delete({ where: { id: String(req.params.id) } });
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });

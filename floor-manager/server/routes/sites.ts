@@ -20,7 +20,7 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const site = await prisma.site.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         layouts: {
           orderBy: { createdAt: 'desc' },
@@ -56,7 +56,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { name, address, active } = req.body;
     const site = await prisma.site.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { name, address, active },
     });
     res.json(site);
@@ -69,12 +69,12 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const layoutCount = await prisma.layout.count({
-      where: { siteId: req.params.id },
+      where: { siteId: String(req.params.id) },
     });
     if (layoutCount > 0) {
       return res.status(409).json({ error: 'Site has layouts — delete them first' });
     }
-    await prisma.site.delete({ where: { id: req.params.id } });
+    await prisma.site.delete({ where: { id: String(req.params.id) } });
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === 'P2003') {

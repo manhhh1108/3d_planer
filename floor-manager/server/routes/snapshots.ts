@@ -21,7 +21,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const snapshot = await prisma.snapshot.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         positions: {
           include: { product: true },
@@ -101,7 +101,7 @@ router.post('/', async (req: Request, res: Response) => {
 // DELETE /:id — delete snapshot
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.snapshot.delete({ where: { id: req.params.id } });
+    await prisma.snapshot.delete({ where: { id: String(req.params.id) } });
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });
