@@ -7,6 +7,7 @@ import layoutsRouter from './routes/layouts.js';
 import snapshotsRouter from './routes/snapshots.js';
 import reportsRouter from './routes/reports.js';
 import filesRouter from './routes/files.js';
+import sitesRouter from './routes/sites.js';
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use('/uploads', express.static(path.join(import.meta.dirname, '../uploads'))
 
 app.use('/api/projects', projectsRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/sites', sitesRouter);
 app.use('/api/layouts', layoutsRouter);
 app.use('/api/snapshots', snapshotsRouter);
 app.use('/api/reports', reportsRouter);
