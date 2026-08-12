@@ -8,8 +8,9 @@ Web app quản lý mặt bằng sản xuất / bãi chứa kết cấu: kéo th�
 floor-manager-web/   Frontend — SvelteKit + Tailwind + Three.js
                      (fork từ open3dFloorplan, MIT — đã gỡ tính năng nhà ở)
 floor-manager/       Backend — Express + Prisma + PostgreSQL
-  server/            API routes: projects, products, layouts, snapshots, reports, files
+  server/            API routes: sites, projects, products, layouts, snapshots, reports, files
   prisma/            schema.prisma
+  tests/             Integration tests (vitest + supertest, DB floormanager_test)
   docker-compose.yml PostgreSQL + Redis
 docs/superpowers/    Design specs + implementation plans
 mockups/             Wireframe HTML (tham khảo theme)
@@ -25,7 +26,7 @@ docker compose up -d postgres
 # tạo .env nếu chưa có:
 #   DATABASE_URL="postgresql://floormanager:floormanager123@localhost:5432/floormanager"
 #   PORT=4000
-npx prisma db push && npx prisma generate
+npx prisma migrate deploy && npx prisma generate
 
 # 2. Backend (port 4000)
 npm install
@@ -37,13 +38,18 @@ npm install
 npm run dev
 ```
 
-Mở http://localhost:5173 → tạo dự án → thêm sản phẩm → tạo mặt bằng → kéo thả block → "Lưu Snapshot".
+Mở http://localhost:5173 → tạo mặt bằng (site) → tạo layout → tạo dự án + sản phẩm → kéo thả block → "Lưu Snapshot".
+
+Test backend: `npm test` trong `floor-manager/` (cần DB `floormanager_test` — script tự chạy migrate).
 
 ## Khái niệm chính
 
+- **Site**: cơ sở vật lý (nhà máy, kho bãi thuê) — chứa các Layout; có thể thêm site mới khi mở rộng
+- **Layout**: mặt bằng (bãi, xưởng) thuộc một Site — kích thước mét, grid; layout độc lập với dự án
+- **Project**: dự án/đơn hàng — chỉ chứa danh sách Product (không sở hữu layout)
 - **Product**: sản phẩm/thiết bị (mã, khối lượng, diện tích, công đoạn, màu, kích thước block)
-- **Layout**: mặt bằng (bãi, xưởng) — kích thước mét, grid
-- **Snapshot**: toàn bộ vị trí block của một layout tại một ngày (`@@unique(layoutId, date)`)
+- **Snapshot**: toàn bộ vị trí block của một layout tại một ngày (`@@unique(layoutId, date)`) — một snapshot có thể chứa block của NHIỀU dự án
+- Báo cáo chiếm dụng lọc theo dự án của product (`?projectId=`) hoặc theo layout (`?layoutId=`), mỗi dòng kèm `projectName`
 - Đơn vị: editor dùng **cm**, backend dùng **mét** — quy đổi ở `floor-manager-web/src/lib/services/mapping.ts`
 - Xem ngày cũ trên timeline = chỉ đọc (không ghi đè snapshot hôm nay)
 
