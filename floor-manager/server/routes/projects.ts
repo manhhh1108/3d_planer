@@ -10,7 +10,7 @@ router.get('/', async (_req: Request, res: Response) => {
       orderBy: { updatedAt: 'desc' },
       include: {
         _count: {
-          select: { layouts: true, products: true },
+          select: { products: true },
         },
       },
     });
@@ -25,7 +25,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const project = await prisma.project.findUnique({
       where: { id: req.params.id },
-      include: { layouts: true, products: true },
+      include: { products: true },
     });
     if (!project) return res.status(404).json({ error: 'Not found' });
     res.json(project);

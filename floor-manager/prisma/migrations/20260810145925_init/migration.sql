@@ -65,6 +65,7 @@ CREATE TABLE "positions" (
     "y" DOUBLE PRECISION NOT NULL,
     "rotation" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "scale" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    "orientation" TEXT NOT NULL DEFAULT 'bottom',
 
     CONSTRAINT "positions_pkey" PRIMARY KEY ("id")
 );
