@@ -109,9 +109,9 @@
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-      <a href={`${base}/project/${projectId}`} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
+      <a href={base || '/'} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        {projectName || 'Dự án'}
+        Trang chủ
       </a>
       <div class="h-5 w-px bg-white/20"></div>
       <h1 class="text-xl font-bold text-white flex-1">Sản phẩm & Thiết bị</h1>
@@ -121,6 +121,9 @@
         placeholder="🔍 Tìm theo tên hoặc mã..."
         class="px-3 py-2 rounded-lg text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 outline-none focus:bg-white/20 w-56"
       />
+      <a href={`${base}/reports/${projectId}`} class="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 text-sm font-medium border border-white/20 transition-colors">
+        📊 Báo cáo
+      </a>
       <button onclick={openCreate} class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
         + Thêm sản phẩm
       </button>

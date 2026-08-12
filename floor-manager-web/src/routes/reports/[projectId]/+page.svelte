@@ -150,9 +150,9 @@
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-      <a href={`${base}/project/${projectId}`} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
+      <a href={base || '/'} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        {projectName || 'Dự án'}
+        Trang chủ
       </a>
       <div class="h-5 w-px bg-white/20"></div>
       <h1 class="text-xl font-bold text-white flex-1">Báo cáo</h1>
