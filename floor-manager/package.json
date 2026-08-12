@@ -8,7 +8,8 @@
     "server": "tsx watch server/index.ts",
     "start": "tsx server/index.ts",
     "test": "npm run test:migrate && cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_test vitest run",
-    "test:migrate": "cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_test prisma migrate deploy"
+    "test:migrate": "cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_test prisma migrate deploy",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

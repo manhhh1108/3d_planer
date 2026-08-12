@@ -24,7 +24,7 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: { products: true },
     });
     if (!project) return res.status(404).json({ error: 'Not found' });
@@ -52,7 +52,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
     const project = await prisma.project.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { name, description },
     });
     res.json(project);
@@ -64,7 +64,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 // DELETE /:id — delete project
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.project.delete({ where: { id: req.params.id } });
+    await prisma.project.delete({ where: { id: String(req.params.id) } });
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });
