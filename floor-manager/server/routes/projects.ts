@@ -3,7 +3,7 @@ import prisma from '../db.js';
 
 const router = Router();
 
-// GET / — list all projects with layout and product counts, ordered by updatedAt desc
+// GET / — list all projects with product counts, ordered by updatedAt desc
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const projects = await prisma.project.findMany({
@@ -20,7 +20,7 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /:id — single project with layouts and products
+// GET /:id — single project with products
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const project = await prisma.project.findUnique({
