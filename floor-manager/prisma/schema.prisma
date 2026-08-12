@@ -17,6 +17,23 @@ model Site {
   @@map("sites")
 }
 
+model Asset {
+  id          String    @id @default(cuid())
+  fileName    String    @map("file_name")
+  fileType    String    @map("file_type") // dwg | dxf | step | stp | ifc
+  status      String    @default("pending") // pending | processing | ready | failed
+  error       String?
+  unitScale   Float     @default(0.001) @map("unit_scale") // file unit -> meters
+  bboxLengthM Float?    @map("bbox_length_m")
+  bboxWidthM  Float?    @map("bbox_width_m")
+  bboxHeightM Float?    @map("bbox_height_m")
+  areaM2      Float?    @map("area_m2") // footprint area
+  createdAt   DateTime  @default(now()) @map("created_at")
+  products    Product[]
+
+  @@map("assets")
+}
+
 model Project {
   id          String    @id @default(cuid())
   name        String
@@ -58,8 +75,10 @@ model Product {
   thumbnail      String?
   sharepointLink String?    @map("sharepoint_link")
   metadata       Json?
+  assetId        String?    @map("asset_id")
   createdAt      DateTime   @default(now()) @map("created_at")
   project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset          Asset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
   positions      Position[]
 
   @@map("products")
