@@ -114,7 +114,7 @@
         Trang chủ
       </a>
       <div class="h-5 w-px bg-white/20"></div>
-      <h1 class="text-xl font-bold text-white flex-1">Sản phẩm & Thiết bị</h1>
+      <h1 class="text-xl font-bold text-white flex-1 truncate">📦 {projectName || 'Sản phẩm & Thiết bị'}</h1>
       <input
         type="text"
         bind:value={search}
