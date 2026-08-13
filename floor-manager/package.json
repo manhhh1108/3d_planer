@@ -12,14 +12,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "dxf-parser": "^1.1.2",
     "express": "^5.2.1",
     "multer": "^2.2.0",
+    "occt-import-js": "^0.0.23",
     "pg": "^8.23.0",
-    "prisma": "^7.9.1"
+    "polygon-clipping": "^0.15.7",
+    "prisma": "^7.9.1",
+    "web-ifc": "^0.0.57"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

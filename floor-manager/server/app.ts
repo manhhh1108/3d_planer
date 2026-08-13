@@ -8,6 +8,7 @@ import snapshotsRouter from './routes/snapshots.js';
 import reportsRouter from './routes/reports.js';
 import filesRouter from './routes/files.js';
 import sitesRouter from './routes/sites.js';
+import assetsRouter from './routes/assets.js';
 
 const app = express();
 
@@ -22,5 +23,6 @@ app.use('/api/layouts', layoutsRouter);
 app.use('/api/snapshots', snapshotsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/assets', assetsRouter);
 
 export default app;

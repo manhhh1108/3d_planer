@@ -10,6 +10,12 @@ export interface FurnitureDef {
   height: number;
   /** If set, this is a 2D-only architectural symbol (not rendered in 3D) */
   symbol?: boolean;
+  /** Footprint polygon (cm, canh tâm block) từ CAD asset — vẽ thay rect khi có */
+  footprint?: [number, number][][];
+  /** Trạng thái convert CAD của product (nếu có asset) */
+  assetStatus?: 'pending' | 'processing' | 'ready' | 'failed';
+  /** URL mesh.glb (đường dẫn tương đối backend) cho viewer 3D */
+  file3dUrl?: string;
 }
 
 /**

@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const { default: app } = await import('./app.js');
+const { recoverStuckAssets } = await import('./cad/convert.js');
+await recoverStuckAssets();
+
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {
