@@ -1,5 +1,6 @@
 // REST client cho backend floor-manager (Express :4000)
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+export const FILES_BASE = BASE.replace(/\/api$/, '');
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {
@@ -29,6 +30,23 @@ export interface ApiSite {
 	layouts?: (ApiLayout & { _count?: { snapshots: number } })[];
 }
 
+export interface ApiAsset {
+	id: string;
+	fileName: string;
+	fileType: string;
+	status: 'pending' | 'processing' | 'ready' | 'failed';
+	error: string | null;
+	unitScale: number;
+	bboxLengthM: number | null;
+	bboxWidthM: number | null;
+	bboxHeightM: number | null;
+	areaM2: number | null;
+	createdAt: string;
+	footprintUrl: string | null;
+	meshUrl: string | null;
+	thumbUrl: string | null;
+}
+
 export interface ApiProduct {
 	id: string;
 	projectId: string;
@@ -44,6 +62,8 @@ export interface ApiProduct {
 	thumbnail: string | null;
 	sharepointLink: string | null;
 	metadata: { widthM?: number; depthM?: number; heightM?: number } | null;
+	assetId: string | null;
+	asset?: ApiAsset | null;
 }
 
 export interface ApiLayout {
@@ -154,6 +174,19 @@ export const api = {
 					areaDays: number;
 				}[]
 			>(projectId ? `/reports/occupation?projectId=${projectId}` : '/reports/occupation'),
+	},
+	assets: {
+		get: (id: string) => http<ApiAsset>(`/assets/${id}`),
+		remove: (id: string) => http<void>(`/assets/${id}`, { method: 'DELETE' }),
+		upload: async (file: File, productId?: string, unitScale?: number): Promise<ApiAsset> => {
+			const fd = new FormData();
+			fd.append('file', file);
+			if (productId) fd.append('productId', productId);
+			if (unitScale) fd.append('unitScale', String(unitScale));
+			const res = await fetch(`${BASE}/assets`, { method: 'POST', body: fd });
+			if (!res.ok) throw new Error(`API POST /assets: ${res.status}`);
+			return res.json();
+		},
 	},
 	snapshots: {
 		list: (layoutId: string) => http<ApiSnapshot[]>(`/snapshots?layoutId=${layoutId}`),
