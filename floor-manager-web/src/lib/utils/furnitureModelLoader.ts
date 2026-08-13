@@ -9,6 +9,10 @@ import { base } from '$app/paths';
 import { createFurnitureModel } from './furnitureModels3d';
 import type { FurnitureDef } from './furnitureCatalog';
 
+const FILES_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
+  ? (import.meta.env.VITE_API_URL as string).replace(/\/api$/, '')
+  : 'http://localhost:4000';
+
 const loader = new GLTFLoader();
 const modelCache = new Map<string, THREE.Group>();
 const loadingPromises = new Map<string, Promise<THREE.Group | null>>();
@@ -264,10 +268,30 @@ export function createFurnitureModelWithGLB(
   const procedural = createFurnitureModel(catalogId, def);
   container.add(procedural);
 
-  // Try to load GLB async
+  // Try to load GLB async — prioritize CAD asset mesh over MODEL_MAP
+  const cadUrl = def.file3dUrl
+    ? (def.file3dUrl.startsWith('http') ? def.file3dUrl : `${FILES_BASE}${def.file3dUrl}`)
+    : null;
   const mapping = MODEL_MAP[catalogId];
-  if (mapping) {
-    loadGLBModel(catalogId).then((glbModel) => {
+
+  const glbPromise = cadUrl
+    ? new Promise<THREE.Group | null>((resolve) => {
+        loader.load(cadUrl, (gltf) => {
+          const group = new THREE.Group();
+          gltf.scene.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          group.add(gltf.scene);
+          resolve(group);
+        }, undefined, () => resolve(null));
+      })
+    : mapping ? loadGLBModel(catalogId) : null;
+
+  if (glbPromise) {
+    glbPromise.then((glbModel) => {
       if (glbModel) {
         try {
           // Remove procedural and dispose its resources, then add GLB
@@ -279,11 +303,15 @@ export function createFurnitureModelWithGLB(
               else obj.material.dispose();
             }
           });
-          scaleToFit(glbModel, def, mapping);
+          if (cadUrl) {
+            // CAD mesh is in meters, scale to cm to match our coordinate system
+            scaleToFit(glbModel, def, { file: 'cad', scale: 100 });
+          } else if (mapping) {
+            scaleToFit(glbModel, def, mapping);
+          }
           container.add(glbModel);
           onLoaded?.(container);
         } catch (err) {
-          // scaleToFit or GLB add failed — fall back to procedural
           console.warn(`[FurnitureLoader] GLB error for ${catalogId}:`, err);
           container.add(procedural);
         }

@@ -922,7 +922,26 @@ export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected
   const itemColor = item.color ?? cat.color;
   const strokeColor = selected ? '#3b82f6' : itemColor;
   ctx.lineWidth = selected ? 2 : 1;
-  drawFurnitureIcon(ctx, item.catalogId, w, d, itemColor, strokeColor);
+  if (cat.footprint && cat.footprint.length > 0) {
+    ctx.beginPath();
+    for (const ring of cat.footprint) {
+      ring.forEach(([fx, fy], i) => {
+        const px = fx * zoom;
+        const py = -fy * zoom; // y canvas hướng xuống
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+    }
+    ctx.fillStyle = itemColor;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = strokeColor;
+    ctx.stroke();
+  } else {
+    drawFurnitureIcon(ctx, item.catalogId, w, d, itemColor, strokeColor);
+  }
 
   const fontSize = Math.max(8, Math.min(12, Math.min(w, d) * 0.2));
   if (Math.min(w, d) > 20) {

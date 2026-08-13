@@ -10,6 +10,7 @@ router.get('/', async (req: Request, res: Response) => {
     const products = await prisma.product.findMany({
       where: projectId ? { projectId: String(projectId) } : undefined,
       orderBy: { createdAt: 'desc' },
+      include: { asset: true },
     });
     res.json(products);
   } catch (err) {
@@ -22,6 +23,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: String(req.params.id) },
+      include: { asset: true },
     });
     if (!product) return res.status(404).json({ error: 'Not found' });
     res.json(product);

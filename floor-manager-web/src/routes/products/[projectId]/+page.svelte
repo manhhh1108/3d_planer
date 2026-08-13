@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
   import { api, type ApiProduct } from '$lib/services/api';
@@ -34,6 +34,10 @@
   let fHeightM = $state<number | null>(null);
   let confirmDeleteId = $state<string | null>(null);
 
+  let uploadingFor = $state<string | null>(null);
+  let uploadError = $state<string | null>(null);
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
   let filtered = $derived(
     products.filter((p) => {
       const s = search.toLowerCase();
@@ -52,7 +56,50 @@
     }
   }
 
-  onMount(refresh);
+  onMount(async () => { await refresh(); ensurePolling(); });
+
+  async function uploadCad(product: ApiProduct, file: File) {
+    uploadError = null;
+    uploadingFor = product.id;
+    try {
+      if (product.assetId) {
+        try { await api.assets.remove(product.assetId); } catch { /* asset có thể đã mất */ }
+      }
+      await api.assets.upload(file, product.id);
+      await refresh();
+      ensurePolling();
+    } catch (e) {
+      uploadError = `Upload thất bại: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      uploadingFor = null;
+    }
+  }
+
+  function onCadFileChange(product: ApiProduct, ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) uploadCad(product, file);
+    input.value = '';
+  }
+
+  function ensurePolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      const busy = products.some(
+        (p) => p.asset && (p.asset.status === 'pending' || p.asset.status === 'processing')
+      );
+      if (!busy) {
+        clearInterval(pollTimer!);
+        pollTimer = null;
+        return;
+      }
+      await refresh();
+    }, 2500);
+  }
+
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
+  });
 
   function openCreate() {
     editingId = null;
@@ -131,6 +178,9 @@
   </div>
 
   <div class="max-w-6xl mx-auto px-6 py-8">
+    {#if uploadError}
+      <div class="mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 text-sm">{uploadError}</div>
+    {/if}
     {#if loading}
       <div class="text-center py-16 text-gray-400">Đang tải...</div>
     {:else if filtered.length === 0}
@@ -149,6 +199,7 @@
               <th class="px-4 py-3">Khối lượng</th>
               <th class="px-4 py-3">Diện tích</th>
               <th class="px-4 py-3">Kích thước (m)</th>
+              <th class="px-4 py-3">CAD</th>
               <th class="px-4 py-3">Công đoạn</th>
               <th class="px-4 py-3">Loại</th>
               <th class="px-4 py-3"></th>
@@ -169,6 +220,17 @@
                 <td class="px-4 py-3 text-gray-500">
                   {p.metadata?.widthM ? `${p.metadata.widthM} × ${p.metadata.depthM ?? '?'} × ${p.metadata.heightM ?? '?'}` : '—'}
                 </td>
+                <td class="px-3 py-2">
+                  {#if p.asset?.status === 'ready'}
+                    <span class="text-[11px] px-2 py-0.5 rounded-md bg-green-50 text-green-600 font-medium">{p.asset.fileType.toUpperCase()}</span>
+                  {:else if p.asset?.status === 'failed'}
+                    <span class="text-[11px] px-2 py-0.5 rounded-md bg-red-50 text-red-600 font-medium" title={p.asset.error ?? ''}>Lỗi</span>
+                  {:else if p.asset}
+                    <span class="text-[11px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-600 font-medium">Đang xử lý</span>
+                  {:else}
+                    <span class="text-[11px] text-gray-300">—</span>
+                  {/if}
+                </td>
                 <td class="px-4 py-3">
                   {#if p.processStage}
                     <span class="px-2.5 py-0.5 rounded-full text-[11px] font-medium {STAGE_COLORS[p.processStage] ?? 'bg-gray-100 text-gray-600'}">{p.processStage}</span>
@@ -177,6 +239,11 @@
                 <td class="px-4 py-3 text-gray-500 text-xs">{p.category === 'thiet_bi' ? '⚙️ Thiết bị' : '📦 Sản phẩm'}</td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1 justify-end">
+                    <label class="px-2.5 py-1 text-xs text-gray-500 bg-gray-50 rounded-lg hover:bg-blue-50 hover:text-blue-500 font-medium cursor-pointer" title="Upload CAD (dwg, dxf, step, stp, ifc)">
+                      <input type="file" accept=".dwg,.dxf,.step,.stp,.ifc" class="hidden"
+                        onchange={(e) => onCadFileChange(p, e)} disabled={uploadingFor === p.id} />
+                      {uploadingFor === p.id ? '...' : 'CAD'}
+                    </label>
                     <button onclick={() => openEdit(p)} class="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 font-medium">Sửa</button>
                     {#if confirmDeleteId === p.id}
                       <button onclick={() => deleteProduct(p.id)} class="px-2.5 py-1 text-xs text-white bg-red-500 rounded-lg hover:bg-red-600 font-medium">Xóa?</button>

@@ -318,9 +318,11 @@
         <div class="grid grid-cols-2 gap-2 mt-2">
           {#each filtered as item}
             {@const s = search.toLowerCase()}
+            {@const notReady = item.assetStatus != null && item.assetStatus !== 'ready'}
             <button
-              class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors cursor-grab active:cursor-grabbing {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
-              onclick={() => onFurnitureClick(item)}
+              class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors {notReady ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
+              onclick={() => { if (!notReady) onFurnitureClick(item); }}
+              disabled={notReady}
               draggable="true"
               ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); }}
               onmouseenter={(e) => onItemMouseEnter(e, item)}
@@ -350,6 +352,11 @@
                 <span class="text-xs font-medium text-gray-600">{item.name}</span>
               {/if}
               <span class="text-[10px] text-gray-400">{item.width}×{item.depth}cm</span>
+              {#if item.assetStatus === 'failed'}
+                <span class="text-[10px] text-red-500">CAD lỗi</span>
+              {:else if notReady}
+                <span class="text-[10px] text-amber-500">Đang convert...</span>
+              {/if}
             </button>
           {/each}
         </div>
