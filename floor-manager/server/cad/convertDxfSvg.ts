@@ -19,7 +19,7 @@ export interface DxfSvgResult {
  * Renders LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC entities as strokes.
  * unitScale param overrides $INSUNITS; default fallback = mm (0.001).
  */
-export function dxfToSvg(dxfText: string, unitScale: number | undefined): DxfSvgResult {
+export function dxfToSvg(dxfText: string, unitScale?: number): DxfSvgResult {
   const parser = new DxfParser();
   const dxf = parser.parseSync(dxfText);
   if (!dxf) throw new Error('DXF parse failed');
@@ -34,10 +34,13 @@ export function dxfToSvg(dxfText: string, unitScale: number | undefined): DxfSvg
     const ent = e as any;
 
     if (ent.type === 'LINE') {
-      const x1 = (ent.start?.x ?? 0) * scale;
-      const y1 = (ent.start?.y ?? 0) * scale;
-      const x2 = (ent.end?.x ?? 0) * scale;
-      const y2 = (ent.end?.y ?? 0) * scale;
+      // dxf-parser returns LINE vertices as an array (not start/end properties)
+      const v0 = ent.vertices?.[0] ?? ent.start ?? { x: 0, y: 0 };
+      const v1 = ent.vertices?.[1] ?? ent.end ?? { x: 0, y: 0 };
+      const x1 = (v0.x ?? 0) * scale;
+      const y1 = (v0.y ?? 0) * scale;
+      const x2 = (v1.x ?? 0) * scale;
+      const y2 = (v1.y ?? 0) * scale;
       allPoints.push([x1, y1], [x2, y2]);
       elements.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
 
@@ -61,16 +64,29 @@ export function dxfToSvg(dxfText: string, unitScale: number | undefined): DxfSvg
       const cx = (ent.center?.x ?? 0) * scale;
       const cy = (ent.center?.y ?? 0) * scale;
       const r = (ent.radius ?? 0) * scale;
-      const startDeg: number = ent.startAngle ?? 0;
-      const endDeg: number = ent.endAngle ?? 0;
-      const startRad = startDeg * Math.PI / 180;
-      const endRad = endDeg * Math.PI / 180;
+      // dxf-parser converts DXF degree angles to radians
+      const startRad: number = ent.startAngle ?? 0;
+      const endRad: number = ent.endAngle ?? 0;
+      const startDeg = startRad * 180 / Math.PI;
+      const endDeg = endRad * 180 / Math.PI;
       const ax1 = cx + r * Math.cos(startRad);
       const ay1 = cy + r * Math.sin(startRad);
       const ax2 = cx + r * Math.cos(endRad);
       const ay2 = cy + r * Math.sin(endRad);
       allPoints.push([ax1, ay1], [ax2, ay2]);
-      const span = ((endDeg - startDeg) + 360) % 360;
+      // Add cardinal-axis extremes for any quadrant boundary the arc crosses.
+      // Use angleLength (radians) when available for correct full-circle handling.
+      const arcLenRad: number = ent.angleLength != null
+        ? ent.angleLength
+        : ((endRad - startRad) + 2 * Math.PI) % (2 * Math.PI);
+      const span = arcLenRad * 180 / Math.PI; // degrees
+      for (const deg of [0, 90, 180, 270]) {
+        const d = ((deg - startDeg) + 360) % 360;
+        if (d <= span) {
+          const rad = deg * Math.PI / 180;
+          allPoints.push([cx + r * Math.cos(rad), cy + r * Math.sin(rad)]);
+        }
+      }
       const largeArc = span > 180 ? 1 : 0;
       // DXF arcs are CCW; after scale(1,-1) flip, CCW→CW in SVG screen coords → sweep=1
       elements.push(`<path d="M ${ax1} ${ay1} A ${r} ${r} 0 ${largeArc} 1 ${ax2} ${ay2}"/>`);
@@ -89,7 +105,7 @@ export function dxfToSvg(dxfText: string, unitScale: number | undefined): DxfSvg
 
   const widthM = Math.round((maxX - minX) * 10000) / 10000;
   const heightM = Math.round((maxY - minY) * 10000) / 10000;
-  const strokeWidth = Math.max(widthM, heightM) * 0.001;
+  const strokeWidth = Math.max(widthM, heightM, 0.001) * 0.001;
 
   // Flip Y axis: SVG Y↓, DXF Y↑.
   // Transform: translate(-minX, maxY) scale(1,-1)
