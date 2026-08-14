@@ -6,13 +6,20 @@ import app from '../server/app.js';
 import prisma from '../server/db.js';
 import { convertQueue } from '../server/routes/assets.js';
 import { assetPaths as assetPathsForTest } from '../server/cad/paths.js';
+import { adminToken } from './setup.js';
 
 const FIXTURE_DXF = path.join(import.meta.dirname, 'fixtures', 'box.dxf');
 
 async function makeProduct() {
-  const proj = (await request(app).post('/api/projects').send({ name: 'P' })).body;
+  const proj = (await request(app)
+    .post('/api/projects')
+    .set('Cookie', `access_token=${adminToken()}`)
+    .send({ name: 'P' })).body;
   return (
-    await request(app).post('/api/products').send({ projectId: proj.id, name: 'B', code: 'B1' })
+    await request(app)
+      .post('/api/products')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ projectId: proj.id, name: 'B', code: 'B1' })
   ).body;
 }
 
@@ -21,6 +28,7 @@ describe('assets routes', () => {
     const prod = await makeProduct();
     const res = await request(app)
       .post('/api/assets')
+      .set('Cookie', `access_token=${adminToken()}`)
       .field('productId', prod.id)
       .attach('file', Buffer.from('0\nEOF\n'), 'block.dxf');
     expect(res.status).toBe(201);
@@ -38,26 +46,34 @@ describe('assets routes', () => {
   it('rejects unsupported extensions', async () => {
     const res = await request(app)
       .post('/api/assets')
+      .set('Cookie', `access_token=${adminToken()}`)
       .attach('file', Buffer.from('x'), 'note.txt');
     expect(res.status).toBe(400);
   });
 
   it('gets asset status with urls when ready', async () => {
     const created = (
-      await request(app).post('/api/assets').attach('file', Buffer.from('0\nEOF\n'), 'a.dxf')
+      await request(app)
+        .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
+        .attach('file', Buffer.from('0\nEOF\n'), 'a.dxf')
     ).body;
     // Wait for async converter to finish (will fail since 0\nEOF is empty)
     await convertQueue.idle();
     // Manually set to ready to test serialize
     await prisma.asset.update({ where: { id: created.id }, data: { status: 'ready' } });
-    const res = await request(app).get(`/api/assets/${created.id}`);
+    const res = await request(app)
+      .get(`/api/assets/${created.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.footprintUrl).toBe(`/uploads/assets/${created.id}/footprint.json`);
     expect(res.body.thumbUrl).toBe(`/uploads/assets/${created.id}/thumb.svg`);
   });
 
   it('404 on unknown asset', async () => {
-    const res = await request(app).get('/api/assets/nope');
+    const res = await request(app)
+      .get('/api/assets/nope')
+      .set('Cookie', `access_token=${adminToken()}`);
     expect(res.status).toBe(404);
   });
 
@@ -66,10 +82,13 @@ describe('assets routes', () => {
     const created = (
       await request(app)
         .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
         .field('productId', prod.id)
         .attach('file', Buffer.from('0\nEOF\n'), 'a.dxf')
     ).body;
-    const res = await request(app).delete(`/api/assets/${created.id}`);
+    const res = await request(app)
+      .delete(`/api/assets/${created.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
     expect(res.status).toBe(204);
     expect(await prisma.asset.findUnique({ where: { id: created.id } })).toBeNull();
     const p = await prisma.product.findUnique({ where: { id: prod.id } });
@@ -85,13 +104,16 @@ describe('end-to-end conversion (dxf)', () => {
     const created = (
       await request(app)
         .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
         .field('productId', prod.id)
         .attach('file', dxf, 'block.dxf')
     ).body;
 
     await convertQueue.idle();
 
-    const res = await request(app).get(`/api/assets/${created.id}`);
+    const res = await request(app)
+      .get(`/api/assets/${created.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
     expect(res.body.status).toBe('ready');
     expect(res.body.bboxLengthM).toBeCloseTo(4, 2);
     expect(res.body.areaM2).toBeCloseTo(8, 1);
@@ -113,10 +135,15 @@ describe('end-to-end conversion (dxf)', () => {
 
   it('marks asset failed with error message on broken file', async () => {
     const created = (
-      await request(app).post('/api/assets').attach('file', Buffer.from('0\nEOF\n'), 'bad.dxf')
+      await request(app)
+        .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
+        .attach('file', Buffer.from('0\nEOF\n'), 'bad.dxf')
     ).body;
     await convertQueue.idle();
-    const res = await request(app).get(`/api/assets/${created.id}`);
+    const res = await request(app)
+      .get(`/api/assets/${created.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
     expect(res.body.status).toBe('failed');
     expect(res.body.error).toBeTruthy();
   });
@@ -125,10 +152,13 @@ describe('end-to-end conversion (dxf)', () => {
     const prod = await makeProduct();
     await request(app)
       .post('/api/assets')
+      .set('Cookie', `access_token=${adminToken()}`)
       .field('productId', prod.id)
       .attach('file', fs.readFileSync(FIXTURE_DXF), 'block.dxf');
     await convertQueue.idle();
-    const list = (await request(app).get(`/api/products?projectId=${prod.projectId}`)).body;
+    const list = (await request(app)
+      .get(`/api/products?projectId=${prod.projectId}`)
+      .set('Cookie', `access_token=${adminToken()}`)).body;
     expect(list[0].asset.status).toBe('ready');
   });
 });

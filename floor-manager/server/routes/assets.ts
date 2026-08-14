@@ -6,6 +6,7 @@ import prisma from '../db.js';
 import { assetPaths } from '../cad/paths.js';
 import { ConvertQueue, type ConverterFn } from '../cad/queue.js';
 import { runConversion } from '../cad/convert.js';
+import { requireRole } from '../middleware/auth.js';
 
 const ALLOWED = ['dwg', 'dxf', 'step', 'stp', 'ifc'];
 const TMP_DIR = path.resolve(process.env.STORAGE_DIR || './storage', 'tmp');
@@ -42,6 +43,11 @@ function serialize(asset: {
 }
 
 const router = Router();
+
+router.use((req, _res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+});
 
 // POST / — multipart: file (bắt buộc), productId?, unitScale?
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {

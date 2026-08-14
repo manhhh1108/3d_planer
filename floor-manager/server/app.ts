@@ -11,6 +11,7 @@ import reportsRouter from './routes/reports.js';
 import filesRouter from './routes/files.js';
 import sitesRouter from './routes/sites.js';
 import assetsRouter from './routes/assets.js';
+import { requireAuth } from './middleware/auth.js';
 
 const app = express();
 
@@ -20,13 +21,13 @@ app.use(cookieParser());
 app.use('/uploads', express.static(path.join(import.meta.dirname, '../uploads')));
 
 app.use('/api/auth', authRouter);
-app.use('/api/projects', projectsRouter);
-app.use('/api/products', productsRouter);
-app.use('/api/sites', sitesRouter);
-app.use('/api/layouts', layoutsRouter);
-app.use('/api/snapshots', snapshotsRouter);
-app.use('/api/reports', reportsRouter);
-app.use('/api/files', filesRouter);
-app.use('/api/assets', assetsRouter);
+app.use('/api/projects', requireAuth, projectsRouter);
+app.use('/api/products', requireAuth, productsRouter);
+app.use('/api/sites', requireAuth, sitesRouter);
+app.use('/api/layouts', requireAuth, layoutsRouter);
+app.use('/api/snapshots', requireAuth, snapshotsRouter);
+app.use('/api/reports', requireAuth, reportsRouter);
+app.use('/api/files', requireAuth, filesRouter);
+app.use('/api/assets', requireAuth, assetsRouter);
 
 export default app;

@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
+import { requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use((req, _res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+});
 
 // GET /?projectId=xxx — list products filtered by projectId
 router.get('/', async (req: Request, res: Response) => {

@@ -148,3 +148,26 @@ describe('GET /api/auth/me', () => {
     expect(r.status).toBe(401);
   });
 });
+
+describe('route protection', () => {
+  it('GET /api/sites returns 401 without auth', async () => {
+    const r = await request(app).get('/api/sites');
+    expect(r.status).toBe(401);
+  });
+
+  it('POST /api/sites returns 403 for VIEWER', async () => {
+    const r = await request(app)
+      .post('/api/sites')
+      .set('Cookie', `access_token=${viewerToken()}`)
+      .send({ name: 'X' });
+    expect(r.status).toBe(403);
+  });
+
+  it('POST /api/sites succeeds for PLANNING', async () => {
+    const r = await request(app)
+      .post('/api/sites')
+      .set('Cookie', `access_token=${planningToken()}`)
+      .send({ name: 'Xưởng A' });
+    expect(r.status).toBe(201);
+  });
+});

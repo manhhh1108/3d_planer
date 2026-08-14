@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
+import { requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use((req, _res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+});
 
 // GET /?layoutId=xxx — list snapshots ordered by date desc
 router.get('/', async (req: Request, res: Response) => {
@@ -76,6 +82,7 @@ router.post('/', async (req: Request, res: Response) => {
         layoutId,
         date: parsedDate,
         note,
+        createdBy: req.user!.email,
         positions: {
           create: (positions ?? []).map((p) => ({
             productId: p.productId,
