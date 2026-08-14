@@ -1420,7 +1420,14 @@
     const unsub_layoutbg = layoutBgFile.subscribe((url) => {
       if (url) {
         const img = new Image();
-        img.onload = () => { bgLayoutImage = img; markDirty(); };
+        img.onload = () => {
+          bgLayoutImage = img;
+          if (!initialFitDone && _bgLayoutDimsCm.widthCm > 0) {
+            initialFitDone = true;
+            requestAnimationFrame(() => { zoomToFit(); });
+          }
+          markDirty();
+        };
         img.onerror = () => { bgLayoutImage = null; markDirty(); };
         img.src = url;
       } else {
@@ -1479,6 +1486,11 @@
     for (const fi of currentFloor.furniture) { const cat = getCatalogItem(fi.catalogId); if (!cat) continue; const r = Math.hypot((fi.width ?? cat.width) / 2, (fi.depth ?? cat.depth) / 2); expand(fi.position.x - r, fi.position.y - r); expand(fi.position.x + r, fi.position.y + r); }
     if (currentFloor.stairs) for (const st of currentFloor.stairs) { expand(st.position.x - st.width / 2, st.position.y - st.depth / 2); expand(st.position.x + st.width / 2, st.position.y + st.depth / 2); }
     if (currentFloor.columns) for (const col of currentFloor.columns) { const r = col.diameter / 2; expand(col.position.x - r, col.position.y - r); expand(col.position.x + r, col.position.y + r); }
+    // Include layout background bounds
+    if (bgLayoutImage && _bgLayoutDimsCm.widthCm > 0) {
+      expand(0, 0);
+      expand(_bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm);
+    }
     if (!found) return null;
     const pad = 50;
     return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
@@ -1513,7 +1525,17 @@
 
   function zoomToFit() {
     if (!currentFloor || (currentFloor.walls.length === 0 && currentFloor.furniture.length === 0)) {
-      camX = 0; camY = 0; zoom = 1;
+      if (bgLayoutImage && _bgLayoutDimsCm.widthCm > 0) {
+        const { widthCm, heightCm } = _bgLayoutDimsCm;
+        const padding = 80;
+        zoom = Math.min(width / (widthCm + padding * 2), height / (heightCm + padding * 2), 3);
+        zoom = Math.max(zoom, 0.001);
+        camX = widthCm / 2;
+        camY = heightCm / 2;
+        markDirty();
+      } else {
+        camX = 0; camY = 0; zoom = 1;
+      }
       return;
     }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
