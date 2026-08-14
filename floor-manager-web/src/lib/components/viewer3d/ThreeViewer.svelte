@@ -33,8 +33,6 @@
 
   // 3D Edit mode — enables click-to-select
   let editMode = $state(false);
-  // Material picker state (position only, no wall reference)
-  let materialPickerPos = $state<{ x: number; y: number } | null>(null);
   // Multi-floor stacking
   let showAllFloors = $state(false);
   const FLOOR_HEIGHT = 300; // cm — wall height + slab thickness
@@ -766,7 +764,6 @@
       }
 
       selectedElementId.set(null);
-      materialPickerPos = null;
     });
 
     // Hover highlight in edit mode
@@ -1223,7 +1220,7 @@
 
     <!-- Edit Mode Toggle -->
     <button
-      onclick={() => { editMode = !editMode; if (editMode && walkthroughMode) { exitWalkthroughMode(); } if (!editMode) { selectedElementId.set(null); materialPickerPos = null; } }}
+      onclick={() => { editMode = !editMode; if (editMode && walkthroughMode) { exitWalkthroughMode(); } if (!editMode) { selectedElementId.set(null); } }}
       class="p-2 rounded-lg transition-colors {editMode ? 'bg-blue-600 text-white ring-2 ring-blue-300' : 'bg-black/70 text-white hover:bg-black/80'}"
       title={editMode ? 'Exit Edit Mode' : 'Edit Mode — click to select walls & change materials'}
       aria-label={editMode ? 'Exit Edit Mode' : 'Edit Mode'}
@@ -1538,7 +1535,7 @@
 
     <!-- Furniture Placement Toggle -->
     <button
-      onclick={() => { furniturePlacementMode = !furniturePlacementMode; if (!furniturePlacementMode) { removeGhostPreview(); selectedCatalogId = null; furniturePickerOpen = false; } else { furniturePickerOpen = true; materialPickerPos = null; } }}
+      onclick={() => { furniturePlacementMode = !furniturePlacementMode; if (!furniturePlacementMode) { removeGhostPreview(); selectedCatalogId = null; furniturePickerOpen = false; } else { furniturePickerOpen = true; } }}
       class="absolute top-16 right-28 z-50 p-2 rounded-lg transition-colors {furniturePlacementMode ? 'bg-green-600 text-white ring-2 ring-green-300' : 'bg-black/70 text-white hover:bg-black/80'}"
       title={furniturePlacementMode ? 'Exit Furniture Placement' : 'Place Furniture'}
       aria-label={furniturePlacementMode ? 'Exit Furniture Placement' : 'Place Furniture'}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, detectedRoomsStore, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode } from '$lib/stores/project';
+  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode } from '$lib/stores/project';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
@@ -95,9 +95,6 @@
   // Sync showFurnitureStore ↔ layerVisibility.furniture
   let showFurniture = $derived(layerVis.furniture);
   $effect(() => { showFurnitureStore.set(layerVis.furniture); });
-  let showDoors = $derived(layerVis.doors);
-  let showWindows = $derived(layerVis.windows);
-  let showRoomLabels = $state(true);
   let showDimensions = $state(true);
   let dimSettings: ProjectSettings = $state({
     units: 'metric', showDimensions: true, showExternalDimensions: true,
@@ -109,15 +106,10 @@
     dimSettings = s;
     showDimensions = s.showDimensions;
   });
-  let showStairs = $derived(layerVis.stairs);
   let showLayerPanel = $state(false);
   let showMinimap = $state(true);
   let minimapCanvas: HTMLCanvasElement;
   const RULER_SIZE = 24;
-
-  // Detected rooms
-  let detectedRooms: Room[] = $state([]);
-  let lastWallHash = '';
 
   const GRID = 20;
   const SNAP = 10;
@@ -1397,7 +1389,6 @@
       if (t !== 'text') { editingTextAnnotationId = null; }
       markDirty();
     });
-    const unsub7 = detectedRoomsStore.subscribe((rooms) => { if (rooms.length > 0) detectedRooms = rooms; markDirty(); });
     const unsub8 = placingDoorType.subscribe((t) => { currentDoorType = t; markDirty(); });
     const unsub9 = placingWindowType.subscribe((t) => { currentWindowType = t; markDirty(); });
     const unsub10 = snapEnabled.subscribe((v) => { currentSnapEnabled = v; markDirty(); });
@@ -1454,7 +1445,7 @@
     canvas.addEventListener('touchend', onTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
-    return () => { resizeObs.disconnect(); unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsub10(); unsub11(); unsub12(); unsub13(); unsub_multi(); unsub_elevopen(); unsub_elevpick(); unsub14(); unsub_col(); unsub_cols(); unsub_layers(); unsub_snapgrid(); document.removeEventListener('paste', handlePaste); canvas.removeEventListener('touchstart', onTouchStart); canvas.removeEventListener('touchmove', onTouchMove); canvas.removeEventListener('touchend', onTouchEnd); canvas.removeEventListener('touchcancel', onTouchEnd); };
+    return () => { resizeObs.disconnect(); unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub8(); unsub9(); unsub10(); unsub11(); unsub12(); unsub13(); unsub_multi(); unsub_elevopen(); unsub_elevpick(); unsub14(); unsub_col(); unsub_cols(); unsub_layers(); unsub_snapgrid(); document.removeEventListener('paste', handlePaste); canvas.removeEventListener('touchstart', onTouchStart); canvas.removeEventListener('touchmove', onTouchMove); canvas.removeEventListener('touchend', onTouchEnd); canvas.removeEventListener('touchcancel', onTouchEnd); };
   });
 
   /** Compute world bounding box of all elements */
@@ -2136,7 +2127,6 @@
       const dx = mousePos.x - roomLabelDragStart.x;
       const dy = mousePos.y - roomLabelDragStart.y;
       const newOffset = { x: roomLabelOrigOffset.x + dx, y: roomLabelOrigOffset.y + dy };
-      detectedRoomsStore.update(rooms => rooms.map(r => r.id === draggingRoomLabelId ? { ...r, labelOffset: newOffset } : r));
       return;
     }
 
@@ -2403,7 +2393,6 @@
       const dy = mousePos.y - roomLabelDragStart.y;
       const newOffset = { x: roomLabelOrigOffset.x + dx, y: roomLabelOrigOffset.y + dy };
       updateRoom(draggingRoomLabelId, { labelOffset: newOffset });
-      detectedRoomsStore.update(rooms => rooms.map(r => r.id === draggingRoomLabelId ? { ...r, labelOffset: newOffset } : r));
       draggingRoomLabelId = null;
     }
 
@@ -3292,7 +3281,6 @@
       onkeydown={(e) => {
         if (e.key === 'Enter') {
           updateRoom(editingRoomId!, { name: editingRoomName });
-          detectedRoomsStore.update(rooms => rooms.map(r => r.id === editingRoomId ? { ...r, name: editingRoomName } : r));
           editingRoomId = null;
         } else if (e.key === 'Escape') {
           editingRoomId = null;
@@ -3301,7 +3289,6 @@
       onblur={() => {
         if (editingRoomId) {
           updateRoom(editingRoomId, { name: editingRoomName });
-          detectedRoomsStore.update(rooms => rooms.map(r => r.id === editingRoomId ? { ...r, name: editingRoomName } : r));
           editingRoomId = null;
         }
       }}
@@ -3377,11 +3364,6 @@
     ></canvas>
   {/if}
   <div class="absolute bottom-2 right-2 bg-white/80 rounded px-2 py-1 text-xs text-gray-500 flex gap-3">
-    {#if detectedRooms.length > 0}
-      <span>{detectedRooms.length} room{detectedRooms.length !== 1 ? 's' : ''}</span>
-      <span>{formatArea(detectedRooms.reduce((s, r) => s + r.area, 0), $projectSettings.units)}</span>
-      <span class="text-gray-300">|</span>
-    {/if}
     {#if currentFloor}
       <span>{currentFloor.walls.length} wall{currentFloor.walls.length !== 1 ? 's' : ''}</span>
       {#if currentFloor.doors.length > 0}
@@ -3431,10 +3413,6 @@
         </label>
       {/each}
       <hr class="my-1 border-gray-100" />
-      <label class="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-gray-50 rounded px-1">
-        <input type="checkbox" bind:checked={showRoomLabels} class="accent-blue-500" />
-        <span>Room Labels</span>
-      </label>
       <label class="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-gray-50 rounded px-1">
         <input type="checkbox" bind:checked={showDimensions} class="accent-blue-500" />
         <span>Dimensions</span>
