@@ -66,6 +66,9 @@
         // Chế độ backend: 1 layout của backend = 1 project của editor
         backendLayoutId = layoutId;
         setActiveStore(backendStore);
+        // Reset background stores so stale data from a previous layout never leaks in
+        layoutBgFile.set(null);
+        layoutDimsCm.set({ widthCm: 0, heightCm: 0 });
         try {
           const project = await backendStore.load(layoutId);
           if (!project) throw new Error('Không tìm thấy layout');
