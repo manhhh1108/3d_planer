@@ -81,13 +81,16 @@ describe('layout background', () => {
   it('returns 422 when uploading DWG without ODA_CONVERTER_PATH', async () => {
     const saved = process.env.ODA_CONVERTER_PATH;
     delete process.env.ODA_CONVERTER_PATH;
-    const layout = await makeLayout();
-    const res = await request(app)
-      .post(`/api/layouts/${layout.id}/background`)
-      .set('Cookie', `access_token=${adminToken()}`)
-      .attach('file', Buffer.from('fake dwg'), 'plan.dwg');
-    expect(res.status).toBe(422);
-    if (saved !== undefined) process.env.ODA_CONVERTER_PATH = saved;
+    try {
+      const layout = await makeLayout();
+      const res = await request(app)
+        .post(`/api/layouts/${layout.id}/background`)
+        .set('Cookie', `access_token=${adminToken()}`)
+        .attach('file', Buffer.from('fake dwg'), 'plan.dwg');
+      expect(res.status).toBe(422);
+    } finally {
+      if (saved !== undefined) process.env.ODA_CONVERTER_PATH = saved;
+    }
   });
 
   it('deletes background: clears backgroundFile, preserves widthM/heightM', async () => {
