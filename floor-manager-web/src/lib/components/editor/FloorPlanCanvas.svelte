@@ -1421,7 +1421,7 @@
       if (url) {
         const img = new Image();
         img.onload = () => { bgLayoutImage = img; markDirty(); };
-        img.onerror = () => { bgLayoutImage = null; };
+        img.onerror = () => { bgLayoutImage = null; markDirty(); };
         img.src = url;
       } else {
         bgLayoutImage = null;
