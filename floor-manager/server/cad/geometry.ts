@@ -125,16 +125,22 @@ export function meshesToFootprint(
     outerRings = [convexHull(pts)];
   } else {
     // 2. Union theo lô để tránh call stack/độ chậm của union 1 phát
-    let acc: MultiPolygon = [];
-    const BATCH = 200;
-    for (let i = 0; i < tris.length; i += BATCH) {
-      const batch = tris.slice(i, i + BATCH).map((t) => [t] as Polygon);
-      acc = acc.length === 0
-        ? polygonClipping.union(batch[0], ...batch.slice(1))
-        : polygonClipping.union(acc, ...batch);
+    // Fallback sang convex hull nếu union gặp lỗi numerical (e.g. SweepLine)
+    try {
+      let acc: MultiPolygon = [];
+      const BATCH = 200;
+      for (let i = 0; i < tris.length; i += BATCH) {
+        const batch = tris.slice(i, i + BATCH).map((t) => [t] as Polygon);
+        acc = acc.length === 0
+          ? polygonClipping.union(batch[0], ...batch.slice(1))
+          : polygonClipping.union(acc, ...batch);
+      }
+      // 3. Chỉ giữ ring ngoài (ring đầu mỗi polygon); bỏ lỗ — chiếm dụng sàn tính cả lỗ
+      outerRings = acc.map((poly) => poly[0] as Ring);
+    } catch {
+      const pts: [number, number][] = tris.flat() as [number, number][];
+      outerRings = [convexHull(pts)];
     }
-    // 3. Chỉ giữ ring ngoài (ring đầu mỗi polygon); bỏ lỗ — chiếm dụng sàn tính cả lỗ
-    outerRings = acc.map((poly) => poly[0] as Ring);
   }
 
   // 4. Canh tâm bbox tại (0,0), làm tròn 0.1mm
