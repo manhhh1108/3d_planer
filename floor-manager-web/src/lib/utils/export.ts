@@ -1,7 +1,7 @@
 import type { Project, Floor } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { detectRooms, getRoomPolygon, roomCentroid } from '$lib/utils/roomDetection';
-import { drawDoorOnWall, drawWindowOnWall, drawEntourageItems } from '$lib/utils/canvasRenderer';
+import { drawDoorOnWall, drawWindowOnWall } from '$lib/utils/canvasRenderer';
 import type { CanvasState } from '$lib/utils/canvasInteraction';
 import { projectSettings, formatArea } from '$lib/stores/settings';
 import { get } from 'svelte/store';
@@ -149,11 +149,6 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`${len} cm`, mx, my - 8);
-      }
-
-      // Entourage symbols (images may need a prior on-canvas render to be cached)
-      if (floor.entourage?.length) {
-        drawEntourageItems({ ctx, width: pad * 2, height: pad * 2, zoom: 1, camX: minX, camY: minY }, floor, null, project.customEntourage);
       }
 
       // Draw doors and windows (shared full-fidelity renderer)
@@ -616,11 +611,6 @@ export function exportPDF(project: Project) {
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`${len} cm`, mx, my - 8);
-  }
-
-  // Entourage symbols
-  if (floor.entourage?.length) {
-    drawEntourageItems({ ctx, width: pad * 2, height: pad * 2, zoom: 1, camX: minX, camY: minY }, floor, null, project.customEntourage);
   }
 
   // Doors and windows (shared full-fidelity renderer)

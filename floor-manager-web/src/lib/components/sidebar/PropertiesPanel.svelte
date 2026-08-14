@@ -1,6 +1,5 @@
 <script lang="ts">
   import { activeFloor, selectedElementId, selectedRoomId, updateWall, updateDoor, updateWindow, updateRoom, updateFurniture, detectedRoomsStore, updateStair, updateColumn, updateBackgroundImage, setBackgroundImage, calibrationMode, calibrationPoints, updateTextAnnotation, toggleFurnitureLock, updateEntourageItem, removeElement, elevationWallId } from '$lib/stores/project';
-  import { getEntourageDef } from '$lib/utils/entourageCatalog';
   import { floorMaterials, wallColors } from '$lib/utils/materials';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
@@ -810,10 +809,6 @@
       Entourage
     </h3>
     <div class="space-y-3">
-      <div>
-        <span class="text-xs text-gray-500">Symbol</span>
-        <p class="text-sm text-gray-700">{getEntourageDef(selectedEntourage.defId)?.name ?? 'Custom image'}</p>
-      </div>
       <label class="block">
         <span class="text-xs text-gray-500">Width ({unitLabel()})</span>
         <input type="number" value={displayValue(Math.round(selectedEntourage.width))} oninput={(e) => { if (selectedEntourage) updateEntourageItem(selectedEntourage.id, { width: Math.max(1, inputToCm(Number((e.target as HTMLInputElement).value)) || 1) }); }} min="1" class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
