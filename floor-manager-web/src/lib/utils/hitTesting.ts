@@ -3,11 +3,8 @@
  * All functions are pure — they take data and return results.
  * Extracted from FloorPlanCanvas.svelte.
  */
-import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, Floor, Measurement, Annotation, TextAnnotation, EntourageItem } from '$lib/models/types';
-import type { Room } from '$lib/models/types';
+import type { Point, FurnitureItem, Floor, EntourageItem } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
-import { getRoomPolygon } from '$lib/utils/roomDetection';
-import { wallPointAt } from '$lib/utils/canvasRenderer';
 import type { HandleType } from '$lib/utils/canvasInteraction';
 
 export function pointInPolygon(p: Point, poly: Point[]): boolean {
@@ -28,38 +25,6 @@ export function pointToSegmentDist(p: Point, a: Point, b: Point): number {
   let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-}
-
-export function positionOnWall(p: Point, w: Wall): number {
-  if (w.curvePoint) {
-    let bestT = 0.5, bestDist = Infinity;
-    for (let i = 0; i <= 40; i++) {
-      const t = i / 40;
-      const pt = wallPointAt(w, t);
-      const d = Math.hypot(p.x - pt.x, p.y - pt.y);
-      if (d < bestDist) { bestDist = d; bestT = t; }
-    }
-    return Math.max(0.1, Math.min(0.9, bestT));
-  }
-  const dx = w.end.x - w.start.x, dy = w.end.y - w.start.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return 0.5;
-  return Math.max(0.1, Math.min(0.9, ((p.x - w.start.x) * dx + (p.y - w.start.y) * dy) / len2));
-}
-
-export function findWallAt(p: Point, walls: Wall[], zoom: number): Wall | null {
-  const threshold = 15 / zoom;
-  for (const w of walls) {
-    if (w.curvePoint) {
-      for (let i = 0; i <= 20; i++) {
-        const pt = wallPointAt(w, i / 20);
-        if (Math.hypot(p.x - pt.x, p.y - pt.y) < threshold + w.thickness / 2) return w;
-      }
-    } else {
-      if (pointToSegmentDist(p, w.start, w.end) < threshold) return w;
-    }
-  }
-  return null;
 }
 
 export function findHandleAt(
@@ -111,64 +76,6 @@ export function findFurnitureAt(p: Point, furniture: FurnitureItem[]): Furniture
     const hw = cat.width * Math.abs(fi.scale?.x ?? 1) / 2;
     const hd = cat.depth * Math.abs(fi.scale?.y ?? 1) / 2;
     if (Math.abs(rx) < hw && Math.abs(ry) < hd) return fi;
-  }
-  return null;
-}
-
-export function findColumnAt(p: Point, columns: Column[] | undefined): Column | null {
-  if (!columns) return null;
-  for (const col of [...columns].reverse()) {
-    const dx = p.x - col.position.x;
-    const dy = p.y - col.position.y;
-    if (col.shape === 'round') {
-      if (Math.hypot(dx, dy) < col.diameter / 2) return col;
-    } else {
-      const angle = -(col.rotation * Math.PI) / 180;
-      const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
-      const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
-      if (Math.abs(rx) < col.diameter / 2 && Math.abs(ry) < col.diameter / 2) return col;
-    }
-  }
-  return null;
-}
-
-export function findStairAt(p: Point, stairs: Stair[] | undefined): Stair | null {
-  if (!stairs) return null;
-  for (const stair of [...stairs].reverse()) {
-    const dx = p.x - stair.position.x;
-    const dy = p.y - stair.position.y;
-    const angle = -(stair.rotation * Math.PI) / 180;
-    const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
-    const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
-    if (Math.abs(rx) < stair.width / 2 && Math.abs(ry) < stair.depth / 2) return stair;
-  }
-  return null;
-}
-
-export function findDoorAt(p: Point, doors: Door[], walls: Wall[], zoom: number): Door | null {
-  for (const d of doors) {
-    const wall = walls.find(w => w.id === d.wallId);
-    if (!wall) continue;
-    const cp = wallPointAt(wall, d.position);
-    if (Math.hypot(p.x - cp.x, p.y - cp.y) < (d.width / 2 + 5) / zoom) return d;
-  }
-  return null;
-}
-
-export function findWindowAt(p: Point, windows: Win[], walls: Wall[], zoom: number): Win | null {
-  for (const w of windows) {
-    const wall = walls.find(wl => wl.id === w.wallId);
-    if (!wall) continue;
-    const cp = wallPointAt(wall, w.position);
-    if (Math.hypot(p.x - cp.x, p.y - cp.y) < (w.width / 2 + 5) / zoom) return w;
-  }
-  return null;
-}
-
-export function findRoomAt(p: Point, rooms: Room[], walls: Wall[]): Room | null {
-  for (const room of rooms) {
-    const poly = getRoomPolygon(room, walls);
-    if (pointInPolygon(p, poly)) return room;
   }
   return null;
 }

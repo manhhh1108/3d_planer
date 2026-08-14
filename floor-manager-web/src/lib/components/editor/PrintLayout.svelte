@@ -1,10 +1,9 @@
 <script lang="ts">
   import { currentProject } from '$lib/stores/project';
   import { get } from 'svelte/store';
-  import { getRoomPolygon, roomCentroid } from '$lib/utils/roomDetection';
-  import { formatArea } from '$lib/stores/settings';
   import { onMount } from 'svelte';
-  import type { Project, Floor, Wall, Room } from '$lib/models/types';
+  import { getCatalogItem } from '$lib/utils/furnitureCatalog';
+  import type { Project, Floor } from '$lib/models/types';
 
   let { open = $bindable(false) } = $props();
 
@@ -19,31 +18,12 @@
     return project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
   }
 
-  function computeBounds(walls: Wall[]): { minX: number; minY: number; maxX: number; maxY: number } {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const w of walls) {
-      for (const p of [w.start, w.end]) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-      if (w.curvePoint) {
-        if (w.curvePoint.x < minX) minX = w.curvePoint.x;
-        if (w.curvePoint.y < minY) minY = w.curvePoint.y;
-        if (w.curvePoint.x > maxX) maxX = w.curvePoint.x;
-        if (w.curvePoint.y > maxY) maxY = w.curvePoint.y;
-      }
-    }
-    return { minX, minY, maxX, maxY };
-  }
-
   function renderPrintCanvas() {
     if (!printCanvas) return;
     const project = get(currentProject);
     if (!project) return;
     const floor = getActiveFloor(project);
-    if (!floor || floor.walls.length === 0) return;
+    if (!floor || floor.furniture.length === 0) return;
 
     const ctx = printCanvas.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
@@ -57,123 +37,57 @@
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, cw, ch);
 
-    const bounds = computeBounds(floor.walls);
-    const planW = bounds.maxX - bounds.minX;
-    const planH = bounds.maxY - bounds.minY;
+    // Compute bounds from furniture
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const fi of floor.furniture) {
+      const cat = getCatalogItem(fi.catalogId);
+      const hw = (fi.width ?? cat?.width ?? 30) / 2;
+      const hd = (fi.depth ?? cat?.depth ?? 30) / 2;
+      minX = Math.min(minX, fi.position.x - hw);
+      minY = Math.min(minY, fi.position.y - hd);
+      maxX = Math.max(maxX, fi.position.x + hw);
+      maxY = Math.max(maxY, fi.position.y + hd);
+    }
+    const planW = maxX - minX;
+    const planH = maxY - minY;
     if (planW <= 0 || planH <= 0) return;
 
     const padding = 40;
     const availW = cw - padding * 2;
     const availH = ch - padding * 2;
     const fitScale = Math.min(availW / planW, availH / planH);
-    const offsetX = padding + (availW - planW * fitScale) / 2 - bounds.minX * fitScale;
-    const offsetY = padding + (availH - planH * fitScale) / 2 - bounds.minY * fitScale;
+    const offsetX = padding + (availW - planW * fitScale) / 2 - minX * fitScale;
+    const offsetY = padding + (availH - planH * fitScale) / 2 - minY * fitScale;
 
     ctx.save();
     ctx.translate(offsetX, offsetY);
     ctx.scale(fitScale, fitScale);
 
-    // Draw room fills
-    for (const room of floor.rooms) {
-      const poly = getRoomPolygon(room, floor.walls);
-      if (!poly || poly.length < 3) continue;
-      ctx.beginPath();
-      ctx.moveTo(poly[0].x, poly[0].y);
-      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
-      ctx.closePath();
-      ctx.fillStyle = room.color ? room.color + '30' : '#e0e7ff40';
-      ctx.fill();
-    }
-
-    // Draw walls
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineCap = 'round';
-    for (const w of floor.walls) {
-      ctx.lineWidth = w.thickness || 12;
-      ctx.beginPath();
-      if (w.curvePoint) {
-        ctx.moveTo(w.start.x, w.start.y);
-        ctx.quadraticCurveTo(w.curvePoint.x, w.curvePoint.y, w.end.x, w.end.y);
-      } else {
-        ctx.moveTo(w.start.x, w.start.y);
-        ctx.lineTo(w.end.x, w.end.y);
+    // Draw furniture
+    for (const fi of floor.furniture) {
+      const cat = getCatalogItem(fi.catalogId);
+      const fw = fi.width ?? cat?.width ?? 30;
+      const fd = fi.depth ?? cat?.depth ?? 30;
+      const color = fi.color ?? cat?.color ?? '#a0c4e8';
+      const rot = (fi.rotation || 0) * Math.PI / 180;
+      ctx.save();
+      ctx.translate(fi.position.x, fi.position.y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = color;
+      ctx.fillRect(-fw / 2, -fd / 2, fw, fd);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 0.5 / fitScale;
+      ctx.strokeRect(-fw / 2, -fd / 2, fw, fd);
+      ctx.globalAlpha = 1;
+      if (cat) {
+        ctx.fillStyle = '#333';
+        ctx.font = `${9 / fitScale}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cat.name, 0, 0);
       }
-      ctx.stroke();
-    }
-
-    // Draw doors
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    for (const door of floor.doors) {
-      const wall = floor.walls.find(w => w.id === door.wallId);
-      if (!wall) continue;
-      const dx = wall.end.x - wall.start.x;
-      const dy = wall.end.y - wall.start.y;
-      const px = wall.start.x + dx * door.position;
-      const py = wall.start.y + dy * door.position;
-      const hw = door.width / 2;
-      if (door.type === 'opening' || door.type === 'garage') {
-        // No swing — draw a straight line across the opening (dashed for doorways)
-        const dlen = Math.hypot(dx, dy) || 1;
-        const ux = dx / dlen, uy = dy / dlen;
-        if (door.type === 'opening') ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(px - ux * hw, py - uy * hw);
-        ctx.lineTo(px + ux * hw, py + uy * hw);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        continue;
-      }
-      // Draw a gap in the wall and an arc
-      ctx.beginPath();
-      ctx.arc(px, py, hw, 0, Math.PI / 2);
-      ctx.stroke();
-    }
-
-    // Draw windows
-    ctx.strokeStyle = '#06b6d4';
-    ctx.lineWidth = 4;
-    for (const win of floor.windows) {
-      const wall = floor.walls.find(w => w.id === win.wallId);
-      if (!wall) continue;
-      const dx = wall.end.x - wall.start.x;
-      const dy = wall.end.y - wall.start.y;
-      const len = Math.hypot(dx, dy);
-      if (len === 0) continue;
-      const nx = dx / len, ny = dy / len;
-      const px = wall.start.x + dx * win.position;
-      const py = wall.start.y + dy * win.position;
-      const hw = win.width / 2;
-      ctx.beginPath();
-      ctx.moveTo(px - nx * hw, py - ny * hw);
-      ctx.lineTo(px + nx * hw, py + ny * hw);
-      ctx.stroke();
-      // Double line for window
-      const pnx = -ny, pny = nx;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(px - nx * hw + pnx * 4, py - ny * hw + pny * 4);
-      ctx.lineTo(px + nx * hw + pnx * 4, py + ny * hw + pny * 4);
-      ctx.stroke();
-      ctx.lineWidth = 4;
-    }
-
-    // Room labels
-    ctx.fillStyle = '#374151';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const room of floor.rooms) {
-      const poly = getRoomPolygon(room, floor.walls);
-      if (!poly || poly.length < 3) continue;
-      const c = roomCentroid(poly);
-      const ox = room.labelOffset?.x ?? 0;
-      const oy = room.labelOffset?.y ?? 0;
-      ctx.font = 'bold 14px system-ui';
-      ctx.fillText(room.name, c.x + ox, c.y + oy - 8);
-      ctx.font = '11px system-ui';
-      ctx.fillStyle = '#6b7280';
-      ctx.fillText(formatArea(room.area, 'metric'), c.x + ox, c.y + oy + 10);
-      ctx.fillStyle = '#374151';
+      ctx.restore();
     }
 
     ctx.restore();
@@ -207,15 +121,6 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') close();
-  }
-
-  // Get rooms for legend
-  function getRooms(): { name: string; area: string }[] {
-    const project = get(currentProject);
-    if (!project) return [];
-    const floor = getActiveFloor(project);
-    if (!floor) return [];
-    return floor.rooms.map(r => ({ name: r.name, area: formatArea(r.area, 'metric') }));
   }
 
   function getProjectName(): string {
@@ -325,21 +230,6 @@
           <span>{scale}</span>
         </div>
       </div>
-
-      <!-- Room legend -->
-      {#if getRooms().length > 0}
-        <div class="border-t border-slate-300 pt-3 mt-2 print-legend">
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Room Schedule</h3>
-          <div class="grid grid-cols-3 gap-x-6 gap-y-1 text-xs">
-            {#each getRooms() as room}
-              <div class="flex justify-between">
-                <span class="text-slate-600">{room.name}</span>
-                <span class="text-slate-800 font-medium ml-2">{room.area}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
 
       <!-- Footer -->
       <div class="border-t border-slate-200 pt-2 mt-3 flex justify-between text-[9px] text-slate-400 print-footer">

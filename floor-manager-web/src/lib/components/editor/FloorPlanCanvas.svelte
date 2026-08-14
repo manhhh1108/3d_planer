@@ -3,18 +3,15 @@
   import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, detectedRoomsStore, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode } from '$lib/stores/project';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
-  import { detectRooms, getRoomPolygon, roomCentroid } from '$lib/utils/roomDetection';
-  import { getMaterial } from '$lib/utils/materials';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
   import { handleGlobalShortcut } from '$lib/utils/shortcuts';
   import ContextMenu from './ContextMenu.svelte';
-  import { getWallTextureCanvas, getFloorTextureCanvas, setTextureLoadCallback } from '$lib/utils/textureGenerator';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
   import type { CanvasState } from '$lib/utils/canvasInteraction';
-  import { drawWall as _drawWall, drawDoorOnWall as _drawDoorOnWall, drawWindowOnWall as _drawWindowOnWall, drawDoorDistanceDimensions as _drawDoorDistanceDimensions, drawWindowDistanceDimensions as _drawWindowDistanceDimensions, drawFurnitureItem, drawStair as _drawStair, drawColumn as _drawColumn, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawRooms as _drawRooms, drawWallJoints as _drawWallJoints, drawSnapPoints as _drawSnapPoints, drawMinimap as _drawMinimap } from '$lib/utils/canvasRenderer';
-  import { pointInPolygon, positionOnWall, findWallAt as _findWallAt, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, findColumnAt as _findColumnAt, findStairAt as _findStairAt, findDoorAt as _findDoorAt, findWindowAt as _findWindowAt, findRoomAt as _findRoomAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
+  import { drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap } from '$lib/utils/canvasRenderer';
+  import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -487,26 +484,6 @@
 
   // ── Delegating wrappers to extracted modules ──────────────────────────
 
-  function drawDoorDistanceDimensions(wall: Wall, door: Door) {
-    _drawDoorDistanceDimensions(getCS(), wall, door, dimSettings);
-  }
-
-  function drawWindowDistanceDimensions(wall: Wall, window: Win) {
-    _drawWindowDistanceDimensions(getCS(), wall, window, dimSettings);
-  }
-
-  function drawWall(w: Wall, selected: boolean) {
-    _drawWall(getCS(), w, selected, showDimensions, dimSettings, currentFloor?.walls);
-  }
-
-  function drawDoorOnWall(wall: Wall, door: Door) {
-    _drawDoorOnWall(getCS(), wall, door);
-  }
-
-  function drawWindowOnWall(wall: Wall, win: Win) {
-    _drawWindowOnWall(getCS(), wall, win);
-  }
-
   function drawFurniture(item: FurnitureItem, selected: boolean) {
     drawFurnitureItem(getCS(), item, selected);
   }
@@ -804,20 +781,6 @@
     return _hitTestTextAnnotation(wp, floor, ctx, zoom);
   }
 
-  function drawWallJoints(floor: Floor, selId: string | null) {
-    _drawWallJoints(getCS(), floor, selId);
-  }
-
-  function drawSnapPoints() {
-    if (!currentFloor) return;
-    _drawSnapPoints(getCS(), currentFloor, showGrid);
-  }
-
-  function drawRooms() {
-    if (!currentFloor) return;
-    _drawRooms(getCS(), currentFloor, detectedRooms, currentSelectedRoomId, showRoomLabels, showDimensions, dimSettings);
-  }
-
   function drawAngleGuides(start: Point) {
     const s = worldToScreen(start.x, start.y);
     ctx.strokeStyle = '#3b82f640';
@@ -833,53 +796,9 @@
     ctx.setLineDash([]);
   }
 
-  function updateDetectedRooms() {
-    if (!currentFloor) return;
-    // Keyed on the floor too: two storeys can share identical wall geometry
-    // (a duplicated or stacked floor), and without the id the cache would
-    // skip re-detection and leave the previous floor's rooms on screen.
-    const hash = currentFloor.id + JSON.stringify(currentFloor.walls.map(w => [w.start, w.end]));
-    if (hash === lastWallHash) return;
-    lastWallHash = hash;
-    const newRooms = detectRooms(currentFloor.walls);
-    const savedRooms = currentFloor.rooms || [];
-    for (const nr of newRooms) {
-      const nrWalls = new Set(nr.walls);
-      const existing = detectedRooms.find(old => {
-        const oldWalls = new Set(old.walls);
-        return oldWalls.size === nrWalls.size && [...nrWalls].every(w => oldWalls.has(w));
-      });
-      if (existing) {
-        nr.id = existing.id;
-        nr.name = existing.name;
-        nr.floorTexture = existing.floorTexture;
-      } else {
-        const saved = savedRooms.find(sr => {
-          const srWalls = new Set(sr.walls);
-          return srWalls.size === nrWalls.size && [...nrWalls].every(w => srWalls.has(w));
-        });
-        if (saved) {
-          nr.id = saved.id;
-          nr.name = saved.name;
-          if (saved.floorTexture) nr.floorTexture = saved.floorTexture;
-        }
-      }
-    }
-    detectedRooms = newRooms;
-    detectedRoomsStore.set(newRooms);
-  }
-
   function drawGuides() {
     if (!currentFloor) return;
     _drawGuides(getCS(), currentFloor, selectedGuideId, RULER_SIZE);
-  }
-
-  function drawStair(stair: Stair, selected: boolean) {
-    _drawStair(getCS(), stair, selected);
-  }
-
-  function drawColumn(col: Column, selected: boolean) {
-    _drawColumn(getCS(), col, selected);
   }
 
   function rulerLabel(worldCm: number, tickStep: number, isImperial: boolean): string {
@@ -1120,72 +1039,9 @@
       canvasDirty = true;
     }
 
-    updateDetectedRooms();
     const selId = currentSelectedId;
     const multiIds = currentSelectedIds;
     function isSelected(id: string) { return id === selId || multiIds.has(id); }
-
-    drawRooms();
-    drawSnapPoints();
-
-    if (layerVis.walls) {
-      for (const w of floor.walls) drawWall(w, isSelected(w.id));
-      drawWallJoints(floor, selId);
-    }
-
-    if (showDoors) {
-      for (const d of floor.doors) {
-        const wall = floor.walls.find((w) => w.id === d.wallId);
-        if (wall) {
-          drawDoorOnWall(wall, d);
-          if (isSelected(d.id)) {
-            // Selection highlight box
-            const t = d.position;
-            const wpt = wallPointAt(wall, t);
-            const sp = worldToScreen(wpt.x, wpt.y);
-            const hw = (d.width / 2) * zoom + 4;
-            const hh = (wall.thickness / 2) * zoom + 8;
-            const angle = Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x);
-            ctx.save();
-            ctx.translate(sp.x, sp.y);
-            ctx.rotate(angle);
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 3]);
-            ctx.strokeRect(-hw, -hh, hw * 2, hh * 2);
-            ctx.setLineDash([]);
-            ctx.restore();
-          }
-          if (showDimensions && isSelected(d.id)) drawDoorDistanceDimensions(wall, d);
-        }
-      }
-    }
-    if (showWindows) {
-      for (const win of floor.windows) {
-        const wall = floor.walls.find((w) => w.id === win.wallId);
-        if (wall) {
-          drawWindowOnWall(wall, win);
-          if (isSelected(win.id)) {
-            const t = win.position;
-            const wpt = wallPointAt(wall, t);
-            const sp = worldToScreen(wpt.x, wpt.y);
-            const hw = (win.width / 2) * zoom + 4;
-            const hh = (wall.thickness / 2) * zoom + 8;
-            const angle = Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x);
-            ctx.save();
-            ctx.translate(sp.x, sp.y);
-            ctx.rotate(angle);
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 3]);
-            ctx.strokeRect(-hw, -hh, hw * 2, hh * 2);
-            ctx.setLineDash([]);
-            ctx.restore();
-          }
-          if (showDimensions && isSelected(win.id)) drawWindowDistanceDimensions(wall, win);
-        }
-      }
-    }
 
     // Furniture
     if (showFurniture) {
@@ -1193,189 +1049,6 @@
         const selected = isSelected(fi.id);
         if (selected && draggingFurnitureId === fi.id) drawAlignmentGuides(fi);
         drawFurniture(fi, selected);
-      }
-    }
-
-    // Object distance dimensions (from selected furniture to room boundaries)
-    if (showDimensions && dimSettings.showObjectDistance && currentSelectedId && showFurniture) {
-      const selFurniture = floor.furniture.find(f => f.id === currentSelectedId);
-      if (selFurniture) {
-        const cat = getCatalogItem(selFurniture.catalogId);
-        if (cat) {
-          const fw = (selFurniture.width ?? cat.width) * Math.abs(selFurniture.scale?.x ?? 1);
-          const fd = (selFurniture.depth ?? cat.depth) * Math.abs(selFurniture.scale?.y ?? 1);
-          const fx = selFurniture.position.x;
-          const fy = selFurniture.position.y;
-          // AABB edges of the furniture (ignoring rotation for simplicity)
-          const fLeft = fx - fw / 2;
-          const fRight = fx + fw / 2;
-          const fTop = fy - fd / 2;
-          const fBottom = fy + fd / 2;
-          
-          // Find which room the furniture is in
-          let furnitureRoom: Room | null = null;
-          for (const room of detectedRooms) {
-            const poly = getRoomPolygon(room, floor.walls);
-            if (pointInPolygon(selFurniture.position, poly)) {
-              furnitureRoom = room;
-              break;
-            }
-          }
-          
-          // Collect all dimension lines (wall + furniture distances)
-          type DimLine = { label: string; from: Point; to: Point; color: string; dir: 'left' | 'right' | 'top' | 'bottom' };
-          const allDimensions: DimLine[] = [];
-          
-          // --- Wall distances ---
-          if (furnitureRoom) {
-            const poly = getRoomPolygon(furnitureRoom, floor.walls);
-            let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
-            for (const pt of poly) {
-              if (pt.x < rMinX) rMinX = pt.x;
-              if (pt.x > rMaxX) rMaxX = pt.x;
-              if (pt.y < rMinY) rMinY = pt.y;
-              if (pt.y > rMaxY) rMaxY = pt.y;
-            }
-            allDimensions.push(
-              { label: formatLength(fLeft - rMinX, dimSettings.units), from: { x: fLeft, y: fy }, to: { x: rMinX, y: fy }, color: '#f97316', dir: 'left' },
-              { label: formatLength(rMaxX - fRight, dimSettings.units), from: { x: fRight, y: fy }, to: { x: rMaxX, y: fy }, color: '#f97316', dir: 'right' },
-              { label: formatLength(fTop - rMinY, dimSettings.units), from: { x: fx, y: fTop }, to: { x: fx, y: rMinY }, color: '#f97316', dir: 'top' },
-              { label: formatLength(rMaxY - fBottom, dimSettings.units), from: { x: fx, y: fBottom }, to: { x: fx, y: rMaxY }, color: '#f97316', dir: 'bottom' },
-            );
-          }
-          
-          // --- Furniture-to-furniture distances ---
-          // For each direction, find the nearest other furniture edge
-          const otherFurniture = floor.furniture.filter(f => f.id !== selFurniture.id);
-          // Track closest furniture per direction
-          const closestFurn: Record<string, { dist: number; dim: DimLine }> = {};
-          
-          for (const other of otherFurniture) {
-            const oCat = getCatalogItem(other.catalogId);
-            if (!oCat) continue;
-            const ow = (other.width ?? oCat.width) * Math.abs(other.scale?.x ?? 1);
-            const od = (other.depth ?? oCat.depth) * Math.abs(other.scale?.y ?? 1);
-            const ox = other.position.x;
-            const oy = other.position.y;
-            const oLeft = ox - ow / 2;
-            const oRight = ox + ow / 2;
-            const oTop = oy - od / 2;
-            const oBottom = oy + od / 2;
-            
-            // Check vertical overlap (needed for left/right distances)
-            const vOverlap = fBottom > oTop && fTop < oBottom;
-            // Check horizontal overlap (needed for top/bottom distances)
-            const hOverlap = fRight > oLeft && fLeft < oRight;
-            
-            const midY = Math.max(fTop, oTop) / 2 + Math.min(fBottom, oBottom) / 2;
-            const midX = Math.max(fLeft, oLeft) / 2 + Math.min(fRight, oRight) / 2;
-            
-            // Left: other is to the left of selected
-            if (vOverlap && oRight <= fLeft) {
-              const gap = fLeft - oRight;
-              if (!closestFurn['left'] || gap < closestFurn['left'].dist) {
-                closestFurn['left'] = { dist: gap, dim: { label: formatLength(gap, dimSettings.units), from: { x: fLeft, y: midY }, to: { x: oRight, y: midY }, color: '#ef4444', dir: 'left' } };
-              }
-            }
-            // Right: other is to the right
-            if (vOverlap && oLeft >= fRight) {
-              const gap = oLeft - fRight;
-              if (!closestFurn['right'] || gap < closestFurn['right'].dist) {
-                closestFurn['right'] = { dist: gap, dim: { label: formatLength(gap, dimSettings.units), from: { x: fRight, y: midY }, to: { x: oLeft, y: midY }, color: '#ef4444', dir: 'right' } };
-              }
-            }
-            // Top: other is above
-            if (hOverlap && oBottom <= fTop) {
-              const gap = fTop - oBottom;
-              if (!closestFurn['top'] || gap < closestFurn['top'].dist) {
-                closestFurn['top'] = { dist: gap, dim: { label: formatLength(gap, dimSettings.units), from: { x: midX, y: fTop }, to: { x: midX, y: oBottom }, color: '#ef4444', dir: 'top' } };
-              }
-            }
-            // Bottom: other is below
-            if (hOverlap && oTop >= fBottom) {
-              const gap = oTop - fBottom;
-              if (!closestFurn['bottom'] || gap < closestFurn['bottom'].dist) {
-                closestFurn['bottom'] = { dist: gap, dim: { label: formatLength(gap, dimSettings.units), from: { x: midX, y: fBottom }, to: { x: midX, y: oTop }, color: '#ef4444', dir: 'bottom' } };
-              }
-            }
-          }
-          
-          // For each direction, use furniture-to-furniture if closer than wall, otherwise wall
-          const finalDimensions: DimLine[] = [];
-          const dirs: Array<'left' | 'right' | 'top' | 'bottom'> = ['left', 'right', 'top', 'bottom'];
-          for (const dir of dirs) {
-            const wallDim = allDimensions.find(d => d.dir === dir);
-            const furnDim = closestFurn[dir];
-            if (furnDim && wallDim) {
-              // Show whichever is closer (furniture-to-furniture usually wins)
-              const wallDist = Math.hypot(wallDim.to.x - wallDim.from.x, wallDim.to.y - wallDim.from.y);
-              if (furnDim.dist < wallDist) {
-                finalDimensions.push(furnDim.dim);
-              } else {
-                finalDimensions.push(wallDim);
-              }
-            } else if (furnDim) {
-              finalDimensions.push(furnDim.dim);
-            } else if (wallDim) {
-              finalDimensions.push(wallDim);
-            }
-          }
-          
-          // --- Draw all dimension lines ---
-          const fontSize = Math.max(9, 10 * zoom);
-          ctx.font = `${fontSize}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          
-          for (const d of finalDimensions) {
-            const fromS = worldToScreen(d.from.x, d.from.y);
-            const toS = worldToScreen(d.to.x, d.to.y);
-            const dist = Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y);
-            if (dist < 1) continue;
-            
-            // Dashed line
-            ctx.strokeStyle = d.color;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([3, 3]);
-            ctx.beginPath();
-            ctx.moveTo(fromS.x, fromS.y);
-            ctx.lineTo(toS.x, toS.y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Small end caps (perpendicular ticks)
-            const dx = toS.x - fromS.x;
-            const dy = toS.y - fromS.y;
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-              const nx = -dy / len;
-              const ny = dx / len;
-              const tickLen = 4;
-              ctx.strokeStyle = d.color;
-              ctx.lineWidth = 1;
-              ctx.setLineDash([]);
-              for (const pt of [fromS, toS]) {
-                ctx.beginPath();
-                ctx.moveTo(pt.x - nx * tickLen, pt.y - ny * tickLen);
-                ctx.lineTo(pt.x + nx * tickLen, pt.y + ny * tickLen);
-                ctx.stroke();
-              }
-            }
-            
-            // Dimension pill at midpoint
-            const mx = (fromS.x + toS.x) / 2;
-            const my = (fromS.y + toS.y) / 2;
-            const tw = ctx.measureText(d.label).width;
-            const pw = tw + 8;
-            const ph = fontSize + 4;
-            ctx.fillStyle = d.color;
-            ctx.beginPath();
-            ctx.roundRect(mx - pw / 2, my - ph / 2, pw, ph, ph / 2);
-            ctx.fill();
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(d.label, mx, my);
-          }
-        }
       }
     }
 
@@ -1394,38 +1067,6 @@
         ctx.stroke();
         ctx.setLineDash([]);
       }
-    }
-
-    // Stairs
-    if (showStairs && floor.stairs) {
-      for (const stair of floor.stairs) {
-        drawStair(stair, isSelected(stair.id));
-      }
-    }
-
-    // Columns
-    if (layerVis.columns && floor.columns) {
-      for (const col of floor.columns) {
-        drawColumn(col, isSelected(col.id));
-      }
-    }
-
-    // Column placement preview
-    if (isPlacingColumn) {
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-      const preview: Column = { id: 'preview', position: mousePos, rotation: 0, shape: placingColShape, diameter: 30, height: 280, color: '#cccccc' };
-      drawColumn(preview, false);
-      ctx.restore();
-    }
-
-    // Stair placement preview
-    if (isPlacingStair) {
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-      const preview: Stair = { id: 'preview', position: mousePos, rotation: 0, width: 100, depth: 300, riserCount: 14, direction: 'up', stairType: 'straight' };
-      drawStair(preview, false);
-      ctx.restore();
     }
 
     // Calibration points
@@ -1732,8 +1373,6 @@
   onMount(() => {
     ctx = canvas.getContext('2d')!;
     resize();
-    // Re-render when photo textures finish loading
-    setTextureLoadCallback(() => { /* draw loop is already running via rAF */ });
     const resizeObs = new ResizeObserver(resize);
     resizeObs.observe(canvas.parentElement!);
     requestAnimationFrame(draw);
@@ -1925,7 +1564,26 @@
 
   function findWallAt(p: Point): Wall | null {
     if (!currentFloor) return null;
-    return _findWallAt(p, currentFloor.walls, zoom);
+    const threshold = 20 / zoom;
+    for (const w of currentFloor.walls) {
+      const dx = w.end.x - w.start.x;
+      const dy = w.end.y - w.start.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq < 1) continue;
+      const t = Math.max(0, Math.min(1, ((p.x - w.start.x) * dx + (p.y - w.start.y) * dy) / lenSq));
+      const projX = w.start.x + t * dx;
+      const projY = w.start.y + t * dy;
+      if (Math.hypot(p.x - projX, p.y - projY) < threshold) return w;
+    }
+    return null;
+  }
+
+  function positionOnWall(p: Point, w: Wall): number {
+    const dx = w.end.x - w.start.x;
+    const dy = w.end.y - w.start.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1) return 0.5;
+    return Math.max(0.05, Math.min(0.95, ((p.x - w.start.x) * dx + (p.y - w.start.y) * dy) / lenSq));
   }
 
   function findHandleAt(p: Point): HandleType | null {
@@ -1939,59 +1597,55 @@
   }
 
   function findColumnAt(p: Point): Column | null {
-    if (!currentFloor) return null;
-    return _findColumnAt(p, currentFloor.columns);
-  }
-
-  function findStairAt(p: Point): Stair | null {
-    if (!currentFloor) return null;
-    return _findStairAt(p, currentFloor.stairs);
-  }
-
-  function findDoorAt(p: Point): Door | null {
-    if (!currentFloor) return null;
-    return _findDoorAt(p, currentFloor.doors, currentFloor.walls, zoom);
-  }
-
-  function findWindowAt(p: Point): Win | null {
-    if (!currentFloor) return null;
-    return _findWindowAt(p, currentFloor.windows, currentFloor.walls, zoom);
-  }
-
-  function findRoomLabelAt(p: Point): Room | null {
-    if (!currentFloor || !showRoomLabels) return null;
-    for (const room of detectedRooms) {
-      const poly = getRoomPolygon(room, currentFloor.walls);
-      if (poly.length < 3) continue;
-      const centroid = roomCentroid(poly);
-      const lx = centroid.x + (room.labelOffset?.x ?? 0);
-      const ly = centroid.y + (room.labelOffset?.y ?? 0);
-      // Check if click is within label area (approx 80x40 world units)
-      const hitW = 80 / zoom;
-      const hitH = 40 / zoom;
-      if (Math.abs(p.x - lx) < hitW && Math.abs(p.y - ly) < hitH) {
-        // Check if clicking the reset icon
-        if (room.labelOffset && (room.labelOffset.x !== 0 || room.labelOffset.y !== 0)) {
-          const resetOffX = 50 / zoom; // approximate reset icon position
-          if (p.x > lx + resetOffX * 0.5 && Math.abs(p.y - ly) < 15 / zoom) {
-            // Reset label position
-            updateRoom(room.id, { labelOffset: undefined });
-            detectedRoomsStore.update(rooms => rooms.map(r => r.id === room.id ? { ...r, labelOffset: undefined } : r));
-            return null; // consumed click
-          }
-        }
-        return room;
-      }
+    if (!currentFloor?.columns) return null;
+    for (const col of currentFloor.columns) {
+      if (Math.hypot(p.x - col.position.x, p.y - col.position.y) < col.diameter / 2 + 10 / zoom) return col;
     }
     return null;
   }
 
-  function findRoomAt(p: Point): Room | null {
-    if (!currentFloor) return null;
-    return _findRoomAt(p, detectedRooms, currentFloor.walls);
+  function findStairAt(p: Point): Stair | null {
+    if (!currentFloor?.stairs) return null;
+    for (const stair of currentFloor.stairs) {
+      if (Math.abs(p.x - stair.position.x) < stair.width / 2 + 5 / zoom &&
+          Math.abs(p.y - stair.position.y) < stair.depth / 2 + 5 / zoom) return stair;
+    }
+    return null;
   }
 
-  // pointInPolygon, pointToSegmentDist, positionOnWall imported from hitTesting.ts
+  function findDoorAt(p: Point): Door | null {
+    if (!currentFloor) return null;
+    const threshold = 20 / zoom;
+    for (const d of currentFloor.doors) {
+      const w = currentFloor.walls.find(w => w.id === d.wallId);
+      if (!w) continue;
+      const pt = wallPointAt(w, d.position);
+      if (Math.hypot(p.x - pt.x, p.y - pt.y) < threshold) return d;
+    }
+    return null;
+  }
+
+  function findWindowAt(p: Point): Win | null {
+    if (!currentFloor) return null;
+    const threshold = 20 / zoom;
+    for (const win of currentFloor.windows) {
+      const w = currentFloor.walls.find(w => w.id === win.wallId);
+      if (!w) continue;
+      const pt = wallPointAt(w, win.position);
+      if (Math.hypot(p.x - pt.x, p.y - pt.y) < threshold) return win;
+    }
+    return null;
+  }
+
+  function findRoomLabelAt(_p: Point): Room | null {
+    return null;
+  }
+
+  function findRoomAt(_p: Point): Room | null {
+    return null;
+  }
+
+  // pointInPolygon imported from hitTesting.ts
 
   function onMouseDown(e: MouseEvent) {
     markDirty();
@@ -2444,21 +2098,8 @@
       }
     }
 
-    // Double-click on a room to edit its name inline
-    if (currentTool === 'select') {
-      const wp = screenToWorld(sx, sy);
-      const room = findRoomAt(wp);
-      if (room) {
-        const poly = getRoomPolygon(room, currentFloor!.walls);
-        const centroid = roomCentroid(poly);
-        const sc = worldToScreen(centroid.x, centroid.y);
-        editingRoomId = room.id;
-        editingRoomName = room.name;
-        editingRoomPos = { x: sc.x, y: sc.y };
-        selectedRoomId.set(room.id);
-        return;
-      }
-    }
+    // Double-click on a room to edit its name inline (room detection removed)
+    // if (currentTool === 'select') { ... }
 
     // Double-click on a wall in select mode to split it
     if (currentTool === 'select') {
@@ -3519,15 +3160,7 @@
 
       // Room actions
       case 'rename-room':
-        if (ctxMenuRoom) {
-          // Trigger inline rename via existing mechanism
-          const poly = getRoomPolygon(ctxMenuRoom, currentFloor.walls);
-          const centroid = roomCentroid(poly);
-          const sp = worldToScreen(centroid.x, centroid.y);
-          editingRoomId = ctxMenuRoom.id;
-          editingRoomName = ctxMenuRoom.name;
-          editingRoomPos = { x: sp.x, y: sp.y };
-        }
+        // Room renaming disabled - room detection removed
         break;
       case 'change-floor-texture':
         // Select the room so PropertiesPanel shows it
