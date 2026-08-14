@@ -9,6 +9,10 @@
   import SettingsDialog from './SettingsDialog.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
   import { timelineReadonly } from '$lib/stores/timeline';
+  import { triggerTip } from '$lib/stores/onboarding.svelte';
+  import { currentUser } from '$lib/stores/auth';
+  import { goto } from '$app/navigation';
+  import { authApi } from '$lib/services/api';
 
   let { saveLabel = 'Save' }: { saveLabel?: string } = $props();
 
@@ -20,10 +24,6 @@
   let activeFloorId = $state('');
   let editingName = $state(false);
   let exportOpen = $state(false);
-  import { triggerTip } from '$lib/stores/onboarding.svelte';
-  import { currentUser } from '$lib/stores/auth';
-  import { goto } from '$app/navigation';
-  import { authApi } from '$lib/services/api';
 
   let user = $derived($currentUser);
 

@@ -1,4 +1,4 @@
-import { redirect } from '@sveltejs/kit';
+import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
 
@@ -10,9 +10,12 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
   const API = env.INTERNAL_API_URL ?? 'http://localhost:4000/api';
   const accessToken = cookies.get('access_token');
   const res = await fetch(`${API}/users`, {
-    headers: { Cookie: `access_token=${accessToken}` },
+    headers: { Cookie: `access_token=${accessToken ?? ''}` },
   });
 
-  const users = res.ok ? await res.json() : [];
+  if (!res.ok) {
+    throw error(502, 'Không thể tải danh sách người dùng');
+  }
+  const users = await res.json();
   return { users };
 };

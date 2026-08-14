@@ -143,7 +143,7 @@
         {#if createError}<p class="text-xs text-red-600">{createError}</p>{/if}
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Tạo</button>
-          <button type="button" onclick={() => (showCreate = false)} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
+          <button type="button" onclick={() => { showCreate = false; createError = null; }} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
         </div>
       </form>
     </div>
@@ -169,7 +169,7 @@
         {#if editError}<p class="text-xs text-red-600">{editError}</p>{/if}
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Lưu</button>
-          <button type="button" onclick={() => (editUser = null)} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
+          <button type="button" onclick={() => { editUser = null; editError = null; }} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
         </div>
       </form>
     </div>
@@ -186,7 +186,7 @@
         {#if resetError}<p class="text-xs text-red-600">{resetError}</p>{/if}
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Đặt lại</button>
-          <button type="button" onclick={() => (resetUser = null)} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
+          <button type="button" onclick={() => { resetUser = null; resetError = null; }} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
         </div>
       </form>
     </div>
