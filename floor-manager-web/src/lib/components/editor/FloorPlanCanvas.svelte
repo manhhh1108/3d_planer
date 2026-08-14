@@ -9,7 +9,6 @@
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
   import { handleGlobalShortcut } from '$lib/utils/shortcuts';
   import ContextMenu from './ContextMenu.svelte';
-  import { roomPresets, placePreset } from '$lib/utils/roomPresets';
   import { getWallTextureCanvas, getFloorTextureCanvas, setTextureLoadCallback } from '$lib/utils/textureGenerator';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
@@ -3445,12 +3444,6 @@
           selectedElementId.set(id);
           selectedTool.set('select');
         }
-      }
-    } else if (itemType === 'room') {
-      const preset = roomPresets.find(p => p.id === itemId);
-      if (preset) {
-        placePreset(preset, pos);
-        selectedTool.set('select');
       }
     }
   }
