@@ -17,11 +17,13 @@
   import TimelineBar from '$lib/components/editor/TimelineBar.svelte';
   import { timelineReadonly } from '$lib/stores/timeline';
   import PrintLayout from '$lib/components/editor/PrintLayout.svelte';
+  import DxfImportPanel from '$lib/components/editor/DxfImportPanel.svelte';
   import OnboardingTooltip from '$lib/components/OnboardingTooltip.svelte';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
 
   let commandPaletteOpen = $state(false);
   let printOpen = $state(false);
+  let dxfImportOpen = $state(false);
 
   // Lazy-load ThreeViewer to avoid loading Three.js (~1.4MB) until 3D mode is activated
   let ThreeViewer: any = $state(null);
@@ -207,6 +209,16 @@
 
   <UndoHistoryPanel bind:visible={showUndoHistory} />
 
+  <!-- DXF import button — only when a background DXF is loaded -->
+  {#if mode === '2d' && backendLayoutId && $layoutBgFile}
+    <button
+      class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-[8.5rem] w-8 h-8 rounded-full bg-slate-700 text-white text-xs shadow-lg hover:bg-blue-600 transition-colors z-50"
+      onclick={() => dxfImportOpen = true}
+      title="Nhập sản phẩm từ DXF"
+      aria-label="Nhập sản phẩm từ DXF"
+    >DXF</button>
+  {/if}
+
   <!-- Help button (desktop only — keyboard shortcuts are meaningless on touch) -->
   <button
     class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-4 w-8 h-8 rounded-full bg-slate-700 text-white text-sm font-bold shadow-lg hover:bg-slate-600 transition-colors z-50"
@@ -389,6 +401,10 @@
   <CommandPalette bind:open={commandPaletteOpen} />
   <PrintLayout bind:open={printOpen} />
   <OnboardingTooltip />
+
+  {#if dxfImportOpen && backendLayoutId}
+    <DxfImportPanel layoutId={backendLayoutId} onClose={() => dxfImportOpen = false} />
+  {/if}
 {:else}
   <div class="h-screen flex flex-col items-center justify-center gap-3">
     <p class="text-gray-400">Loading...</p>

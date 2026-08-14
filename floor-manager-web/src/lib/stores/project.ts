@@ -255,10 +255,10 @@ export function addWindow(wallId: string, position: number, windowType: import('
   return id;
 }
 
-export function addFurniture(catalogId: string, position: Point): string {
+export function addFurniture(catalogId: string, position: Point, rotation = 0): string {
   const id = uid();
   mutate((f) => {
-    f.furniture.push({ id, catalogId, position, rotation: 0, scale: { x: 1, y: 1, z: 1 } });
+    f.furniture.push({ id, catalogId, position, rotation, scale: { x: 1, y: 1, z: 1 } });
   }, `Added ${catalogId}`);
   // Onboarding tip
   import('$lib/stores/onboarding.svelte').then(m => m.triggerTip('first-furniture', position.x + 20, position.y + 20));

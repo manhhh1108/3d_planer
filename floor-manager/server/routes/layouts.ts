@@ -89,6 +89,36 @@ router.delete('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /:id/background/inserts — return INSERT entities from saved source DXF
+router.get('/:id/background/inserts', async (req: Request, res: Response) => {
+  try {
+    const layout = await prisma.layout.findUnique({ where: { id: String(req.params.id) } });
+    if (!layout) return res.status(404).json({ error: 'Layout not found' });
+    if (!layout.backgroundFile) return res.status(404).json({ error: 'No background uploaded' });
+
+    const p = layoutBgPaths(String(req.params.id));
+    let dxfText: string;
+    const dxfPath = p.sourceFile('dxf');
+    const dwgPath = p.sourceFile('dwg');
+
+    if (fs.existsSync(dxfPath)) {
+      dxfText = fs.readFileSync(dxfPath, 'utf8');
+    } else if (fs.existsSync(dwgPath)) {
+      if (!process.env.ODA_CONVERTER_PATH) {
+        return res.status(422).json({ error: 'DWG conversion requires ODA_CONVERTER_PATH to be set' });
+      }
+      dxfText = await dwgToDxfText(dwgPath);
+    } else {
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+
+    const { inserts } = dxfToSvg(dxfText);
+    res.json(inserts);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // POST /:id/background — upload DXF/DWG as layout floor plan background
 router.post('/:id/background', upload.single('file'), async (req: Request, res: Response) => {
   const tmpPath = req.file?.path;

@@ -67,6 +67,14 @@ export interface ApiProduct {
 	asset?: ApiAsset | null;
 }
 
+export interface DxfInsertData {
+	blockName: string;
+	xCm: number;
+	yCm: number;
+	rotationDeg: number;
+	svgPreview: string;
+}
+
 export interface ApiLayout {
 	id: string;
 	siteId: string;
@@ -157,6 +165,8 @@ export const api = {
 		},
 		deleteBackground: (id: string) =>
 			http<ApiLayout>(`/layouts/${id}/background`, { method: 'DELETE' }),
+		fetchInserts: (id: string) =>
+			http<DxfInsertData[]>(`/layouts/${id}/background/inserts`),
 	},
 	reports: {
 		summary: (layoutId: string, date: string) =>
