@@ -18,3 +18,15 @@ export function assetPaths(assetId: string, fileType?: string) {
     thumbUrl: `/uploads/assets/${assetId}/thumb.svg`,
   };
 }
+
+export function layoutBgPaths(layoutId: string) {
+  const sourceDir = path.resolve(STORAGE_DIR, 'sources', 'layouts', layoutId);
+  const artifactDir = path.resolve(UPLOAD_DIR, 'layouts', layoutId);
+  return {
+    sourceDir,
+    sourceFile: (ext: string) => path.join(sourceDir, `source.${ext}`),
+    artifactDir,
+    bgFile: path.join(artifactDir, 'background.svg'),
+    bgUrl: `/uploads/layouts/${layoutId}/background.svg`,
+  };
+}
