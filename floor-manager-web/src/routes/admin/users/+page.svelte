@@ -11,6 +11,7 @@
 
   let editUser = $state<ApiUser | null>(null);
   let editForm = $state({ name: '', role: '' as string, active: true });
+  let editError = $state<string | null>(null);
 
   let resetUser = $state<ApiUser | null>(null);
   let resetPassword = $state('');
@@ -39,14 +40,20 @@
   function openEdit(u: ApiUser) {
     editUser = u;
     editForm = { name: u.name, role: u.role, active: u.active };
+    editError = null;
   }
 
   async function handleEdit(e: SubmitEvent) {
     e.preventDefault();
     if (!editUser) return;
-    await authApi.updateUser(editUser.id, editForm);
-    editUser = null;
-    await invalidateAll();
+    editError = null;
+    try {
+      await authApi.updateUser(editUser.id, editForm);
+      editUser = null;
+      await invalidateAll();
+    } catch {
+      editError = 'Có lỗi xảy ra khi cập nhật người dùng';
+    }
   }
 
   async function handleReset(e: SubmitEvent) {
@@ -55,10 +62,15 @@
       resetError = 'Mật khẩu tối thiểu 6 ký tự';
       return;
     }
-    await authApi.resetPassword(resetUser.id, resetPassword);
-    resetUser = null;
-    resetPassword = '';
     resetError = null;
+    try {
+      await authApi.resetPassword(resetUser.id, resetPassword);
+      resetUser = null;
+      resetPassword = '';
+      await invalidateAll();
+    } catch {
+      resetError = 'Có lỗi xảy ra khi đặt lại mật khẩu';
+    }
   }
 </script>
 
@@ -154,6 +166,7 @@
           <input type="checkbox" bind:checked={editForm.active} />
           Tài khoản hoạt động
         </label>
+        {#if editError}<p class="text-xs text-red-600">{editError}</p>{/if}
         <div class="flex gap-2 pt-1">
           <button type="submit" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Lưu</button>
           <button type="button" onclick={() => (editUser = null)} class="flex-1 py-2 border rounded-lg text-sm">Huỷ</button>
