@@ -7,6 +7,10 @@ if (!process.env.DATABASE_URL?.includes('_test')) {
   throw new Error('Tests must run against floormanager_test — use `npm test`, do not run vitest directly');
 }
 
+if (!process.env.JWT_ACCESS_SECRET) {
+  throw new Error('JWT_ACCESS_SECRET is not set — run tests via `npm test`');
+}
+
 let _adminToken = '';
 let _planningToken = '';
 let _viewerToken = '';

@@ -26,4 +26,6 @@ async function main() {
   console.log(`Admin created: ${user.email} (id: ${user.id})`);
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main()
+  .catch((err) => { console.error(err); process.exit(1); })
+  .finally(() => prisma.$disconnect());
