@@ -21,6 +21,18 @@
   let editingName = $state(false);
   let exportOpen = $state(false);
   import { triggerTip } from '$lib/stores/onboarding.svelte';
+  import { currentUser } from '$lib/stores/auth';
+  import { goto } from '$app/navigation';
+  import { authApi } from '$lib/services/api';
+
+  let user = $derived($currentUser);
+
+  async function handleLogout() {
+    try { await authApi.logout(); } catch { /* ignore network errors */ }
+    currentUser.set(null);
+    goto('/login');
+  }
+
   let snapOn = $state(true);
   let exportRef: HTMLDivElement;
   // Mobile (< md) overflow menu for secondary actions
@@ -416,6 +428,19 @@
       </div>
     {/if}
   </div>
+
+  {#if user}
+    <div class="flex items-center gap-2 ml-2">
+      <span class="text-xs text-white/70 hidden sm:block">{user.name}</span>
+      <span class="text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/70 hidden sm:block">{user.role}</span>
+      {#if user.role === 'ADMIN'}
+        <a href="/admin/users" class="text-xs text-white/70 hover:text-white hidden sm:block">Users</a>
+      {/if}
+      <button onclick={handleLogout} class="text-xs text-white/70 hover:text-red-400 px-2 py-1 rounded hover:bg-white/10">
+        Đăng xuất
+      </button>
+    </div>
+  {/if}
 
   <span
     class="text-[11px] font-medium transition-all duration-300 max-md:hidden {$saveState === 'saved' ? 'text-emerald-400' : $saveState === 'saving' ? 'text-amber-300 animate-pulse' : 'text-white/50'}"
