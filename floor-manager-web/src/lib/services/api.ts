@@ -5,6 +5,7 @@ export const FILES_BASE = BASE.replace(/\/api$/, '');
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {
 		headers: { 'Content-Type': 'application/json' },
+		credentials: 'include',
 		...init,
 	});
 	if (!res.ok) throw new Error(`API ${init?.method ?? 'GET'} ${path}: ${res.status}`);
@@ -205,4 +206,34 @@ export const api = {
 			}[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
 	},
+};
+
+export interface ApiUser {
+	id: string;
+	email: string;
+	name: string;
+	role: 'ADMIN' | 'PLANNING' | 'VIEWER';
+	active: boolean;
+	createdAt: string;
+}
+
+export const authApi = {
+	login: (email: string, password: string) =>
+		http<ApiUser>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+	logout: () =>
+		http<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+
+	me: () => http<ApiUser>('/auth/me'),
+
+	listUsers: () => http<ApiUser[]>('/users'),
+
+	createUser: (data: { email: string; name: string; role: string; password: string }) =>
+		http<ApiUser>('/users', { method: 'POST', body: JSON.stringify(data) }),
+
+	updateUser: (id: string, data: { name?: string; role?: string; active?: boolean }) =>
+		http<ApiUser>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+	resetPassword: (id: string, password: string) =>
+		http<{ ok: boolean }>(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 };
