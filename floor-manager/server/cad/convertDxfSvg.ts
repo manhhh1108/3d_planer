@@ -76,9 +76,10 @@ export function dxfToSvg(dxfText: string, unitScale?: number): DxfSvgResult {
       allPoints.push([ax1, ay1], [ax2, ay2]);
       // Add cardinal-axis extremes for any quadrant boundary the arc crosses.
       // Use angleLength (radians) when available for correct full-circle handling.
-      const arcLenRad: number = ent.angleLength != null
+      let arcLenRad: number = ent.angleLength != null
         ? ent.angleLength
         : ((endRad - startRad) + 2 * Math.PI) % (2 * Math.PI);
+      if (arcLenRad < 1e-10) arcLenRad = 2 * Math.PI; // full circle
       const span = arcLenRad * 180 / Math.PI; // degrees
       for (const deg of [0, 90, 180, 270]) {
         const d = ((deg - startDeg) + 360) % 360;
