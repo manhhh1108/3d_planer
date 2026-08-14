@@ -232,7 +232,44 @@ export const api = {
 			}[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
 	},
+	dashboard: {
+		get: (date?: string) =>
+			http<ApiDashboard>(date ? `/dashboard?date=${date}` : '/dashboard'),
+	},
 };
+
+export interface ApiDashboard {
+  counts: {
+    sites: number;
+    projects: number;
+    productsOnLayout: number;
+    totalWeightKg: number;
+    totalAreaM2: number;
+  };
+  layoutUsage: {
+    layoutId: string;
+    layoutName: string;
+    siteName: string;
+    usedAreaM2: number;
+    totalAreaM2: number;
+    usagePercent: number;
+    productCount: number;
+  }[];
+  byProcessStage: {
+    stage: string;
+    count: number;
+    totalAreaM2: number;
+    totalWeightKg: number;
+  }[];
+  recentActivity: {
+    type: 'snapshot' | 'product';
+    description: string;
+    layoutId?: string;
+    projectId?: string;
+    createdBy: string | null;
+    createdAt: string;
+  }[];
+}
 
 export interface ApiUser {
 	id: string;
