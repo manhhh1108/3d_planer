@@ -12,6 +12,7 @@ import filesRouter from './routes/files.js';
 import sitesRouter from './routes/sites.js';
 import assetsRouter from './routes/assets.js';
 import usersRouter from './routes/users.js';
+import dashboardRouter from './routes/dashboard.js';
 import { requireAuth, requireRole } from './middleware/auth.js';
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/uploads', express.static(path.join(import.meta.dirname, '../uploads'))
 
 app.use('/api/auth', authRouter);
 app.use('/api/users', requireAuth, requireRole('ADMIN'), usersRouter);
+app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/products', requireAuth, productsRouter);
 app.use('/api/sites', requireAuth, sitesRouter);
