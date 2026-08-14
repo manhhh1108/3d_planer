@@ -13,6 +13,15 @@ router.get('/', async (req: Request, res: Response) => {
       prisma.project.count(),
     ]);
 
+    // --- validate date param ---
+    if (dateParam !== undefined) {
+      const parsedDate = new Date(dateParam);
+      if (isNaN(parsedDate.getTime())) {
+        res.status(400).json({ error: 'Invalid date parameter' });
+        return;
+      }
+    }
+
     // --- find relevant snapshot per layout ---
     const layouts = await prisma.layout.findMany({
       include: { site: { select: { name: true } } },
@@ -34,29 +43,36 @@ router.get('/', async (req: Request, res: Response) => {
       }[];
     };
 
-    const snapshotsByLayout: SnapshotWithPositions[] = [];
+    const layoutIds = layouts.map((l) => l.id);
+    const positionInclude = {
+      positions: {
+        include: { product: { select: { areaM2: true, weightKg: true, processStage: true } } },
+      },
+    } as const;
 
-    for (const layout of layouts) {
-      const snapshot = dateParam
-        ? await prisma.snapshot.findUnique({
-            where: { layoutId_date: { layoutId: layout.id, date: new Date(dateParam) } },
-            include: {
-              positions: {
-                include: { product: { select: { areaM2: true, weightKg: true, processStage: true } } },
-              },
-            },
-          })
-        : await prisma.snapshot.findFirst({
-            where: { layoutId: layout.id },
-            orderBy: { date: 'desc' },
-            include: {
-              positions: {
-                include: { product: { select: { areaM2: true, weightKg: true, processStage: true } } },
-              },
-            },
-          });
+    let snapshotsByLayout: SnapshotWithPositions[];
 
-      if (snapshot) snapshotsByLayout.push(snapshot);
+    if (dateParam) {
+      // Fetch all snapshots for the given date in one query
+      snapshotsByLayout = await prisma.snapshot.findMany({
+        where: { layoutId: { in: layoutIds }, date: new Date(dateParam) },
+        include: positionInclude,
+      });
+    } else {
+      // Fetch all snapshots with positions, then keep only the latest per layout
+      const allSnapshots = await prisma.snapshot.findMany({
+        where: { layoutId: { in: layoutIds } },
+        orderBy: { date: 'desc' },
+        include: positionInclude,
+      });
+      const seenLayoutIds = new Set<string>();
+      snapshotsByLayout = [];
+      for (const snap of allSnapshots) {
+        if (!seenLayoutIds.has(snap.layoutId)) {
+          seenLayoutIds.add(snap.layoutId);
+          snapshotsByLayout.push(snap);
+        }
+      }
     }
 
     // --- aggregate metrics from selected snapshots ---
@@ -88,14 +104,14 @@ router.get('/', async (req: Request, res: Response) => {
       const usedAreaM2 = snap
         ? snap.positions.reduce((sum, p) => sum + (p.product.areaM2 ?? 0), 0)
         : 0;
-      const totalAreaM2 = layout.widthM * layout.heightM;
+      const layoutAreaM2 = layout.widthM * layout.heightM;
       return {
         layoutId: layout.id,
         layoutName: layout.name,
         siteName: layout.site.name,
         usedAreaM2: Math.round(usedAreaM2 * 100) / 100,
-        totalAreaM2: Math.round(totalAreaM2 * 100) / 100,
-        usagePercent: totalAreaM2 > 0 ? Math.round((usedAreaM2 / totalAreaM2) * 1000) / 10 : 0,
+        totalAreaM2: Math.round(layoutAreaM2 * 100) / 100,
+        usagePercent: layoutAreaM2 > 0 ? Math.round((usedAreaM2 / layoutAreaM2) * 1000) / 10 : 0,
         productCount: snap ? snap.positions.length : 0,
       };
     });
