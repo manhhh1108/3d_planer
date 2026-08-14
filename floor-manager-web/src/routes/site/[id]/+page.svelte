@@ -15,6 +15,38 @@
   let newLayoutW = $state(100);
   let newLayoutH = $state(60);
   let confirmDeleteId = $state<string | null>(null);
+  let uploadingBgFor = $state<string | null>(null);
+  let bgError = $state<string | null>(null);
+
+  async function uploadBackground(layoutId: string, file: File) {
+    bgError = null;
+    uploadingBgFor = layoutId;
+    try {
+      await api.layouts.uploadBackground(layoutId, file);
+      await refresh();
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : 'Upload nền thất bại';
+    } finally {
+      uploadingBgFor = null;
+    }
+  }
+
+  async function deleteBackground(layoutId: string) {
+    bgError = null;
+    try {
+      await api.layouts.deleteBackground(layoutId);
+      await refresh();
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : 'Xóa nền thất bại';
+    }
+  }
+
+  function onBgFileChange(layoutId: string, ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) uploadBackground(layoutId, file);
+    input.value = '';
+  }
 
   async function refresh() {
     loading = true;
@@ -95,6 +127,30 @@
               </div>
               <div class="mt-3 text-xs text-blue-600 font-medium">Mở editor →</div>
             </a>
+            <div class="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2" onclick={(e) => e.stopPropagation()}>
+              {#if layout.backgroundFile}
+                <span class="text-[11px] text-green-600 font-medium">✓ Nền DXF</span>
+                <button
+                  onclick={() => deleteBackground(layout.id)}
+                  class="text-[11px] text-red-400 hover:text-red-600 transition-colors"
+                >Xóa nền</button>
+              {:else}
+                <label class="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer flex items-center gap-1 transition-colors">
+                  <input
+                    type="file"
+                    accept=".dxf,.dwg"
+                    class="hidden"
+                    disabled={uploadingBgFor === layout.id}
+                    onchange={(e) => onBgFileChange(layout.id, e)}
+                  />
+                  {#if uploadingBgFor === layout.id}
+                    <span>Đang xử lý…</span>
+                  {:else}
+                    <span>Upload nền DXF/DWG</span>
+                  {/if}
+                </label>
+              {/if}
+            </div>
             {#if confirmDeleteId === layout.id}
               <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
                 <span class="text-xs text-gray-500">Xóa?</span>
@@ -112,6 +168,9 @@
             {/if}
           </div>
         {/each}
+        {#if bgError}
+          <div class="col-span-full mt-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 text-sm">{bgError}</div>
+        {/if}
       </div>
     {/if}
   </div>

@@ -411,3 +411,16 @@ export function drawMinimap(
   mctx.strokeStyle = '#cbd5e1'; mctx.lineWidth = 1; mctx.strokeRect(0, 0, mw, mh);
 }
 
+export function drawLayoutBackground(
+  cs: CanvasState,
+  img: HTMLImageElement,
+  widthCm: number,
+  heightCm: number
+): void {
+  const origin = wts(cs, 0, 0);
+  cs.ctx.save();
+  cs.ctx.globalAlpha = 0.4;
+  cs.ctx.drawImage(img, origin.x, origin.y, widthCm * cs.zoom, heightCm * cs.zoom);
+  cs.ctx.restore();
+}
+
