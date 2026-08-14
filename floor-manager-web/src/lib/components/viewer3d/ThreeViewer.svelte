@@ -675,7 +675,7 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 1, 20000);
+    camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 1, 2000000);
     camera.position.set(800, 600, 800);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -919,6 +919,15 @@
       const maxDim = Math.max(size.x, size.z, 200);
       controls.target.set(center.x, 0, center.z);
       camera.position.set(center.x + maxDim * 1.8, maxDim * 1.4, center.z + maxDim * 1.8);
+      // Expand shadow frustum to cover the actual scene extent
+      const halfExt = maxDim * 1.5;
+      sunLight.position.set(center.x + 500, 1200, center.z + 800);
+      sunLight.shadow.camera.left = -halfExt;
+      sunLight.shadow.camera.right = halfExt;
+      sunLight.shadow.camera.top = halfExt;
+      sunLight.shadow.camera.bottom = -halfExt;
+      sunLight.shadow.camera.far = halfExt * 4;
+      sunLight.shadow.camera.updateProjectionMatrix();
     } else {
       controls.target.set(0, 0, 0);
       camera.position.set(500, 700, 500);
@@ -1063,11 +1072,12 @@
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.z, 500);
-    
+
     // Animate camera to top-down position
     camera.position.set(center.x, maxDim * 1.5, center.z);
     controls.target.set(center.x, 0, center.z);
     controls.update();
+    markSceneDirty();
   }
 
   function toggleWalkthroughMode() {
@@ -1082,10 +1092,12 @@
     walkthroughMode = true;
     controls.enabled = false;
 
-    // Position camera at eye height
-    const startPos = { x: 0, y: eyeHeight, z: 0 };
-    camera.position.set(startPos.x, startPos.y, startPos.z);
-    camera.lookAt(startPos.x, startPos.y, startPos.z - 100); // Look forward initially
+    // Start at center of scene objects (or origin if empty)
+    const box = new THREE.Box3().setFromObject(wallGroup);
+    const startX = box.isEmpty() ? 0 : box.getCenter(new THREE.Vector3()).x;
+    const startZ = box.isEmpty() ? 0 : box.getCenter(new THREE.Vector3()).z;
+    camera.position.set(startX, eyeHeight, startZ);
+    camera.lookAt(startX, eyeHeight, startZ - 100);
     pointerControls.lock();
   }
   
