@@ -141,6 +141,22 @@ export const api = {
 		update: (id: string, data: Partial<Omit<ApiLayout, 'id' | 'siteId' | 'snapshots'>>) =>
 			http<ApiLayout>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/layouts/${id}`, { method: 'DELETE' }),
+		uploadBackground: async (id: string, file: File): Promise<ApiLayout> => {
+			const fd = new FormData();
+			fd.append('file', file);
+			const res = await fetch(`${BASE}/layouts/${id}/background`, {
+				method: 'POST',
+				body: fd,
+				credentials: 'include',
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error((body as any).error ?? `Upload nền thất bại (${res.status})`);
+			}
+			return res.json();
+		},
+		deleteBackground: (id: string) =>
+			http<ApiLayout>(`/layouts/${id}/background`, { method: 'DELETE' }),
 	},
 	reports: {
 		summary: (layoutId: string, date: string) =>

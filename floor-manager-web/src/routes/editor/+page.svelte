@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode } from '$lib/stores/project';
+  import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
+  import { api, FILES_BASE } from '$lib/services/api';
   import { markClean } from '$lib/stores/saveStatus';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
@@ -69,6 +70,14 @@
           const project = await backendStore.load(layoutId);
           if (!project) throw new Error('Không tìm thấy layout');
           currentProject.set(project);
+          // Load layout metadata for canvas background
+          try {
+            const layout = await api.layouts.get(layoutId);
+            layoutBgFile.set(layout.backgroundFile ? `${FILES_BASE}${layout.backgroundFile}` : null);
+            layoutDimsCm.set({ widthCm: layout.widthM * 100, heightCm: layout.heightM * 100 });
+          } catch {
+            // non-critical: background won't show but editor still works
+          }
           markClean();
         } catch (e: any) {
           loadError = e?.message ?? 'Không tải được layout từ server';

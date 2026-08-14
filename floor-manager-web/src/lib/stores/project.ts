@@ -941,3 +941,7 @@ export const canvasZoom = writable<number>(1);
 export const canvasCamX = writable<number>(0);
 export const canvasCamY = writable<number>(0);
 
+// Layout background — set by editor page after loading; read by FloorPlanCanvas
+export const layoutBgFile = writable<string | null>(null);
+export const layoutDimsCm = writable<{ widthCm: number; heightCm: number }>({ widthCm: 0, heightCm: 0 });
+
