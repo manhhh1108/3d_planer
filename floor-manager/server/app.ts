@@ -13,6 +13,7 @@ import sitesRouter from './routes/sites.js';
 import assetsRouter from './routes/assets.js';
 import usersRouter from './routes/users.js';
 import dashboardRouter from './routes/dashboard.js';
+import plansRouter from './routes/plans.js';
 import { requireAuth, requireRole } from './middleware/auth.js';
 
 const app = express();
@@ -29,6 +30,7 @@ app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/products', requireAuth, productsRouter);
 app.use('/api/sites', requireAuth, sitesRouter);
 app.use('/api/layouts', requireAuth, layoutsRouter);
+app.use('/api/plans', requireAuth, plansRouter);
 app.use('/api/snapshots', requireAuth, snapshotsRouter);
 app.use('/api/reports', requireAuth, reportsRouter);
 app.use('/api/files', requireAuth, filesRouter);
