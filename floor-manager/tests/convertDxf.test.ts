@@ -28,6 +28,6 @@ describe('dxfToFootprint', () => {
   });
 
   it('throws a clear error on empty drawing', () => {
-    expect(() => dxfToFootprint('0\nEOF\n', undefined)).toThrow(/no geometry/i);
+    expect(() => dxfToFootprint('0\nEOF\n', undefined)).toThrow(/không chứa|no geometry/i);
   });
 });

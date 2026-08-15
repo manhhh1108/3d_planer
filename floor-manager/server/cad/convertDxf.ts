@@ -37,7 +37,14 @@ export function dxfToFootprint(dxfText: string, unitScale: number | undefined): 
     }
   }
 
-  if (allPoints.length === 0) throw new Error('DXF contains no geometry');
+  // Phát hiện file 3D (3DSOLID/3DFACE) — không hỗ trợ, hướng dẫn dùng STP/IFC
+  const has3D = (dxf.entities ?? []).some(
+    (e) => e.type === '3DSOLID' || e.type === '3DFACE' || e.type === 'MESH'
+  );
+  if (allPoints.length === 0 && has3D) {
+    throw new Error('File DWG/DXF chứa mô hình 3D (3DSOLID) — không hỗ trợ. Vui lòng export sang định dạng STP hoặc IFC để upload.');
+  }
+  if (allPoints.length === 0) throw new Error('DXF không chứa hình học 2D (LWPOLYLINE/POLYLINE). Kiểm tra lại file.');
 
   const rings = closedRings.length > 0 ? closedRings : [convexHull(allPoints)];
 
