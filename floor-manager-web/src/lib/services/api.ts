@@ -250,6 +250,8 @@ export const api = {
 			http<ApiPlanItem>(`/plans/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
 		removeItem: (itemId: string) => http<void>(`/plans/items/${itemId}`, { method: 'DELETE' }),
 		conflicts: (planId: string) => http<ApiConflictResult>(`/plans/${planId}/conflicts`),
+		compare: (planId: string, snapshotId?: string) =>
+			http<ApiCompareResult>(`/plans/${planId}/compare${snapshotId ? `?snapshotId=${snapshotId}` : ''}`),
 	},
 };
 
@@ -327,6 +329,24 @@ export interface ApiConflict {
 export interface ApiConflictResult {
   conflicts: ApiConflict[];
   suggestions: { itemId: string; suggestedStart: string; reason: string }[];
+}
+
+export interface ApiCompareItem {
+  productId: string;
+  productName: string;
+  productCode: string;
+  status: 'matched' | 'misplaced' | 'missing' | 'unplanned';
+  planned: { x: number; y: number } | null;
+  actual: { x: number; y: number } | null;
+  distanceM: number | null;
+}
+
+export interface ApiCompareResult {
+  planId: string;
+  snapshotId: string | null;
+  snapshotDate: string | null;
+  items: ApiCompareItem[];
+  summary: { matched: number; misplaced: number; missing: number; unplanned: number };
 }
 
 export interface ApiUser {

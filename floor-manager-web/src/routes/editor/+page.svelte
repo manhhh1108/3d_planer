@@ -3,6 +3,7 @@
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
   import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult } from '$lib/services/api';
+  import ComparisonOverlay from '$lib/components/editor/ComparisonOverlay.svelte';
   import PlanToolbar from '$lib/components/editor/PlanToolbar.svelte';
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
   import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
@@ -63,6 +64,7 @@
   let backendLayoutId = $state<string | null>(null);
 
   let activeTab = $state<'layout' | 'planning'>('layout');
+  let showComparison = $state(false);
   let plans = $state<ApiPlan[]>([]);
   let selectedPlanId = $state<string | null>(null);
   let planItems = $state<ApiPlanItem[]>([]);
@@ -161,6 +163,12 @@
           class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'planning' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
           onclick={() => { activeTab = 'planning'; loadPlans(); }}
         >Kế hoạch</button>
+        <div class="ml-auto flex items-center">
+          <button
+            class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {showComparison ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}"
+            onclick={() => showComparison = !showComparison}
+          >So sánh KH/TT</button>
+        </div>
       </div>
     {/if}
     {#if activeTab === 'layout' || !backendLayoutId}
@@ -198,6 +206,7 @@
           <LayersPanel />
         {/if}
         <PropertiesPanel is3D={mode === '3d'} />
+        <ComparisonOverlay layoutId={backendLayoutId ?? ''} show={showComparison} onClose={() => showComparison = false} />
       </div>
       {#if backendLayoutId}
         <TimelineBar layoutId={backendLayoutId} />
