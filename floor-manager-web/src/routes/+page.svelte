@@ -55,21 +55,21 @@
   function timeAgo(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'vua xong';
-    if (mins < 60) return `${mins} phut truoc`;
+    if (mins < 1) return 'vừa xong';
+    if (mins < 60) return `${mins} phút trước`;
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} gio truoc`;
+    if (hours < 24) return `${hours} giờ trước`;
     const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} ngay truoc`;
+    if (days < 30) return `${days} ngày trước`;
     return new Date(iso).toLocaleDateString('vi-VN');
   }
 
   const STAGE_COLORS: Record<string, string> = {
-    'Han': 'bg-amber-400',
-    'Son': 'bg-green-400',
-    'Lap rap': 'bg-blue-400',
-    'Cat': 'bg-red-400',
-    'Khac': 'bg-gray-400',
+    'Hàn': 'bg-amber-400',
+    'Sơn': 'bg-green-400',
+    'Lắp ráp': 'bg-blue-400',
+    'Cắt': 'bg-red-400',
+    'Khác': 'bg-gray-400',
   };
 
   let maxStageArea = $derived(
@@ -142,7 +142,7 @@
       {#if dashboard}
         <!-- Date picker -->
         <div class="flex items-center justify-between mb-6">
-          <h2 class="text-base font-bold text-gray-800">Tong quan</h2>
+          <h2 class="text-base font-bold text-gray-800">Tổng quan</h2>
           <div class="flex items-center gap-2">
             <input
               type="date"
@@ -153,7 +153,7 @@
             {#if dashDate}
               <button onclick={() => { dashDate = ''; refreshDashboard(); }}
                 class="px-3 py-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 font-medium">
-                Moi nhat
+                Mới nhất
               </button>
             {/if}
           </div>
@@ -162,19 +162,19 @@
         <!-- Summary Cards -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Mat bang</p>
+            <p class="text-xs text-gray-400 font-medium uppercase">Mặt bằng</p>
             <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.sites}</p>
           </div>
           <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Du an</p>
+            <p class="text-xs text-gray-400 font-medium uppercase">Dự án</p>
             <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.projects}</p>
           </div>
           <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">SP tren mat bang</p>
+            <p class="text-xs text-gray-400 font-medium uppercase">SP trên mặt bằng</p>
             <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.productsOnLayout}</p>
           </div>
           <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Tong khoi luong</p>
+            <p class="text-xs text-gray-400 font-medium uppercase">Tổng khối lượng</p>
             <p class="text-2xl font-bold text-gray-800 mt-1">{(dashboard.counts.totalWeightKg / 1000).toFixed(1)} T</p>
           </div>
         </div>
@@ -183,9 +183,9 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <!-- Layout Usage Cards -->
           <div>
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Ty le lap day</h3>
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Tỷ lệ lấp đầy</h3>
             {#if dashboard.layoutUsage.length === 0}
-              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chua co layout</div>
+              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có layout</div>
             {:else}
               <div class="space-y-3">
                 {#each dashboard.layoutUsage as lu}
@@ -206,7 +206,7 @@
                         style="width: {Math.min(lu.usagePercent, 100)}%"
                       ></div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-1.5">{lu.usedAreaM2} m2 / {lu.totalAreaM2} m2 · {lu.productCount} san pham</p>
+                    <p class="text-xs text-gray-400 mt-1.5">{lu.usedAreaM2} m2 / {lu.totalAreaM2} m2 · {lu.productCount} sản phẩm</p>
                   </a>
                 {/each}
               </div>
@@ -215,9 +215,9 @@
 
           <!-- Process Stage Chart -->
           <div>
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Theo cong doan</h3>
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Theo công đoạn</h3>
             {#if dashboard.byProcessStage.length === 0}
-              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chua co du lieu</div>
+              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có dữ liệu</div>
             {:else}
               <div class="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
                 {#each dashboard.byProcessStage as stage}
@@ -242,7 +242,7 @@
         <!-- Recent Activity -->
         {#if dashboard.recentActivity.length > 0}
           <div class="mb-8">
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Hoat dong gan day</h3>
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Hoạt động gần đây</h3>
             <div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
               {#each dashboard.recentActivity as activity}
                 <div class="px-4 py-3 flex items-center gap-3">
@@ -265,7 +265,7 @@
 
         <hr class="border-gray-200 mb-8" />
       {:else if dashLoading}
-        <div class="text-center py-8 text-gray-400 text-sm mb-6">Dang tai dashboard...</div>
+        <div class="text-center py-8 text-gray-400 text-sm mb-6">Đang tải dashboard...</div>
       {/if}
 
       <!-- ===== Khu Mặt bằng ===== -->

@@ -191,13 +191,13 @@
 >
   {#if items.length === 0 && planId}
     <div class="flex items-center justify-center h-full min-h-[200px] text-gray-400 text-sm">
-      Keo san pham tu danh sach ben trai vao day de tao ke hoach
+      Kéo sản phẩm từ danh sách bên trái vào đây để tạo kế hoạch
     </div>
   {:else if items.length > 0}
     <div style="width: {chartWidth}px; min-width: 100%">
       <!-- Header -->
       <div class="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 flex" style="height: {HEADER_HEIGHT}px">
-        <div class="shrink-0 border-r border-gray-200 bg-gray-50 flex items-center px-2 text-[10px] text-gray-400 font-semibold uppercase" style="width: {LABEL_WIDTH}px">San pham</div>
+        <div class="shrink-0 border-r border-gray-200 bg-gray-50 flex items-center px-2 text-[10px] text-gray-400 font-semibold uppercase" style="width: {LABEL_WIDTH}px">Sản phẩm</div>
         <div class="relative flex-1">
           {#each headerDates as hd}
             <div class="absolute top-0 text-[10px] text-gray-400 font-medium px-1 border-l border-gray-100" style="left: {hd.x - LABEL_WIDTH}px; height: {HEADER_HEIGHT}px; line-height: {HEADER_HEIGHT}px">
@@ -244,7 +244,7 @@
                 <button
                   class="opacity-0 group-hover:opacity-100 ml-0.5 w-4 h-4 rounded bg-black/30 text-white text-[8px] flex items-center justify-center hover:bg-black/50 shrink-0"
                   onclick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
-                  title="Xoa"
+                  title="Xoá"
                 >x</button>
 
                 <!-- Resize right -->

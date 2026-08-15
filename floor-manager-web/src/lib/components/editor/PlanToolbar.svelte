@@ -43,32 +43,32 @@
       {/each}
     </select>
   {:else}
-    <span class="text-sm text-gray-400">Chua co plan</span>
+    <span class="text-sm text-gray-400">Chưa có plan</span>
   {/if}
 
   {#if showCreate}
     <input
       type="text"
       bind:value={newName}
-      placeholder="Ten plan..."
+      placeholder="Tên plan..."
       class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 w-40"
       onkeydown={(e) => { if (e.key === 'Enter') createPlan(); if (e.key === 'Escape') showCreate = false; }}
     />
-    <button onclick={createPlan} disabled={!newName.trim()} class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 disabled:opacity-40">Tao</button>
-    <button onclick={() => showCreate = false} class="px-2 py-1.5 text-xs text-gray-500">Huy</button>
+    <button onclick={createPlan} disabled={!newName.trim()} class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 disabled:opacity-40">Tạo</button>
+    <button onclick={() => showCreate = false} class="px-2 py-1.5 text-xs text-gray-500">Huỷ</button>
   {:else}
-    <button onclick={() => showCreate = true} class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100">+ Tao plan</button>
+    <button onclick={() => showCreate = true} class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100">+ Tạo plan</button>
   {/if}
 
   {#if selectedPlanId}
     {#if confirmDeleteId === selectedPlanId}
       <div class="flex items-center gap-1 ml-auto">
-        <span class="text-xs text-red-500">Xoa plan?</span>
-        <button onclick={() => deletePlan(selectedPlanId!)} class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Co</button>
-        <button onclick={() => confirmDeleteId = null} class="px-2 py-1 bg-gray-200 text-xs rounded">Khong</button>
+        <span class="text-xs text-red-500">Xoá plan?</span>
+        <button onclick={() => deletePlan(selectedPlanId!)} class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
+        <button onclick={() => confirmDeleteId = null} class="px-2 py-1 bg-gray-200 text-xs rounded">Không</button>
       </div>
     {:else}
-      <button onclick={() => confirmDeleteId = selectedPlanId} class="ml-auto px-3 py-1.5 text-xs text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Xoa plan</button>
+      <button onclick={() => confirmDeleteId = selectedPlanId} class="ml-auto px-3 py-1.5 text-xs text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Xoá plan</button>
     {/if}
   {/if}
 </div>

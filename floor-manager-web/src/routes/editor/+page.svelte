@@ -156,11 +156,11 @@
         <button
           class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'layout' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
           onclick={() => activeTab = 'layout'}
-        >Bo tri</button>
+        >Bố trí</button>
         <button
           class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'planning' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
           onclick={() => { activeTab = 'planning'; loadPlans(); }}
-        >Ke hoach</button>
+        >Kế hoạch</button>
       </div>
     {/if}
     {#if activeTab === 'layout' || !backendLayoutId}
