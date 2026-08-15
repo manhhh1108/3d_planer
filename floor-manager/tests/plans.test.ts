@@ -174,3 +174,99 @@ describe('Conflict Detection', () => {
     expect(res.body.conflicts).toHaveLength(0);
   });
 });
+
+describe('Plan vs Snapshot Comparison', () => {
+  it('returns empty when no snapshot exists', async () => {
+    const { layout } = await seedSiteLayout();
+    const token = adminToken();
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    const res = await request(app).get(`/api/plans/${plan.id}/compare`).set('Cookie', `access_token=${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.snapshotId).toBeNull();
+    expect(res.body.items).toEqual([]);
+    expect(res.body.summary).toEqual({ matched: 0, misplaced: 0, missing: 0, unplanned: 0 });
+  });
+
+  it('classifies matched, misplaced, missing, unplanned correctly', async () => {
+    const { layout } = await seedSiteLayout();
+    const { product: pA } = await seedProduct({ name: 'A', code: 'A1' });
+    const { product: pB } = await seedProduct({ name: 'B', code: 'B1' });
+    const { product: pC } = await seedProduct({ name: 'C', code: 'C1' });
+    const { product: pD } = await seedProduct({ name: 'D', code: 'D1' });
+    const token = adminToken();
+
+    // Create plan with items for A, B, C (not D)
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const futureEnd = '2099-12-31';
+
+    // A at (10,10), B at (50,50), C at (80,80)
+    await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: pA.id, x: 10, y: 10, startDate: '2020-01-01', endDate: futureEnd });
+    await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: pB.id, x: 50, y: 50, startDate: '2020-01-01', endDate: futureEnd });
+    await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: pC.id, x: 80, y: 80, startDate: '2020-01-01', endDate: futureEnd });
+
+    // Create snapshot: A at (10,10) matched, B at (40,40) misplaced, D at (20,20) unplanned, C missing
+    await request(app).post('/api/snapshots').set('Cookie', `access_token=${token}`)
+      .send({
+        layoutId: layout.id,
+        date: today,
+        positions: [
+          { productId: pA.id, x: 10, y: 10 },
+          { productId: pB.id, x: 40, y: 40 },
+          { productId: pD.id, x: 20, y: 20 },
+        ],
+      });
+
+    const res = await request(app).get(`/api/plans/${plan.id}/compare`).set('Cookie', `access_token=${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.summary.matched).toBe(1);    // A
+    expect(res.body.summary.misplaced).toBe(1);   // B (dist ~14.14m)
+    expect(res.body.summary.missing).toBe(1);     // C
+    expect(res.body.summary.unplanned).toBe(1);   // D
+
+    const a = res.body.items.find((i: any) => i.productCode === 'A1');
+    expect(a.status).toBe('matched');
+    expect(a.distanceM).toBe(0);
+
+    const b = res.body.items.find((i: any) => i.productCode === 'B1');
+    expect(b.status).toBe('misplaced');
+    expect(b.distanceM).toBeGreaterThan(2);
+
+    const c = res.body.items.find((i: any) => i.productCode === 'C1');
+    expect(c.status).toBe('missing');
+    expect(c.actual).toBeNull();
+
+    const d = res.body.items.find((i: any) => i.productCode === 'D1');
+    expect(d.status).toBe('unplanned');
+    expect(d.planned).toBeNull();
+  });
+
+  it('filters plan items by snapshot date', async () => {
+    const { layout } = await seedSiteLayout();
+    const { product: pA } = await seedProduct({ name: 'A', code: 'A1' });
+    const token = adminToken();
+
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    // Plan item: Sep 1 - Sep 15
+    await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: pA.id, x: 10, y: 10, startDate: '2026-09-01', endDate: '2026-09-15' });
+
+    // Snapshot on Aug 1 (before plan item period)
+    await request(app).post('/api/snapshots').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, date: '2026-08-01', positions: [{ productId: pA.id, x: 10, y: 10 }] });
+
+    const res = await request(app).get(`/api/plans/${plan.id}/compare`).set('Cookie', `access_token=${token}`);
+    // Plan item not active on Aug 1, so A is unplanned
+    expect(res.body.summary.unplanned).toBe(1);
+    expect(res.body.summary.matched).toBe(0);
+  });
+});

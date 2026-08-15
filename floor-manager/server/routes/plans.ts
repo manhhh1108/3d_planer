@@ -243,4 +243,124 @@ router.get('/:id/conflicts', async (req: Request, res: Response) => {
   }
 });
 
+// GET /plans/:id/compare?snapshotId=xxx
+router.get('/:id/compare', async (req: Request, res: Response) => {
+  try {
+    const plan = await prisma.plan.findUnique({ where: { id: String(req.params.id) } });
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    const snapshotId = req.query.snapshotId as string | undefined;
+    const snapshot = snapshotId
+      ? await prisma.snapshot.findUnique({
+          where: { id: snapshotId },
+          include: { positions: { include: { product: { select: { id: true, name: true, code: true } } } } },
+        })
+      : await prisma.snapshot.findFirst({
+          where: { layoutId: plan.layoutId },
+          orderBy: { date: 'desc' },
+          include: { positions: { include: { product: { select: { id: true, name: true, code: true } } } } },
+        });
+
+    if (!snapshot) {
+      return res.json({
+        planId: plan.id,
+        snapshotId: null,
+        snapshotDate: null,
+        items: [],
+        summary: { matched: 0, misplaced: 0, missing: 0, unplanned: 0 },
+      });
+    }
+
+    const snapshotDate = new Date(snapshot.date);
+
+    // PlanItems active on snapshot date
+    const planItems = await prisma.planItem.findMany({
+      where: {
+        planId: plan.id,
+        startDate: { lte: snapshotDate },
+        endDate: { gt: snapshotDate },
+      },
+      include: { product: { select: { id: true, name: true, code: true } } },
+    });
+
+    const positions = snapshot.positions;
+
+    type CompareItem = {
+      productId: string;
+      productName: string;
+      productCode: string;
+      status: 'matched' | 'misplaced' | 'missing' | 'unplanned';
+      planned: { x: number; y: number } | null;
+      actual: { x: number; y: number } | null;
+      distanceM: number | null;
+    };
+
+    const MATCH_THRESHOLD = 2; // meters
+    const result: CompareItem[] = [];
+    const matchedPositionIds = new Set<string>();
+
+    for (const pi of planItems) {
+      const pos = positions.find((p) => p.productId === pi.productId);
+      if (pos) {
+        matchedPositionIds.add(pos.id);
+        const dx = pi.x - pos.x;
+        const dy = pi.y - pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distRounded = Math.round(dist * 100) / 100;
+        result.push({
+          productId: pi.productId,
+          productName: pi.product.name,
+          productCode: pi.product.code,
+          status: dist < MATCH_THRESHOLD ? 'matched' : 'misplaced',
+          planned: { x: pi.x, y: pi.y },
+          actual: { x: pos.x, y: pos.y },
+          distanceM: distRounded,
+        });
+      } else {
+        result.push({
+          productId: pi.productId,
+          productName: pi.product.name,
+          productCode: pi.product.code,
+          status: 'missing',
+          planned: { x: pi.x, y: pi.y },
+          actual: null,
+          distanceM: null,
+        });
+      }
+    }
+
+    // Unplanned: in snapshot but not matched to any plan item
+    for (const pos of positions) {
+      if (!matchedPositionIds.has(pos.id)) {
+        result.push({
+          productId: pos.productId,
+          productName: pos.product.name,
+          productCode: pos.product.code,
+          status: 'unplanned',
+          planned: null,
+          actual: { x: pos.x, y: pos.y },
+          distanceM: null,
+        });
+      }
+    }
+
+    const summary = {
+      matched: result.filter((r) => r.status === 'matched').length,
+      misplaced: result.filter((r) => r.status === 'misplaced').length,
+      missing: result.filter((r) => r.status === 'missing').length,
+      unplanned: result.filter((r) => r.status === 'unplanned').length,
+    };
+
+    res.json({
+      planId: plan.id,
+      snapshotId: snapshot.id,
+      snapshotDate: snapshot.date.toISOString().slice(0, 10),
+      items: result,
+      summary,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
