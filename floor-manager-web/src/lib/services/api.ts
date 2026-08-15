@@ -236,6 +236,21 @@ export const api = {
 		get: (date?: string) =>
 			http<ApiDashboard>(date ? `/dashboard?date=${date}` : '/dashboard'),
 	},
+	plans: {
+		list: (layoutId: string) => http<ApiPlan[]>(`/plans?layoutId=${layoutId}`),
+		create: (data: { layoutId: string; name: string }) =>
+			http<ApiPlan>('/plans', { method: 'POST', body: JSON.stringify(data) }),
+		update: (id: string, data: { name?: string; active?: boolean }) =>
+			http<ApiPlan>(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+		remove: (id: string) => http<void>(`/plans/${id}`, { method: 'DELETE' }),
+		items: (planId: string) => http<ApiPlanItem[]>(`/plans/${planId}/items`),
+		createItem: (planId: string, data: { productId: string; x: number; y: number; rotation?: number; startDate: string; endDate: string }) =>
+			http<ApiPlanItem>(`/plans/${planId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+		updateItem: (itemId: string, data: { x?: number; y?: number; rotation?: number; startDate?: string; endDate?: string }) =>
+			http<ApiPlanItem>(`/plans/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
+		removeItem: (itemId: string) => http<void>(`/plans/items/${itemId}`, { method: 'DELETE' }),
+		conflicts: (planId: string) => http<ApiConflictResult>(`/plans/${planId}/conflicts`),
+	},
 };
 
 export interface ApiDashboard {
@@ -269,6 +284,49 @@ export interface ApiDashboard {
     createdBy: string | null;
     createdAt: string;
   }[];
+}
+
+export interface ApiPlan {
+  id: string;
+  layoutId: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  _count?: { items: number };
+}
+
+export interface ApiPlanItem {
+  id: string;
+  planId: string;
+  productId: string;
+  x: number;
+  y: number;
+  rotation: number;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  product?: {
+    id: string;
+    name: string;
+    code: string;
+    processStage: string | null;
+    color: string;
+    areaM2: number | null;
+    weightKg: number | null;
+    metadata: { widthM?: number; depthM?: number; heightM?: number } | null;
+  };
+}
+
+export interface ApiConflict {
+  itemA: { id: string; productName: string; startDate: string; endDate: string };
+  itemB: { id: string; productName: string; startDate: string; endDate: string };
+  overlapStart: string;
+  overlapEnd: string;
+}
+
+export interface ApiConflictResult {
+  conflicts: ApiConflict[];
+  suggestions: { itemId: string; suggestedStart: string; reason: string }[];
 }
 
 export interface ApiUser {
