@@ -26,6 +26,11 @@
     await api.plans.remove(id);
     confirmDeleteId = null;
     await onPlansChanged();
+    // Nếu xoá plan đang chọn, chọn plan đầu tiên còn lại
+    if (selectedPlanId === id) {
+      const remaining = plans.filter(p => p.id !== id);
+      onSelectPlan(remaining.length > 0 ? remaining[0].id : '');
+    }
   }
 </script>
 

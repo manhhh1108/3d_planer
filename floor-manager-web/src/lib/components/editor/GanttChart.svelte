@@ -14,8 +14,13 @@
   const HEADER_HEIGHT = 48;
   const LABEL_WIDTH = 120;
 
+  // Local copy for drag visual feedback (avoid mutating prop directly)
+  let localItems = $state<ApiPlanItem[]>([]);
+  $effect(() => { localItems = [...items]; });
+
   function getDateRange() {
-    if (items.length === 0) {
+    const src = localItems.length > 0 ? localItems : items;
+    if (src.length === 0) {
       const today = new Date();
       const start = new Date(today);
       start.setDate(start.getDate() - 7);
@@ -23,8 +28,8 @@
       end.setDate(end.getDate() + 30);
       return { start, end };
     }
-    const starts = items.map(i => new Date(i.startDate).getTime());
-    const ends = items.map(i => new Date(i.endDate).getTime());
+    const starts = src.map(i => new Date(i.startDate).getTime());
+    const ends = src.map(i => new Date(i.endDate).getTime());
     const minStart = new Date(Math.min(...starts));
     const maxEnd = new Date(Math.max(...ends));
     minStart.setDate(minStart.getDate() - 7);
@@ -37,8 +42,9 @@
   let chartWidth = $derived(totalDays * DAY_WIDTH + LABEL_WIDTH);
 
   function getRows() {
+    const src = localItems.length > 0 ? localItems : items;
     const map = new Map<string, { productName: string; productCode: string; color: string; items: ApiPlanItem[] }>();
-    for (const item of items) {
+    for (const item of src) {
       const key = item.productId;
       if (!map.has(key)) {
         map.set(key, {
@@ -115,10 +121,12 @@
         if (origStart >= origEnd) return;
       }
 
-      const idx = items.findIndex(i => i.id === item.id);
-      if (idx >= 0) {
-        items[idx] = { ...items[idx], startDate: origStart.toISOString().slice(0, 10), endDate: origEnd.toISOString().slice(0, 10) };
-      }
+      // Update local copy for visual feedback
+      localItems = localItems.map(i =>
+        i.id === item.id
+          ? { ...i, startDate: origStart.toISOString().slice(0, 10), endDate: origEnd.toISOString().slice(0, 10) }
+          : i
+      );
     };
 
     const onMouseUp = async () => {
@@ -126,7 +134,7 @@
       window.removeEventListener('mouseup', onMouseUp);
       if (!dragItemId) return;
 
-      const updated = items.find(i => i.id === dragItemId);
+      const updated = localItems.find(i => i.id === dragItemId);
       if (updated && (updated.startDate !== dragOrigStart || updated.endDate !== dragOrigEnd)) {
         await api.plans.updateItem(dragItemId, {
           startDate: updated.startDate,
@@ -141,6 +149,14 @@
     window.addEventListener('mouseup', onMouseUp);
   }
 
+  // Drop modal state
+  let showDropModal = $state(false);
+  let dropProductId = $state('');
+  let dropStartDate = $state('');
+  let dropEndDate = $state('');
+  let dropX = $state(10);
+  let dropY = $state(10);
+
   async function onDrop(e: DragEvent) {
     e.preventDefault();
     const productId = e.dataTransfer?.getData('text/plan-product-id');
@@ -154,18 +170,24 @@
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 7);
 
-    const posStr = prompt('Vi tri (x, y) tren mat bang (met):', '10, 10');
-    if (!posStr) return;
-    const parts = posStr.split(',').map(Number);
-    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return;
+    dropProductId = productId;
+    dropStartDate = startDate.toISOString().slice(0, 10);
+    dropEndDate = endDate.toISOString().slice(0, 10);
+    dropX = 10;
+    dropY = 10;
+    showDropModal = true;
+  }
 
+  async function confirmDrop() {
+    if (!planId || !dropProductId) return;
     await api.plans.createItem(planId, {
-      productId,
-      x: parts[0],
-      y: parts[1],
-      startDate: startDate.toISOString().slice(0, 10),
-      endDate: endDate.toISOString().slice(0, 10),
+      productId: dropProductId,
+      x: dropX,
+      y: dropY,
+      startDate: dropStartDate,
+      endDate: dropEndDate,
     });
+    showDropModal = false;
     onItemsChanged();
   }
 
@@ -175,11 +197,11 @@
   }
 
   const STAGE_COLORS: Record<string, string> = {
-    'Han': '#f59e0b',
-    'Son': '#22c55e',
-    'Lap rap': '#3b82f6',
-    'Cat': '#ef4444',
-    'Khac': '#6b7280',
+    'Hàn': '#f59e0b',
+    'Sơn': '#22c55e',
+    'Lắp ráp': '#3b82f6',
+    'Cắt': '#ef4444',
+    'Khác': '#6b7280',
   };
 </script>
 
@@ -219,7 +241,7 @@
               {@const left = dayOffset(item.startDate) * DAY_WIDTH}
               {@const width = dayWidth(item.startDate, item.endDate) * DAY_WIDTH}
               {@const isConflicted = conflictedIds.has(item.id)}
-              {@const stageColor = STAGE_COLORS[item.product?.processStage ?? 'Khac'] ?? '#6b7280'}
+              {@const stageColor = STAGE_COLORS[item.product?.processStage ?? 'Khác'] ?? '#6b7280'}
               <div
                 class="absolute top-1 rounded-md flex items-center text-[10px] text-white font-medium px-1 cursor-grab select-none group"
                 class:ring-2={isConflicted}
@@ -227,7 +249,7 @@
                 class:animate-pulse={isConflicted}
                 style="left: {left}px; width: {Math.max(width, 8)}px; height: {ROW_HEIGHT - 8}px; background: {stageColor}"
                 onmousedown={(e) => onBarMouseDown(e, item, 'move')}
-                title="{item.product?.name}: {item.startDate} -> {item.endDate}"
+                title="{item.product?.name}: {item.startDate} → {item.endDate}"
                 role="button"
                 tabindex="0"
               >
@@ -261,3 +283,38 @@
     </div>
   {/if}
 </div>
+
+<!-- Drop modal (thay thế prompt) -->
+{#if showDropModal}
+  <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onclick={() => showDropModal = false} role="presentation">
+    <div class="bg-white rounded-xl shadow-xl p-5 w-80" onclick={(e) => e.stopPropagation()} role="dialog">
+      <h3 class="text-sm font-semibold text-gray-800 mb-4">Thêm vào kế hoạch</h3>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs text-gray-500">X (mét)</label>
+            <input type="number" bind:value={dropX} step="0.5" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Y (mét)</label>
+            <input type="number" bind:value={dropY} step="0.5" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs text-gray-500">Bắt đầu</label>
+            <input type="date" bind:value={dropStartDate} class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Kết thúc</label>
+            <input type="date" bind:value={dropEndDate} class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button onclick={() => showDropModal = false} class="px-3 py-1.5 text-xs text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200">Huỷ</button>
+        <button onclick={confirmDrop} class="px-3 py-1.5 text-xs text-white bg-blue-500 rounded-lg hover:bg-blue-600 font-semibold">Thêm</button>
+      </div>
+    </div>
+  </div>
+{/if}
