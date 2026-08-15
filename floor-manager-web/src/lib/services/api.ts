@@ -210,7 +210,7 @@ export const api = {
 			fd.append('file', file);
 			if (productId) fd.append('productId', productId);
 			if (unitScale) fd.append('unitScale', String(unitScale));
-			const res = await fetch(`${BASE}/assets`, { method: 'POST', body: fd });
+			const res = await fetch(`${BASE}/assets`, { method: 'POST', body: fd, credentials: 'include' });
 			if (!res.ok) throw new Error(`API POST /assets: ${res.status}`);
 			return res.json();
 		},
