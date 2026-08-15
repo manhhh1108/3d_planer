@@ -2,7 +2,10 @@
   import { onMount } from 'svelte';
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
-  import { api, FILES_BASE } from '$lib/services/api';
+  import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult } from '$lib/services/api';
+  import PlanToolbar from '$lib/components/editor/PlanToolbar.svelte';
+  import GanttChart from '$lib/components/editor/GanttChart.svelte';
+  import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
   import { markClean } from '$lib/stores/saveStatus';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
@@ -58,6 +61,25 @@
 
   let loadError = $state<string | null>(null);
   let backendLayoutId = $state<string | null>(null);
+
+  let activeTab = $state<'layout' | 'planning'>('layout');
+  let plans = $state<ApiPlan[]>([]);
+  let selectedPlanId = $state<string | null>(null);
+  let planItems = $state<ApiPlanItem[]>([]);
+  let conflictResult = $state<ApiConflictResult | null>(null);
+
+  async function loadPlans() {
+    if (!backendLayoutId) return;
+    plans = await api.plans.list(backendLayoutId);
+    if (plans.length > 0 && !selectedPlanId) selectedPlanId = plans[0].id;
+    if (selectedPlanId) await loadPlanItems();
+  }
+
+  async function loadPlanItems() {
+    if (!selectedPlanId) { planItems = []; conflictResult = null; return; }
+    planItems = await api.plans.items(selectedPlanId);
+    conflictResult = await api.plans.conflicts(selectedPlanId);
+  }
 
   onMount(() => {
     (async () => {
@@ -129,43 +151,80 @@
 {#if ready}
   <div class="h-screen flex flex-col overflow-hidden">
     <TopBar saveLabel={backendLayoutId ? 'Lưu Snapshot' : 'Save'} />
-    <div class="flex flex-1 overflow-hidden">
-      {#if mode === '2d'}
-        <!-- Build panel: inline sidebar on md+, off-canvas drawer on phones -->
-        {#if buildPanelOpen}
-          <div
-            class="md:hidden fixed inset-x-0 top-12 bottom-0 bg-black/40 z-40"
-            onclick={() => buildPanelOpen = false}
-            aria-hidden="true"
-          ></div>
-        {/if}
-        <div class="h-full max-md:fixed max-md:left-0 max-md:top-12 max-md:bottom-0 max-md:h-auto max-md:z-50 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 {buildPanelOpen ? '' : 'max-md:-translate-x-full'}">
-          <BuildPanel />
-        </div>
-      {/if}
-      <div class="flex-1 min-w-0 relative">
-        {#if mode === '2d'}
-          <FloorPlanCanvas />
-          <AlignmentToolbar />
-        {:else}
-          {#if ThreeViewer}
-            <ThreeViewer />
-          {:else}
-            <div class="flex items-center justify-center h-full text-slate-400">Loading 3D viewer…</div>
-          {/if}
-        {/if}
-        {#if $timelineReadonly && mode === '2d'}
-          <!-- Chặn thao tác chuột khi đang xem snapshot ngày cũ -->
-          <div class="absolute inset-0 z-30 cursor-not-allowed" aria-hidden="true"></div>
-        {/if}
-      </div>
-      {#if showLayers && mode === '2d'}
-        <LayersPanel />
-      {/if}
-      <PropertiesPanel is3D={mode === '3d'} />
-    </div>
     {#if backendLayoutId}
-      <TimelineBar layoutId={backendLayoutId} />
+      <div class="flex border-b border-gray-200 bg-white px-4">
+        <button
+          class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'layout' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
+          onclick={() => activeTab = 'layout'}
+        >Bo tri</button>
+        <button
+          class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'planning' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
+          onclick={() => { activeTab = 'planning'; loadPlans(); }}
+        >Ke hoach</button>
+      </div>
+    {/if}
+    {#if activeTab === 'layout' || !backendLayoutId}
+      <div class="flex flex-1 overflow-hidden">
+        {#if mode === '2d'}
+          <!-- Build panel: inline sidebar on md+, off-canvas drawer on phones -->
+          {#if buildPanelOpen}
+            <div
+              class="md:hidden fixed inset-x-0 top-12 bottom-0 bg-black/40 z-40"
+              onclick={() => buildPanelOpen = false}
+              aria-hidden="true"
+            ></div>
+          {/if}
+          <div class="h-full max-md:fixed max-md:left-0 max-md:top-12 max-md:bottom-0 max-md:h-auto max-md:z-50 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 {buildPanelOpen ? '' : 'max-md:-translate-x-full'}">
+            <BuildPanel />
+          </div>
+        {/if}
+        <div class="flex-1 min-w-0 relative">
+          {#if mode === '2d'}
+            <FloorPlanCanvas />
+            <AlignmentToolbar />
+          {:else}
+            {#if ThreeViewer}
+              <ThreeViewer />
+            {:else}
+              <div class="flex items-center justify-center h-full text-slate-400">Loading 3D viewer…</div>
+            {/if}
+          {/if}
+          {#if $timelineReadonly && mode === '2d'}
+            <!-- Chặn thao tác chuột khi đang xem snapshot ngày cũ -->
+            <div class="absolute inset-0 z-30 cursor-not-allowed" aria-hidden="true"></div>
+          {/if}
+        </div>
+        {#if showLayers && mode === '2d'}
+          <LayersPanel />
+        {/if}
+        <PropertiesPanel is3D={mode === '3d'} />
+      </div>
+      {#if backendLayoutId}
+        <TimelineBar layoutId={backendLayoutId} />
+      {/if}
+    {:else}
+      <!-- Planning tab -->
+      <div class="flex flex-1 overflow-hidden flex-col">
+        <PlanToolbar
+          {plans}
+          {selectedPlanId}
+          layoutId={backendLayoutId}
+          onSelectPlan={(id) => { selectedPlanId = id; loadPlanItems(); }}
+          onPlansChanged={loadPlans}
+        />
+        <GanttChart
+          items={planItems}
+          planId={selectedPlanId}
+          conflicts={conflictResult?.conflicts ?? []}
+          onItemsChanged={loadPlanItems}
+        />
+        <ConflictPanel
+          conflicts={conflictResult?.conflicts ?? []}
+          suggestions={conflictResult?.suggestions ?? []}
+          planId={selectedPlanId}
+          onApplySuggestion={loadPlanItems}
+        />
+      </div>
     {/if}
   </div>
 
