@@ -74,6 +74,7 @@ model Layout {
   createdAt      DateTime   @default(now()) @map("created_at")
   site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]
+  plans      Plan[]
 
   @@map("layouts")
 }
@@ -98,6 +99,7 @@ model Product {
   project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   asset          Asset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
   positions      Position[]
+  planItems  PlanItem[]
 
   @@map("products")
 }
@@ -130,4 +132,32 @@ model Position {
 
   @@unique([snapshotId, productId])
   @@map("positions")
+}
+
+model Plan {
+  id        String     @id @default(cuid())
+  layoutId  String     @map("layout_id")
+  name      String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at")
+  layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  items     PlanItem[]
+
+  @@map("plans")
+}
+
+model PlanItem {
+  id        String   @id @default(cuid())
+  planId    String   @map("plan_id")
+  productId String   @map("product_id")
+  x         Float
+  y         Float
+  rotation  Float    @default(0)
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("plan_items")
 }
