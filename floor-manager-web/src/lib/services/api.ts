@@ -240,15 +240,16 @@ export const api = {
 		list: (layoutId: string) => http<ApiPlan[]>(`/plans?layoutId=${layoutId}`),
 		create: (data: { layoutId: string; name: string }) =>
 			http<ApiPlan>('/plans', { method: 'POST', body: JSON.stringify(data) }),
-		update: (id: string, data: { name?: string; active?: boolean }) =>
+		update: (id: string, data: { name?: string; active?: boolean; version?: number }) =>
 			http<ApiPlan>(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/plans/${id}`, { method: 'DELETE' }),
 		items: (planId: string) => http<ApiPlanItem[]>(`/plans/${planId}/items`),
-		createItem: (planId: string, data: { productId: string; x: number; y: number; rotation?: number; startDate: string; endDate: string }) =>
+		createItem: (planId: string, data: { productId: string; x: number; y: number; rotation?: number; startDate: string; endDate: string; planVersion?: number }) =>
 			http<ApiPlanItem>(`/plans/${planId}/items`, { method: 'POST', body: JSON.stringify(data) }),
-		updateItem: (itemId: string, data: { x?: number; y?: number; rotation?: number; startDate?: string; endDate?: string }) =>
+		updateItem: (itemId: string, data: { x?: number; y?: number; rotation?: number; startDate?: string; endDate?: string; planVersion?: number }) =>
 			http<ApiPlanItem>(`/plans/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
-		removeItem: (itemId: string) => http<void>(`/plans/items/${itemId}`, { method: 'DELETE' }),
+		removeItem: (itemId: string, planVersion?: number) =>
+			http<void>(`/plans/items/${itemId}`, { method: 'DELETE', body: planVersion !== undefined ? JSON.stringify({ planVersion }) : undefined }),
 		conflicts: (planId: string) => http<ApiConflictResult>(`/plans/${planId}/conflicts`),
 		compare: (planId: string, snapshotId?: string) =>
 			http<ApiCompareResult>(`/plans/${planId}/compare${snapshotId ? `?snapshotId=${snapshotId}` : ''}`),
@@ -293,6 +294,7 @@ export interface ApiPlan {
   layoutId: string;
   name: string;
   active: boolean;
+  version: number;
   createdAt: string;
   _count?: { items: number };
 }

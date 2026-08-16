@@ -2,12 +2,15 @@
   import { api, type ApiPlanItem, type ApiConflict } from '$lib/services/api';
   import { canEdit } from '$lib/stores/auth';
 
-  let { items = [], planId = null, conflicts = [], onItemsChanged = () => {} }: {
+  let { items = [], planId = null, planVersion = 1, conflicts = [], onItemsChanged = () => {} }: {
     items: ApiPlanItem[];
     planId: string | null;
+    planVersion: number;
     conflicts: ApiConflict[];
     onItemsChanged: () => void;
   } = $props();
+
+  let versionError = $state(false);
 
   const DAY_MS = 86400000;
   const DAY_WIDTH = 32;
@@ -138,11 +141,16 @@
 
       const updated = localItems.find(i => i.id === dragItemId);
       if (updated && (updated.startDate !== dragOrigStart || updated.endDate !== dragOrigEnd)) {
-        await api.plans.updateItem(dragItemId, {
-          startDate: updated.startDate,
-          endDate: updated.endDate,
-        });
-        onItemsChanged();
+        try {
+          await api.plans.updateItem(dragItemId, {
+            startDate: updated.startDate,
+            endDate: updated.endDate,
+            planVersion,
+          });
+          onItemsChanged();
+        } catch (e: any) {
+          if (e?.message?.includes('409')) { versionError = true; } else throw e;
+        }
       }
       dragItemId = null;
     };
@@ -183,20 +191,29 @@
 
   async function confirmDrop() {
     if (!planId || !dropProductId) return;
-    await api.plans.createItem(planId, {
-      productId: dropProductId,
-      x: dropX,
-      y: dropY,
-      startDate: dropStartDate,
-      endDate: dropEndDate,
-    });
-    showDropModal = false;
-    onItemsChanged();
+    try {
+      await api.plans.createItem(planId, {
+        productId: dropProductId,
+        x: dropX,
+        y: dropY,
+        startDate: dropStartDate,
+        endDate: dropEndDate,
+        planVersion,
+      });
+      showDropModal = false;
+      onItemsChanged();
+    } catch (e: any) {
+      if (e?.message?.includes('409')) { showDropModal = false; versionError = true; } else throw e;
+    }
   }
 
   async function deleteItem(id: string) {
-    await api.plans.removeItem(id);
-    onItemsChanged();
+    try {
+      await api.plans.removeItem(id, planVersion);
+      onItemsChanged();
+    } catch (e: any) {
+      if (e?.message?.includes('409')) { versionError = true; } else throw e;
+    }
   }
 
   const STAGE_COLORS: Record<string, string> = {
@@ -207,6 +224,13 @@
     'Khác': '#6b7280',
   };
 </script>
+
+{#if versionError}
+  <div class="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
+    <span class="text-sm text-amber-800">Dữ liệu đã được cập nhật bởi người khác.</span>
+    <button onclick={() => { versionError = false; onItemsChanged(); }} class="px-3 py-1 bg-amber-500 text-white text-xs rounded-lg font-semibold hover:bg-amber-600">Tải lại</button>
+  </div>
+{/if}
 
 <div
   class="relative overflow-auto bg-white flex-1"

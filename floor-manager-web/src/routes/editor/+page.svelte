@@ -70,6 +70,8 @@
   let planItems = $state<ApiPlanItem[]>([]);
   let conflictResult = $state<ApiConflictResult | null>(null);
 
+  let selectedPlanVersion = $derived(plans.find(p => p.id === selectedPlanId)?.version ?? 1);
+
   async function loadPlans() {
     if (!backendLayoutId) return;
     plans = await api.plans.list(backendLayoutId);
@@ -79,6 +81,7 @@
 
   async function loadPlanItems() {
     if (!selectedPlanId) { planItems = []; conflictResult = null; return; }
+    plans = await api.plans.list(backendLayoutId!);
     planItems = await api.plans.items(selectedPlanId);
     conflictResult = await api.plans.conflicts(selectedPlanId);
   }
@@ -224,6 +227,7 @@
         <GanttChart
           items={planItems}
           planId={selectedPlanId}
+          planVersion={selectedPlanVersion}
           conflicts={conflictResult?.conflicts ?? []}
           onItemsChanged={loadPlanItems}
         />
