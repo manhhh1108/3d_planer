@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type ApiPlanItem, type ApiConflict } from '$lib/services/api';
+  import { canEdit } from '$lib/stores/auth';
 
   let { items = [], planId = null, conflicts = [], onItemsChanged = () => {} }: {
     items: ApiPlanItem[];
@@ -95,6 +96,7 @@
   let dragOrigEnd = $state('');
 
   function onBarMouseDown(e: MouseEvent, item: ApiPlanItem, type: 'move' | 'resize-start' | 'resize-end') {
+    if (!$canEdit) return;
     e.preventDefault();
     e.stopPropagation();
     dragItemId = item.id;
@@ -159,6 +161,7 @@
 
   async function onDrop(e: DragEvent) {
     e.preventDefault();
+    if (!$canEdit) return;
     const productId = e.dataTransfer?.getData('text/plan-product-id');
     if (!productId || !planId) return;
 
@@ -263,11 +266,13 @@
                 <span class="truncate flex-1 px-0.5">{item.product?.name ?? '?'}</span>
 
                 <!-- Delete -->
-                <button
-                  class="opacity-0 group-hover:opacity-100 ml-0.5 w-4 h-4 rounded bg-black/30 text-white text-[8px] flex items-center justify-center hover:bg-black/50 shrink-0"
-                  onclick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
-                  title="Xoá"
-                >x</button>
+                {#if $canEdit}
+                  <button
+                    class="opacity-0 group-hover:opacity-100 ml-0.5 w-4 h-4 rounded bg-black/30 text-white text-[8px] flex items-center justify-center hover:bg-black/50 shrink-0"
+                    onclick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
+                    title="Xoá"
+                  >x</button>
+                {/if}
 
                 <!-- Resize right -->
                 <div

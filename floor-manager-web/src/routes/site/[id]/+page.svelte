@@ -4,6 +4,7 @@
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
   import { api, type ApiSite } from '$lib/services/api';
+  import { canEdit } from '$lib/stores/auth';
 
   const siteId = $page.params.id ?? '';
 
@@ -100,9 +101,11 @@
   <div class="max-w-5xl mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-5">
       <h2 class="text-base font-bold text-gray-800">Layout ({site?.layouts?.length ?? 0})</h2>
+      {#if $canEdit}
       <button onclick={() => showCreateLayout = true} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
         + Thêm layout
       </button>
+      {/if}
     </div>
 
     {#if loading}
@@ -127,6 +130,7 @@
               </div>
               <div class="mt-3 text-xs text-blue-600 font-medium">Mở editor →</div>
             </a>
+            {#if $canEdit}
             <div class="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2" onclick={(e) => e.stopPropagation()}>
               {#if layout.backgroundFile}
                 <span class="text-[11px] text-green-600 font-medium">✓ Nền DXF</span>
@@ -165,6 +169,7 @@
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
+            {/if}
             {/if}
           </div>
         {/each}

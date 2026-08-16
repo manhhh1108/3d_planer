@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { base } from '$app/paths';
   import { api, type ApiProduct } from '$lib/services/api';
+  import { canEdit } from '$lib/stores/auth';
 
   const projectId = $page.params.projectId ?? '';
 
@@ -171,9 +172,11 @@
       <a href={`${base}/reports/${projectId}`} class="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 text-sm font-medium border border-white/20 transition-colors">
         📊 Báo cáo
       </a>
+      {#if $canEdit}
       <button onclick={openCreate} class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
         + Thêm sản phẩm
       </button>
+      {/if}
     </div>
   </div>
 
@@ -239,6 +242,7 @@
                 <td class="px-4 py-3 text-gray-500 text-xs">{p.category === 'thiet_bi' ? '⚙️ Thiết bị' : '📦 Sản phẩm'}</td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1 justify-end">
+                    {#if $canEdit}
                     <label class="px-2.5 py-1 text-xs text-gray-500 bg-gray-50 rounded-lg hover:bg-blue-50 hover:text-blue-500 font-medium cursor-pointer" title="Upload CAD (dwg, dxf, step, stp, ifc)">
                       <input type="file" accept=".dwg,.dxf,.step,.stp,.ifc" class="hidden"
                         onchange={(e) => onCadFileChange(p, e)} disabled={uploadingFor === p.id} />
@@ -250,6 +254,7 @@
                       <button onclick={() => confirmDeleteId = null} class="px-2 py-1 text-xs text-gray-500 bg-gray-100 rounded-lg">✕</button>
                     {:else}
                       <button onclick={() => confirmDeleteId = p.id} class="px-2.5 py-1 text-xs text-red-500 bg-red-50 rounded-lg hover:bg-red-100 font-medium">Xóa</button>
+                    {/if}
                     {/if}
                   </div>
                 </td>

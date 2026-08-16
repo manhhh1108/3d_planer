@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { api, authApi, type ApiProject, type ApiSite, type ApiDashboard } from '$lib/services/api';
-  import { currentUser } from '$lib/stores/auth';
+  import { currentUser, canEdit } from '$lib/stores/auth';
 
   let sites = $state<ApiSite[]>([]);
   let projects = $state<ApiProject[]>([]);
@@ -290,9 +290,11 @@
       <!-- ===== Khu Mặt bằng ===== -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-bold text-gray-800">🏭 Mặt bằng ({sites.length})</h2>
-        <button onclick={() => showCreateSite = true} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
-          + Thêm mặt bằng
-        </button>
+        {#if $canEdit}
+          <button onclick={() => showCreateSite = true} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
+            + Thêm mặt bằng
+          </button>
+        {/if}
       </div>
       {#if siteError}
         <div class="mb-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-4 py-2 text-sm">{siteError}</div>
@@ -321,20 +323,22 @@
                   {/if}
                 </div>
               </a>
-              {#if confirmDeleteSiteId === site.id}
-                <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
-                  <span class="text-xs text-gray-500">Xóa?</span>
-                  <button onclick={() => deleteSite(site.id)} class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
-                  <button onclick={() => confirmDeleteSiteId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
-                </div>
-              {:else}
-                <button
-                  onclick={() => confirmDeleteSiteId = site.id}
-                  class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                  title="Xóa mặt bằng" aria-label="Xóa mặt bằng"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+              {#if $canEdit}
+                {#if confirmDeleteSiteId === site.id}
+                  <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
+                    <span class="text-xs text-gray-500">Xóa?</span>
+                    <button onclick={() => deleteSite(site.id)} class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
+                    <button onclick={() => confirmDeleteSiteId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
+                  </div>
+                {:else}
+                  <button
+                    onclick={() => confirmDeleteSiteId = site.id}
+                    class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Xóa mặt bằng" aria-label="Xóa mặt bằng"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                {/if}
               {/if}
             </div>
           {/each}
@@ -344,9 +348,11 @@
       <!-- ===== Khu Dự án ===== -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-bold text-gray-800">📦 Dự án ({projects.length})</h2>
-        <button onclick={() => showCreateProject = true} class="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-semibold text-sm">
-          + Tạo dự án
-        </button>
+        {#if $canEdit}
+          <button onclick={() => showCreateProject = true} class="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-semibold text-sm">
+            + Tạo dự án
+          </button>
+        {/if}
       </div>
       {#if projects.length === 0}
         <div class="text-center py-10 bg-white rounded-xl border border-dashed border-gray-300">
@@ -365,20 +371,22 @@
                 </div>
                 <p class="text-[11px] text-gray-400 mt-3">Cập nhật: {formatDate(project.updatedAt)}</p>
               </a>
-              {#if confirmDeleteProjectId === project.id}
-                <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
-                  <span class="text-xs text-gray-500">Xóa?</span>
-                  <button onclick={() => deleteProject(project.id)} class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
-                  <button onclick={() => confirmDeleteProjectId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
-                </div>
-              {:else}
-                <button
-                  onclick={() => confirmDeleteProjectId = project.id}
-                  class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                  title="Xóa dự án" aria-label="Xóa dự án"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+              {#if $canEdit}
+                {#if confirmDeleteProjectId === project.id}
+                  <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
+                    <span class="text-xs text-gray-500">Xóa?</span>
+                    <button onclick={() => deleteProject(project.id)} class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">Có</button>
+                    <button onclick={() => confirmDeleteProjectId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
+                  </div>
+                {:else}
+                  <button
+                    onclick={() => confirmDeleteProjectId = project.id}
+                    class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Xóa dự án" aria-label="Xóa dự án"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                {/if}
               {/if}
             </div>
           {/each}
