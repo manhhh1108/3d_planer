@@ -16,8 +16,12 @@
 		try {
 			const user = await authApi.login(email, password);
 			currentUser.set(user);
-			const redirect = $page.url.searchParams.get('redirect') || '/';
-			goto(redirect);
+			if (user.role === 'PENDING') {
+				goto('/pending');
+			} else {
+				const redirect = $page.url.searchParams.get('redirect') || '/';
+				goto(redirect);
+			}
 		} catch {
 			error = 'Email hoặc mật khẩu không đúng';
 		} finally {
@@ -74,5 +78,9 @@
 				{loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
 			</button>
 		</form>
+
+		<p class="mt-4 text-center text-sm text-gray-500">
+			Chưa có tài khoản? <a href="/register" class="text-blue-600 hover:underline">Đăng ký</a>
+		</p>
 	</div>
 </div>

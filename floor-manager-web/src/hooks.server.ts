@@ -1,7 +1,7 @@
 import { redirect, type Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/register', '/pending'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const path = event.url.pathname;
@@ -22,6 +22,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 			});
 			if (me.ok) {
 				event.locals.user = await me.json();
+				// PENDING users can only access /pending and /api/auth
+				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
+					throw redirect(303, '/pending');
+				}
 				return resolve(event);
 			}
 		} catch {
@@ -48,6 +52,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 					maxAge: 15 * 60,
 				});
 				event.locals.user = user;
+				// PENDING users can only access /pending and /api/auth
+				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
+					throw redirect(303, '/pending');
+				}
 				return resolve(event);
 			}
 		} catch {

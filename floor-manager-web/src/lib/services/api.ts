@@ -353,7 +353,7 @@ export interface ApiUser {
 	id: string;
 	email: string;
 	name: string;
-	role: 'ADMIN' | 'PLANNING' | 'VIEWER';
+	role: 'ADMIN' | 'PLANNING' | 'VIEWER' | 'PENDING';
 	active: boolean;
 	createdAt: string;
 }
@@ -361,6 +361,9 @@ export interface ApiUser {
 export const authApi = {
 	login: (email: string, password: string) =>
 		http<ApiUser>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+	register: (email: string, name: string, password: string) =>
+		http<ApiUser>('/auth/register', { method: 'POST', body: JSON.stringify({ email, name, password }) }),
 
 	logout: () =>
 		http<{ ok: boolean }>('/auth/logout', { method: 'POST' }),

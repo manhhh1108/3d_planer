@@ -17,11 +17,12 @@
   let resetPassword = $state('');
   let resetError = $state<string | null>(null);
 
-  const ROLE_LABELS: Record<string, string> = { ADMIN: 'Admin', PLANNING: 'Planning', VIEWER: 'Viewer' };
+  const ROLE_LABELS: Record<string, string> = { ADMIN: 'Quản trị', PLANNING: 'Kế hoạch', VIEWER: 'Xem', PENDING: 'Chờ duyệt' };
   const ROLE_COLORS: Record<string, string> = {
-    ADMIN: 'bg-red-100 text-red-700',
+    ADMIN: 'bg-purple-100 text-purple-700',
     PLANNING: 'bg-blue-100 text-blue-700',
     VIEWER: 'bg-gray-100 text-gray-600',
+    PENDING: 'bg-amber-100 text-amber-700',
   };
 
   async function handleCreate(e: SubmitEvent) {
@@ -101,7 +102,7 @@
         </thead>
         <tbody>
           {#each users as u (u.id)}
-            <tr class="border-b last:border-0 hover:bg-gray-50">
+            <tr class="border-b last:border-0 hover:bg-gray-50 {u.role === 'PENDING' ? 'bg-amber-50/60' : ''}">
               <td class="px-4 py-3 font-medium text-gray-800">{u.name}</td>
               <td class="px-4 py-3 text-gray-600">{u.email}</td>
               <td class="px-4 py-3">
@@ -135,9 +136,9 @@
         <input type="text" bind:value={createForm.name} placeholder="Họ tên" required class="w-full border rounded-lg px-3 py-2 text-sm" />
         <input type="email" bind:value={createForm.email} placeholder="Email" required class="w-full border rounded-lg px-3 py-2 text-sm" />
         <select bind:value={createForm.role} class="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="VIEWER">Viewer</option>
-          <option value="PLANNING">Planning</option>
-          <option value="ADMIN">Admin</option>
+          <option value="VIEWER">Xem</option>
+          <option value="PLANNING">Kế hoạch</option>
+          <option value="ADMIN">Quản trị</option>
         </select>
         <input type="password" bind:value={createForm.password} placeholder="Mật khẩu (tối thiểu 6 ký tự)" required class="w-full border rounded-lg px-3 py-2 text-sm" />
         {#if createError}<p class="text-xs text-red-600">{createError}</p>{/if}
@@ -158,9 +159,10 @@
       <form onsubmit={handleEdit} class="space-y-3">
         <input type="text" bind:value={editForm.name} placeholder="Họ tên" required class="w-full border rounded-lg px-3 py-2 text-sm" />
         <select bind:value={editForm.role} class="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="VIEWER">Viewer</option>
-          <option value="PLANNING">Planning</option>
-          <option value="ADMIN">Admin</option>
+          <option value="PENDING" disabled>Chờ duyệt</option>
+          <option value="VIEWER">Xem</option>
+          <option value="PLANNING">Kế hoạch</option>
+          <option value="ADMIN">Quản trị</option>
         </select>
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" bind:checked={editForm.active} />
