@@ -22,14 +22,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 			});
 			if (me.ok) {
 				event.locals.user = await me.json();
-				// PENDING users can only access /pending and /api/auth
 				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
 					throw redirect(303, '/pending');
 				}
 				return resolve(event);
 			}
-		} catch {
-			// Network error — fall through to redirect
+		} catch (e) {
+			if (e && typeof e === 'object' && 'status' in e) throw e; // re-throw redirect
 		}
 	}
 
@@ -43,7 +42,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 			});
 			if (refreshRes.ok) {
 				const { accessToken: newToken, user } = await refreshRes.json();
-				// Set new access_token cookie for browser
 				event.cookies.set('access_token', newToken, {
 					httpOnly: true,
 					sameSite: 'strict',
@@ -52,14 +50,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 					maxAge: 15 * 60,
 				});
 				event.locals.user = user;
-				// PENDING users can only access /pending and /api/auth
 				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
 					throw redirect(303, '/pending');
 				}
 				return resolve(event);
 			}
-		} catch {
-			// Network error — fall through to redirect
+		} catch (e) {
+			if (e && typeof e === 'object' && 'status' in e) throw e; // re-throw redirect
 		}
 	}
 
