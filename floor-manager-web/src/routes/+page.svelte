@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
-  import { api, type ApiProject, type ApiSite, type ApiDashboard } from '$lib/services/api';
+  import { api, authApi, type ApiProject, type ApiSite, type ApiDashboard } from '$lib/services/api';
+  import { currentUser } from '$lib/stores/auth';
 
   let sites = $state<ApiSite[]>([]);
   let projects = $state<ApiProject[]>([]);
@@ -48,9 +49,18 @@
     }
   }
 
+  let user = $state<{ name: string; email: string; role: string } | null>(null);
+
   onMount(async () => {
+    try { user = await authApi.me(); currentUser.set(user as any); } catch {}
     await Promise.all([refresh(), refreshDashboard()]);
   });
+
+  async function handleLogout() {
+    await authApi.logout();
+    currentUser.set(null);
+    goto(`${base}/login`);
+  }
 
   function timeAgo(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -121,10 +131,19 @@
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
       <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white text-lg font-bold">◧</div>
-      <div>
+      <div class="flex-1">
         <h1 class="text-2xl font-bold text-white">Floor Manager</h1>
         <p class="text-sm text-white/50 mt-0.5">Quản lý mặt bằng sản xuất · {sites.length} mặt bằng · {projects.length} dự án</p>
       </div>
+      {#if user}
+        <div class="flex items-center gap-2">
+          {#if user.role === 'ADMIN'}
+            <a href="{base}/admin/users" class="px-3 py-1.5 text-xs font-medium text-white/80 bg-white/10 rounded-lg hover:bg-white/20 transition-colors">Quản lý người dùng</a>
+          {/if}
+          <span class="text-xs text-white/50">{user.name}</span>
+          <button onclick={handleLogout} class="px-3 py-1.5 text-xs font-medium text-white/60 bg-white/10 rounded-lg hover:bg-white/20 transition-colors">Đăng xuất</button>
+        </div>
+      {/if}
     </div>
   </div>
 
