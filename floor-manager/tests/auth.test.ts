@@ -149,6 +149,54 @@ describe('GET /api/auth/me', () => {
   });
 });
 
+describe('Registration', () => {
+  it('registers a new user with PENDING role', async () => {
+    const res = await request(app).post('/api/auth/register')
+      .send({ email: 'newuser@test.com', name: 'New User', password: 'password123' });
+    expect(res.status).toBe(201);
+    expect(res.body.role).toBe('PENDING');
+    expect(res.body.email).toBe('newuser@test.com');
+  });
+
+  it('rejects duplicate email', async () => {
+    await request(app).post('/api/auth/register')
+      .send({ email: 'dup@test.com', name: 'A', password: 'password123' });
+    const res = await request(app).post('/api/auth/register')
+      .send({ email: 'dup@test.com', name: 'B', password: 'password123' });
+    expect(res.status).toBe(409);
+  });
+
+  it('rejects short password', async () => {
+    const res = await request(app).post('/api/auth/register')
+      .send({ email: 'x@test.com', name: 'X', password: '123' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PENDING user cannot access protected routes', async () => {
+    const reg = await request(app).post('/api/auth/register')
+      .send({ email: 'pending@test.com', name: 'Pending', password: 'password123' });
+    // Extract cookie from register response
+    const cookies = reg.headers['set-cookie'];
+    const tokenCookie = cookies?.find((c: string) => c.startsWith('access_token='));
+    const token = tokenCookie?.split('=')[1]?.split(';')[0];
+
+    const res = await request(app).get('/api/sites').set('Cookie', `access_token=${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('PENDING user can access /api/auth/me', async () => {
+    const reg = await request(app).post('/api/auth/register')
+      .send({ email: 'pendingme@test.com', name: 'PendingMe', password: 'password123' });
+    const cookies = reg.headers['set-cookie'];
+    const tokenCookie = cookies?.find((c: string) => c.startsWith('access_token='));
+    const token = tokenCookie?.split('=')[1]?.split(';')[0];
+
+    const res = await request(app).get('/api/auth/me').set('Cookie', `access_token=${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('PENDING');
+  });
+});
+
 describe('route protection', () => {
   it('GET /api/sites returns 401 without auth', async () => {
     const r = await request(app).get('/api/sites');

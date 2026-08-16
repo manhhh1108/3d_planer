@@ -14,7 +14,7 @@ import assetsRouter from './routes/assets.js';
 import usersRouter from './routes/users.js';
 import dashboardRouter from './routes/dashboard.js';
 import plansRouter from './routes/plans.js';
-import { requireAuth, requireRole } from './middleware/auth.js';
+import { requireAuth, requireRole, blockPending } from './middleware/auth.js';
 
 const app = express();
 
@@ -24,16 +24,16 @@ app.use(cookieParser());
 app.use('/uploads', express.static(path.join(import.meta.dirname, '../uploads')));
 
 app.use('/api/auth', authRouter);
-app.use('/api/users', requireAuth, requireRole('ADMIN'), usersRouter);
-app.use('/api/dashboard', requireAuth, dashboardRouter);
-app.use('/api/projects', requireAuth, projectsRouter);
-app.use('/api/products', requireAuth, productsRouter);
-app.use('/api/sites', requireAuth, sitesRouter);
-app.use('/api/layouts', requireAuth, layoutsRouter);
-app.use('/api/plans', requireAuth, plansRouter);
-app.use('/api/snapshots', requireAuth, snapshotsRouter);
-app.use('/api/reports', requireAuth, reportsRouter);
-app.use('/api/files', requireAuth, filesRouter);
-app.use('/api/assets', requireAuth, assetsRouter);
+app.use('/api/users', requireAuth, blockPending, requireRole('ADMIN'), usersRouter);
+app.use('/api/dashboard', requireAuth, blockPending, dashboardRouter);
+app.use('/api/projects', requireAuth, blockPending, projectsRouter);
+app.use('/api/products', requireAuth, blockPending, productsRouter);
+app.use('/api/sites', requireAuth, blockPending, sitesRouter);
+app.use('/api/layouts', requireAuth, blockPending, layoutsRouter);
+app.use('/api/plans', requireAuth, blockPending, plansRouter);
+app.use('/api/snapshots', requireAuth, blockPending, snapshotsRouter);
+app.use('/api/reports', requireAuth, blockPending, reportsRouter);
+app.use('/api/files', requireAuth, blockPending, filesRouter);
+app.use('/api/assets', requireAuth, blockPending, assetsRouter);
 
 export default app;

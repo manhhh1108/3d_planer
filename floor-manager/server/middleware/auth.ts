@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export type Role = 'ADMIN' | 'PLANNING' | 'VIEWER';
+export type Role = 'ADMIN' | 'PLANNING' | 'VIEWER' | 'PENDING';
 
 export interface AuthUser {
   id: string;
@@ -40,4 +40,14 @@ export function requireRole(...roles: Role[]) {
     }
     next();
   };
+}
+
+// Blocks PENDING users from all data routes. Apply after requireAuth on any
+// route that should not be accessible to users awaiting role approval.
+export function blockPending(req: Request, res: Response, next: NextFunction): void {
+  if (req.user?.role === 'PENDING') {
+    res.status(403).json({ error: 'Tài khoản đang chờ phê duyệt' });
+    return;
+  }
+  next();
 }

@@ -46,6 +46,33 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/auth/register
+router.post('/register', async (req: Request, res: Response) => {
+  try {
+    const { email, name, password } = req.body as { email?: string; name?: string; password?: string };
+    if (!email || !name || !password) {
+      return res.status(400).json({ error: 'email, name, password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return res.status(409).json({ error: 'Email đã tồn tại' });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { email, name, role: 'PENDING', passwordHash },
+    });
+
+    // Auto-login after register
+    const { accessToken, refreshToken } = issueTokens({ id: user.id, email: user.email, role: user.role });
+    setCookies(res, accessToken, refreshToken);
+    res.status(201).json({ id: user.id, email: user.email, name: user.name, role: user.role });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // POST /api/auth/refresh
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
