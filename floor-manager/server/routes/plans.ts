@@ -4,6 +4,19 @@ import { requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
+// Helper: check plan version for optimistic locking
+async function checkPlanVersion(
+  planId: string,
+  clientVersion: number | undefined
+): Promise<{ plan: Awaited<ReturnType<typeof prisma.plan.findUnique>>; conflict: boolean }> {
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  if (!plan) return { plan: null, conflict: false };
+  if (clientVersion !== undefined && plan.version !== clientVersion) {
+    return { plan, conflict: true };
+  }
+  return { plan, conflict: false };
+}
+
 // Write operations require ADMIN or PLANNING role
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -41,10 +54,26 @@ router.post('/', async (req: Request, res: Response) => {
 // PUT /plans/:id
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, active } = req.body;
+    const { name, active, version } = req.body;
+
+    if (version !== undefined) {
+      const current = await prisma.plan.findUnique({ where: { id: String(req.params.id) } });
+      if (!current) return res.status(404).json({ error: 'Plan not found' });
+      if (current.version !== version) {
+        return res.status(409).json({
+          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+          currentVersion: current.version,
+        });
+      }
+    }
+
     const plan = await prisma.plan.update({
       where: { id: String(req.params.id) },
-      data: { ...(name !== undefined && { name }), ...(active !== undefined && { active }) },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(active !== undefined && { active }),
+        version: { increment: 1 },
+      },
     });
     res.json(plan);
   } catch (err) {
@@ -83,16 +112,27 @@ router.get('/:id/items', async (req: Request, res: Response) => {
 // POST /plans/:id/items
 router.post('/:id/items', async (req: Request, res: Response) => {
   try {
-    const { productId, x, y, rotation, startDate, endDate } = req.body;
+    const { productId, x, y, rotation, startDate, endDate, planVersion } = req.body;
     if (!productId || x == null || y == null || !startDate || !endDate) {
       return res.status(400).json({ error: 'productId, x, y, startDate, endDate are required' });
     }
     if (new Date(startDate) >= new Date(endDate)) {
       return res.status(400).json({ error: 'startDate must be before endDate' });
     }
+
+    const planId = String(req.params.id);
+    const { plan, conflict } = await checkPlanVersion(planId, planVersion);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    if (conflict) {
+      return res.status(409).json({
+        error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+        currentVersion: plan.version,
+      });
+    }
+
     const item = await prisma.planItem.create({
       data: {
-        planId: String(req.params.id),
+        planId,
         productId,
         x: Number(x),
         y: Number(y),
@@ -106,6 +146,10 @@ router.post('/:id/items', async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Increment plan version after successful item creation
+    await prisma.plan.update({ where: { id: planId }, data: { version: { increment: 1 } } });
+
     res.status(201).json(item);
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -115,7 +159,7 @@ router.post('/:id/items', async (req: Request, res: Response) => {
 // PUT /plans/items/:id (update a plan item)
 router.put('/items/:id', async (req: Request, res: Response) => {
   try {
-    const { x, y, rotation, startDate, endDate } = req.body;
+    const { x, y, rotation, startDate, endDate, planVersion } = req.body;
     const data: Record<string, unknown> = {};
     if (x != null) data.x = Number(x);
     if (y != null) data.y = Number(y);
@@ -125,6 +169,21 @@ router.put('/items/:id', async (req: Request, res: Response) => {
     if (data.startDate && data.endDate && (data.startDate as Date) >= (data.endDate as Date)) {
       return res.status(400).json({ error: 'startDate must be before endDate' });
     }
+
+    // Find item to get planId for version check
+    if (planVersion !== undefined) {
+      const existingItem = await prisma.planItem.findUnique({ where: { id: String(req.params.id) } });
+      if (!existingItem) return res.status(404).json({ error: 'Plan item not found' });
+      const { plan, conflict } = await checkPlanVersion(existingItem.planId, planVersion);
+      if (!plan) return res.status(404).json({ error: 'Plan not found' });
+      if (conflict) {
+        return res.status(409).json({
+          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+          currentVersion: plan.version,
+        });
+      }
+    }
+
     const item = await prisma.planItem.update({
       where: { id: String(req.params.id) },
       data,
@@ -134,6 +193,10 @@ router.put('/items/:id', async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Increment plan version after successful item update
+    await prisma.plan.update({ where: { id: item.planId }, data: { version: { increment: 1 } } });
+
     res.json(item);
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -143,7 +206,30 @@ router.put('/items/:id', async (req: Request, res: Response) => {
 // DELETE /plans/items/:id
 router.delete('/items/:id', async (req: Request, res: Response) => {
   try {
+    const planVersion = req.body?.planVersion;
+
+    if (planVersion !== undefined) {
+      const existingItem = await prisma.planItem.findUnique({ where: { id: String(req.params.id) } });
+      if (!existingItem) return res.status(404).json({ error: 'Plan item not found' });
+      const { plan, conflict } = await checkPlanVersion(existingItem.planId, planVersion);
+      if (!plan) return res.status(404).json({ error: 'Plan not found' });
+      if (conflict) {
+        return res.status(409).json({
+          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+          currentVersion: plan.version,
+        });
+      }
+    }
+
+    // Find planId before deleting for version increment
+    const itemToDelete = await prisma.planItem.findUnique({ where: { id: String(req.params.id) } });
+    if (!itemToDelete) return res.status(404).json({ error: 'Plan item not found' });
+
     await prisma.planItem.delete({ where: { id: String(req.params.id) } });
+
+    // Increment plan version after successful delete
+    await prisma.plan.update({ where: { id: itemToDelete.planId }, data: { version: { increment: 1 } } });
+
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });

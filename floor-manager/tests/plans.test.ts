@@ -175,6 +175,57 @@ describe('Conflict Detection', () => {
   });
 });
 
+describe('Optimistic Locking', () => {
+  it('rejects plan update with stale version', async () => {
+    const { layout } = await seedSiteLayout();
+    const token = adminToken();
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    // Update with correct version
+    const r1 = await request(app).put(`/api/plans/${plan.id}`).set('Cookie', `access_token=${token}`)
+      .send({ name: 'Updated', version: 1 });
+    expect(r1.status).toBe(200);
+    expect(r1.body.version).toBe(2);
+
+    // Update with stale version
+    const r2 = await request(app).put(`/api/plans/${plan.id}`).set('Cookie', `access_token=${token}`)
+      .send({ name: 'Stale', version: 1 });
+    expect(r2.status).toBe(409);
+    expect(r2.body.currentVersion).toBe(2);
+  });
+
+  it('rejects plan item create with stale plan version', async () => {
+    const { layout } = await seedSiteLayout();
+    const { product } = await seedProduct();
+    const token = adminToken();
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    // Create item with correct version
+    const r1 = await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: product.id, x: 10, y: 10, startDate: '2026-09-01', endDate: '2026-09-15', planVersion: 1 });
+    expect(r1.status).toBe(201);
+
+    // Plan version is now 2 — create with stale version 1
+    const r2 = await request(app).post(`/api/plans/${plan.id}/items`).set('Cookie', `access_token=${token}`)
+      .send({ productId: product.id, x: 20, y: 20, startDate: '2026-09-01', endDate: '2026-09-15', planVersion: 1 });
+    expect(r2.status).toBe(409);
+  });
+
+  it('allows mutations without version (backward compatible)', async () => {
+    const { layout } = await seedSiteLayout();
+    const token = adminToken();
+    const plan = (await request(app).post('/api/plans').set('Cookie', `access_token=${token}`)
+      .send({ layoutId: layout.id, name: 'P' })).body;
+
+    // Update without version — should succeed
+    const r1 = await request(app).put(`/api/plans/${plan.id}`).set('Cookie', `access_token=${token}`)
+      .send({ name: 'No version check' });
+    expect(r1.status).toBe(200);
+  });
+});
+
 describe('Plan vs Snapshot Comparison', () => {
   it('returns empty when no snapshot exists', async () => {
     const { layout } = await seedSiteLayout();

@@ -44,10 +44,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / — upsert snapshot by layoutId+date, manage positions
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { layoutId, date, note, positions } = req.body as {
+    const { layoutId, date, note, positions, version } = req.body as {
       layoutId: string;
       date: string;
       note?: string;
+      version?: number;
       positions?: Array<{
         productId: string;
         x: number;
@@ -60,12 +61,26 @@ router.post('/', async (req: Request, res: Response) => {
 
     const parsedDate = new Date(date);
 
+    // If version is provided, check against existing snapshot for optimistic locking
+    if (version !== undefined) {
+      const existing = await prisma.snapshot.findUnique({
+        where: { layoutId_date: { layoutId, date: parsedDate } },
+      });
+      if (existing && existing.version !== version) {
+        return res.status(409).json({
+          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+          currentVersion: existing.version,
+        });
+      }
+    }
+
     const snapshot = await prisma.snapshot.upsert({
       where: {
         layoutId_date: { layoutId, date: parsedDate },
       },
       update: {
         note,
+        version: { increment: 1 },
         positions: {
           deleteMany: {},
           create: (positions ?? []).map((p) => ({
