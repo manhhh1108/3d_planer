@@ -23,138 +23,7 @@ router.use((req, _res, next) => {
   return requireRole('ADMIN', 'PLANNING')(req, _res, next);
 });
 
-// GET /plans?layoutId=xxx
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const { layoutId } = req.query;
-    if (!layoutId) return res.status(400).json({ error: 'layoutId is required' });
-    const plans = await prisma.plan.findMany({
-      where: { layoutId: String(layoutId) },
-      orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { items: true } } },
-    });
-    res.json(plans);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// POST /plans
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { layoutId, name } = req.body;
-    if (!layoutId || !name) return res.status(400).json({ error: 'layoutId and name are required' });
-    const plan = await prisma.plan.create({ data: { layoutId, name } });
-    res.status(201).json(plan);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// PUT /plans/:id
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const { name, active, version } = req.body;
-
-    if (version !== undefined) {
-      const current = await prisma.plan.findUnique({ where: { id: String(req.params.id) } });
-      if (!current) return res.status(404).json({ error: 'Plan not found' });
-      if (current.version !== version) {
-        return res.status(409).json({
-          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
-          currentVersion: current.version,
-        });
-      }
-    }
-
-    const plan = await prisma.plan.update({
-      where: { id: String(req.params.id) },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(active !== undefined && { active }),
-        version: { increment: 1 },
-      },
-    });
-    res.json(plan);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// DELETE /plans/:id
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    await prisma.plan.delete({ where: { id: String(req.params.id) } });
-    res.status(204).send();
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// GET /plans/:id/items
-router.get('/:id/items', async (req: Request, res: Response) => {
-  try {
-    const items = await prisma.planItem.findMany({
-      where: { planId: String(req.params.id) },
-      orderBy: { startDate: 'asc' },
-      include: {
-        product: {
-          select: { id: true, name: true, code: true, processStage: true, color: true, areaM2: true, weightKg: true, metadata: true },
-        },
-      },
-    });
-    res.json(items);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// POST /plans/:id/items
-router.post('/:id/items', async (req: Request, res: Response) => {
-  try {
-    const { productId, x, y, rotation, startDate, endDate, planVersion } = req.body;
-    if (!productId || x == null || y == null || !startDate || !endDate) {
-      return res.status(400).json({ error: 'productId, x, y, startDate, endDate are required' });
-    }
-    if (new Date(startDate) >= new Date(endDate)) {
-      return res.status(400).json({ error: 'startDate must be before endDate' });
-    }
-
-    const planId = String(req.params.id);
-    const { plan, conflict } = await checkPlanVersion(planId, planVersion);
-    if (!plan) return res.status(404).json({ error: 'Plan not found' });
-    if (conflict) {
-      return res.status(409).json({
-        error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
-        currentVersion: plan.version,
-      });
-    }
-
-    const item = await prisma.planItem.create({
-      data: {
-        planId,
-        productId,
-        x: Number(x),
-        y: Number(y),
-        rotation: Number(rotation ?? 0),
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-      },
-      include: {
-        product: {
-          select: { id: true, name: true, code: true, processStage: true, color: true, areaM2: true, weightKg: true, metadata: true },
-        },
-      },
-    });
-
-    // Increment plan version after successful item creation
-    await prisma.plan.update({ where: { id: planId }, data: { version: { increment: 1 } } });
-
-    res.status(201).json(item);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
+// ── /plans/items/:id routes MUST come before /:id to avoid Express treating "items" as :id ──
 
 // PUT /plans/items/:id (update a plan item)
 router.put('/items/:id', async (req: Request, res: Response) => {
@@ -236,6 +105,143 @@ router.delete('/items/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ── /plans base routes ──
+
+// GET /plans?layoutId=xxx
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const { layoutId } = req.query;
+    if (!layoutId) return res.status(400).json({ error: 'layoutId is required' });
+    const plans = await prisma.plan.findMany({
+      where: { layoutId: String(layoutId) },
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { items: true } } },
+    });
+    res.json(plans);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /plans
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { layoutId, name } = req.body;
+    if (!layoutId || !name) return res.status(400).json({ error: 'layoutId and name are required' });
+    const plan = await prisma.plan.create({ data: { layoutId, name } });
+    res.status(201).json(plan);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// PUT /plans/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const { name, active, version } = req.body;
+
+    if (version !== undefined) {
+      const current = await prisma.plan.findUnique({ where: { id: String(req.params.id) } });
+      if (!current) return res.status(404).json({ error: 'Plan not found' });
+      if (current.version !== version) {
+        return res.status(409).json({
+          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+          currentVersion: current.version,
+        });
+      }
+    }
+
+    const plan = await prisma.plan.update({
+      where: { id: String(req.params.id) },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(active !== undefined && { active }),
+        version: { increment: 1 },
+      },
+    });
+    res.json(plan);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// DELETE /plans/:id
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    await prisma.plan.delete({ where: { id: String(req.params.id) } });
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── /plans/:id/items, /plans/:id/conflicts, /plans/:id/compare ──
+
+// GET /plans/:id/items
+router.get('/:id/items', async (req: Request, res: Response) => {
+  try {
+    const items = await prisma.planItem.findMany({
+      where: { planId: String(req.params.id) },
+      orderBy: { startDate: 'asc' },
+      include: {
+        product: {
+          select: { id: true, name: true, code: true, processStage: true, color: true, areaM2: true, weightKg: true, metadata: true },
+        },
+      },
+    });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /plans/:id/items
+router.post('/:id/items', async (req: Request, res: Response) => {
+  try {
+    const { productId, x, y, rotation, startDate, endDate, planVersion } = req.body;
+    if (!productId || x == null || y == null || !startDate || !endDate) {
+      return res.status(400).json({ error: 'productId, x, y, startDate, endDate are required' });
+    }
+    if (new Date(startDate) >= new Date(endDate)) {
+      return res.status(400).json({ error: 'startDate must be before endDate' });
+    }
+
+    const planId = String(req.params.id);
+    const { plan, conflict } = await checkPlanVersion(planId, planVersion);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    if (conflict) {
+      return res.status(409).json({
+        error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+        currentVersion: plan.version,
+      });
+    }
+
+    const item = await prisma.planItem.create({
+      data: {
+        planId,
+        productId,
+        x: Number(x),
+        y: Number(y),
+        rotation: Number(rotation ?? 0),
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+      },
+      include: {
+        product: {
+          select: { id: true, name: true, code: true, processStage: true, color: true, areaM2: true, weightKg: true, metadata: true },
+        },
+      },
+    });
+
+    // Increment plan version after successful item creation
+    await prisma.plan.update({ where: { id: planId }, data: { version: { increment: 1 } } });
+
+    res.status(201).json(item);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // GET /plans/:id/conflicts
 router.get('/:id/conflicts', async (req: Request, res: Response) => {
   try {
@@ -260,14 +266,12 @@ router.get('/:id/conflicts', async (req: Request, res: Response) => {
         const a = items[i];
         const b = items[j];
 
-        // Check time overlap
         const aStart = new Date(a.startDate).getTime();
         const aEnd = new Date(a.endDate).getTime();
         const bStart = new Date(b.startDate).getTime();
         const bEnd = new Date(b.endDate).getTime();
         if (aStart >= bEnd || bStart >= aEnd) continue;
 
-        // Check bounding box overlap
         const aMeta = a.product.metadata as { widthM?: number; depthM?: number } | null;
         const bMeta = b.product.metadata as { widthM?: number; depthM?: number } | null;
         const aW = (aMeta?.widthM ?? 1) / 2;
@@ -293,7 +297,6 @@ router.get('/:id/conflicts', async (req: Request, res: Response) => {
       }
     }
 
-    // Suggestions: for each conflicted item, find earliest start after all overlapping items at same position
     const suggestions: Suggestion[] = [];
     for (const id of conflictedIds) {
       const item = items.find((i) => i.id === id)!;
@@ -359,7 +362,6 @@ router.get('/:id/compare', async (req: Request, res: Response) => {
 
     const snapshotDate = new Date(snapshot.date);
 
-    // PlanItems active on snapshot date
     const planItems = await prisma.planItem.findMany({
       where: {
         planId: plan.id,
@@ -381,7 +383,7 @@ router.get('/:id/compare', async (req: Request, res: Response) => {
       distanceM: number | null;
     };
 
-    const MATCH_THRESHOLD = 2; // meters
+    const MATCH_THRESHOLD = 2;
     const result: CompareItem[] = [];
     const matchedPositionIds = new Set<string>();
 
@@ -415,7 +417,6 @@ router.get('/:id/compare', async (req: Request, res: Response) => {
       }
     }
 
-    // Unplanned: in snapshot but not matched to any plan item
     for (const pos of positions) {
       if (!matchedPositionIds.has(pos.id)) {
         result.push({
