@@ -22,8 +22,15 @@
 				const redirect = $page.url.searchParams.get('redirect') || '/';
 				goto(redirect);
 			}
-		} catch {
-			error = 'Email hoặc mật khẩu không đúng';
+		} catch (e: any) {
+			const msg = e?.message ?? '';
+			if (msg.includes('401')) {
+				error = 'Email hoặc mật khẩu không đúng';
+			} else if (msg.includes('403')) {
+				error = 'Tài khoản đã bị vô hiệu hoá';
+			} else {
+				error = `Không kết nối được server (${msg || 'kiểm tra backend đang chạy'})`;
+			}
 		} finally {
 			loading = false;
 		}
