@@ -17,7 +17,7 @@ const upload = multer({ dest: TMP_DIR, limits: { fileSize: 50 * 1024 * 1024 } })
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+  return requireRole('ADMIN')(req, _res, next);
 });
 
 // GET /?siteId=xxx — list layouts with snapshot count

@@ -6,7 +6,7 @@ const router = Router();
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+  return requireRole('ADMIN')(req, _res, next);
 });
 
 // GET / — list sites with layout counts

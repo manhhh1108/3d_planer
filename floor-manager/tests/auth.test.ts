@@ -211,10 +211,18 @@ describe('route protection', () => {
     expect(r.status).toBe(403);
   });
 
-  it('POST /api/sites succeeds for PLANNING', async () => {
+  it('POST /api/sites returns 403 for PLANNING (admin-only)', async () => {
     const r = await request(app)
       .post('/api/sites')
       .set('Cookie', `access_token=${planningToken()}`)
+      .send({ name: 'Xưởng A' });
+    expect(r.status).toBe(403);
+  });
+
+  it('POST /api/sites succeeds for ADMIN', async () => {
+    const r = await request(app)
+      .post('/api/sites')
+      .set('Cookie', `access_token=${adminToken()}`)
       .send({ name: 'Xưởng A' });
     expect(r.status).toBe(201);
   });

@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { api, authApi, type ApiProject, type ApiSite, type ApiDashboard } from '$lib/services/api';
-  import { currentUser, canEdit } from '$lib/stores/auth';
+  import { currentUser, canEdit, isAdmin } from '$lib/stores/auth';
 
   let sites = $state<ApiSite[]>([]);
   let projects = $state<ApiProject[]>([]);
@@ -290,7 +290,7 @@
       <!-- ===== Khu Mặt bằng ===== -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-bold text-gray-800">🏭 Mặt bằng ({sites.length})</h2>
-        {#if $canEdit}
+        {#if $isAdmin}
           <button onclick={() => showCreateSite = true} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
             + Thêm mặt bằng
           </button>
@@ -323,7 +323,7 @@
                   {/if}
                 </div>
               </a>
-              {#if $canEdit}
+              {#if $isAdmin}
                 {#if confirmDeleteSiteId === site.id}
                   <div class="absolute top-3 right-3 bg-white border border-gray-200 rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-2 z-10">
                     <span class="text-xs text-gray-500">Xóa?</span>
