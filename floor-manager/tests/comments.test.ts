@@ -107,6 +107,17 @@ describe('POST /api/comments', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 khi snapshotId thuộc layout khác', async () => {
+    const layoutId = await seedLayout();
+    const otherLayoutId = await seedLayout();
+    const snapshotIdOfOther = await seedSnapshot(otherLayoutId);
+    const res = await request(app)
+      .post('/api/comments')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ layoutId, snapshotId: snapshotIdOfOther, text: 'test' });
+    expect(res.status).toBe(400);
+  });
+
   it('403 khi VIEWER cố tạo comment', async () => {
     const layoutId = await seedLayout();
     const res = await request(app)
@@ -141,6 +152,7 @@ describe('GET /api/comments (filter)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body[0].text).toBe('Comment 2');
+    expect(res.body[1].text).toBe('Comment 1');
   });
 
   it('lọc theo snapshotId — chỉ trả về comment của snapshot đó', async () => {
