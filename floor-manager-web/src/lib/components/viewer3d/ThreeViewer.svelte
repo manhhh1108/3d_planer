@@ -515,7 +515,8 @@
   let _dragFurnitureId: string | null = null;
   let _dragMesh: THREE.Object3D | null = null;
   let _dragLabel: HTMLDivElement | null = null;
-  const DRAG_SNAP = 50; // snap to 50cm (= 50 units in scene) for easier placement
+  let _dragOffset = new THREE.Vector3(); // offset between click point and block center
+  const DRAG_SNAP = 50;
   let _isDraggingBlock = false;
 
   function snapToGrid(val: number): number {
@@ -717,6 +718,10 @@
             _dragMesh = obj;
             _isDraggingBlock = false;
             controls.enabled = false;
+            // Calculate offset between click point on floor and block center
+            const hitPt = new THREE.Vector3();
+            raycaster.ray.intersectPlane(floorPlane, hitPt);
+            _dragOffset.set(obj.position.x - hitPt.x, 0, obj.position.z - hitPt.z);
             // Highlight dragged block
             obj.traverse((c: any) => {
               if (c.isMesh && c.material) {
@@ -742,13 +747,14 @@
           const pos = _dragMesh.position;
           moveFurniture(_dragFurnitureId, { x: pos.x, y: pos.z });
         }
-        // Remove highlight — scene will rebuild from store
         _dragFurnitureId = null;
         _dragMesh = null;
         _isDraggingBlock = false;
-        controls.enabled = true;
         // Remove coordinate label
         if (_dragLabel) { _dragLabel.remove(); _dragLabel = null; }
+        // Delay re-enabling OrbitControls to prevent zoom jump from accumulated events
+        e.stopPropagation();
+        requestAnimationFrame(() => { controls.enabled = true; });
         return;
       }
       // Only select in edit mode, and only if mouse didn't move much (not a drag/orbit)
@@ -828,8 +834,8 @@
         raycaster.setFromCamera(mouse, camera);
         const hit = new THREE.Vector3();
         if (raycaster.ray.intersectPlane(floorPlane, hit)) {
-          const sx = snapToGrid(hit.x);
-          const sz = snapToGrid(hit.z);
+          const sx = snapToGrid(hit.x + _dragOffset.x);
+          const sz = snapToGrid(hit.z + _dragOffset.z);
           _dragMesh.position.set(sx, _dragMesh.position.y, sz);
           if (_dragLabel) {
             _dragLabel.textContent = `x: ${(sx / 100).toFixed(1)}m  y: ${(sz / 100).toFixed(1)}m`;
