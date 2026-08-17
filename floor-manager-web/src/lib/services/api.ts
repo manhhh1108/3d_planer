@@ -254,6 +254,30 @@ export const api = {
 		compare: (planId: string, snapshotId?: string) =>
 			http<ApiCompareResult>(`/plans/${planId}/compare${snapshotId ? `?snapshotId=${snapshotId}` : ''}`),
 	},
+	comments: {
+		list: (layoutId: string, snapshotId?: string) =>
+			http<ApiComment[]>(
+				`/comments?layoutId=${layoutId}${snapshotId ? `&snapshotId=${snapshotId}` : ''}`
+			),
+		create: (data: {
+			layoutId: string;
+			snapshotId?: string;
+			positionX?: number;
+			positionY?: number;
+			text: string;
+		}) =>
+			http<ApiComment>('/comments', {
+				method: 'POST',
+				body: JSON.stringify(data),
+			}),
+		update: (id: string, text: string) =>
+			http<ApiComment>(`/comments/${id}`, {
+				method: 'PUT',
+				body: JSON.stringify({ text }),
+			}),
+		remove: (id: string) =>
+			http<void>(`/comments/${id}`, { method: 'DELETE' }),
+	},
 };
 
 export interface ApiDashboard {
@@ -319,6 +343,18 @@ export interface ApiPlanItem {
     weightKg: number | null;
     metadata: { widthM?: number; depthM?: number; heightM?: number } | null;
   };
+}
+
+export interface ApiComment {
+  id: string;
+  layoutId: string;
+  snapshotId: string | null;
+  positionX: number | null;
+  positionY: number | null;
+  text: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ApiConflict {
