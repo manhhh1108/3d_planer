@@ -62,6 +62,7 @@ export interface ApiProduct {
 	file3dUrl: string | null;
 	thumbnail: string | null;
 	sharepointLink: string | null;
+	quantity: number;
 	metadata: { widthM?: number; depthM?: number; heightM?: number } | null;
 	assetId: string | null;
 	asset?: ApiAsset | null;

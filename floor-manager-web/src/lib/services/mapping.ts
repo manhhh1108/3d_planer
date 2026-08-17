@@ -31,12 +31,12 @@ export function orientedDims(
 	}
 }
 
-/** Position (mét, backend) -> FurnitureItem (cm, editor). 1 sản phẩm = 1 block. */
+/** Position (mét, backend) -> FurnitureItem (cm, editor). */
 export function positionToItem(p: ApiPosition): FurnitureItem {
 	const s = p.scale ?? 1;
 	const orientation = (p.orientation ?? 'bottom') as BlockOrientation;
 	const item: FurnitureItem = {
-		id: p.productId,
+		id: p.id,
 		catalogId: p.productId,
 		position: { x: p.x * M_TO_CM, y: p.y * M_TO_CM },
 		rotation: p.rotation ?? 0,
@@ -69,14 +69,7 @@ export function itemToPosition(it: FurnitureItem) {
 
 /** Layout + snapshot (positions) -> cấu trúc Project/Floor của editor */
 export function layoutToProject(layout: ApiLayout, snapshot: ApiSnapshot | null): Project {
-	// Dedupe: DB ràng buộc 1 position / sản phẩm / snapshot, nhưng phòng hờ
-	const seen = new Set<string>();
-	const furniture: FurnitureItem[] = [];
-	for (const p of snapshot?.positions ?? []) {
-		if (seen.has(p.productId)) continue;
-		seen.add(p.productId);
-		furniture.push(positionToItem(p));
-	}
+	const furniture: FurnitureItem[] = (snapshot?.positions ?? []).map(positionToItem);
 
 	const floor: Floor = {
 		id: layout.id,
@@ -107,15 +100,8 @@ export function layoutToProject(layout: ApiLayout, snapshot: ApiSnapshot | null)
 	};
 }
 
-/** Lấy positions từ floor đang active của project (dedupe theo productId) */
+/** Lấy positions từ floor đang active của project */
 export function projectToPositions(project: Project) {
 	const floor = project.floors.find((f) => f.id === project.activeFloorId) ?? project.floors[0];
-	const seen = new Set<string>();
-	const positions: ReturnType<typeof itemToPosition>[] = [];
-	for (const it of floor?.furniture ?? []) {
-		if (seen.has(it.catalogId)) continue;
-		seen.add(it.catalogId);
-		positions.push(itemToPosition(it));
-	}
-	return positions;
+	return (floor?.furniture ?? []).map(itemToPosition);
 }
