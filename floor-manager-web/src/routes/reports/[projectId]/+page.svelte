@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { base } from '$app/paths';
   import { api, type ApiLayout, type ApiSnapshot } from '$lib/services/api';
+  import StageBarChart from '$lib/components/reports/StageBarChart.svelte';
   import { jsPDF } from 'jspdf';
   import autoTable from 'jspdf-autotable';
 
@@ -18,6 +19,16 @@
   let selectedDate = $state('');
   let loading = $state(true);
 
+  // Process chart
+  let chartStartDate = $state('');
+  let chartEndDate = $state('');
+  let chartData = $state<{ date: string; stages: Record<string, number> }[]>([]);
+
+  // Occupation filters
+  let occStartDate = $state('');
+  let occEndDate = $state('');
+  let occLayoutId = $state('');
+
   // Data
   let summary = $state<Awaited<ReturnType<typeof api.reports.summary>> | null>(null);
   let byProcess = $state<Awaited<ReturnType<typeof api.reports.byProcess>>>([]);
@@ -28,6 +39,13 @@
     'Sơn': 'bg-green-50 text-green-700',
     'Lắp ráp': 'bg-blue-50 text-blue-700',
     'Cắt': 'bg-red-50 text-red-600',
+  };
+
+  const STAGE_HEX: Record<string, string> = {
+    'Hàn': '#f59e0b',
+    'Sơn': '#22c55e',
+    'Lắp ráp': '#3b82f6',
+    'Cắt': '#ef4444',
   };
 
   onMount(async () => {
@@ -42,7 +60,7 @@
         selectedLayoutId = layouts[0].id;
         await onLayoutChange();
       }
-      occupation = await api.reports.occupation(projectId);
+      occupation = await api.reports.occupation({ projectId });
     } finally {
       loading = false;
     }
@@ -53,10 +71,37 @@
     if (snapshots.length > 0) {
       selectedDate = snapshots[0].date.slice(0, 10);
       await loadReports();
+      chartEndDate = snapshots[0].date.slice(0, 10);
+      const d = new Date(chartEndDate);
+      d.setDate(d.getDate() - 29);
+      chartStartDate = d.toISOString().slice(0, 10);
+      await loadChart();
     } else {
       selectedDate = '';
       summary = null;
       byProcess = [];
+    }
+  }
+
+  async function loadChart() {
+    if (!selectedLayoutId || !chartStartDate || !chartEndDate) return;
+    try {
+      chartData = await api.reports.byProcessRange(selectedLayoutId, chartStartDate, chartEndDate);
+    } catch {
+      chartData = [];
+    }
+  }
+
+  async function loadOccupation() {
+    try {
+      occupation = await api.reports.occupation({
+        projectId,
+        layoutId: occLayoutId || undefined,
+        startDate: occStartDate || undefined,
+        endDate: occEndDate || undefined,
+      });
+    } catch {
+      occupation = [];
     }
   }
 
@@ -145,6 +190,24 @@
     }
   }
 
+  function exportCSV() {
+    const headers = ['Sản phẩm', 'Mã', 'Dự án', 'Layout', 'Từ ngày', 'Đến ngày', 'Số ngày', 'Diện tích (m²)', 'm² × ngày'];
+    const rows = occupation.map((r) => [
+      r.productName, r.productCode, r.projectName, r.layoutName,
+      fmt(r.startDate), fmt(r.endDate), r.days, r.areaM2, r.areaDays,
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chiem-dung-mat-bang.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function stripDiacritics(s: string): string {
     return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
   }
@@ -203,9 +266,16 @@
               <div class="text-2xl font-bold text-amber-700">{summary.layoutArea.toFixed(0)} m²</div>
               <div class="text-xs text-amber-500 font-medium mt-1">Diện tích mặt bằng</div>
             </div>
-            <div class="rounded-xl p-4 text-center bg-purple-50">
-              <div class="text-2xl font-bold text-purple-700">{summary.usageRate}%</div>
-              <div class="text-xs text-purple-400 font-medium mt-1">Tỷ lệ sử dụng</div>
+            <div class="rounded-xl p-4 text-center {summary.usageRate >= 80 ? 'bg-red-50' : 'bg-purple-50'}">
+              <div class="text-2xl font-bold {summary.usageRate >= 80 ? 'text-red-600' : 'text-purple-700'}">
+                {summary.usageRate}%
+              </div>
+              <div class="text-xs {summary.usageRate >= 80 ? 'text-red-400' : 'text-purple-400'} font-medium mt-1">
+                Tỷ lệ sử dụng
+                {#if summary.usageRate >= 80}
+                  <span class="ml-1 font-bold">⚠ Quá tải</span>
+                {/if}
+              </div>
             </div>
           </div>
 
@@ -259,6 +329,35 @@
         {/if}
 
       {:else if tab === 'process'}
+        <!-- Date range controls cho chart -->
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          <span class="text-xs text-gray-500">Xem chart từ</span>
+          <input
+            type="date"
+            bind:value={chartStartDate}
+            onchange={loadChart}
+            class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-blue-400"
+          />
+          <span class="text-xs text-gray-500">đến</span>
+          <input
+            type="date"
+            bind:value={chartEndDate}
+            onchange={loadChart}
+            class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-blue-400"
+          />
+        </div>
+
+        {#if chartData.length > 0}
+          <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
+            <div class="text-xs font-semibold text-gray-600 mb-3">Diện tích theo công đoạn (m²/ngày)</div>
+            <StageBarChart data={chartData} stageColors={STAGE_HEX} />
+          </div>
+        {:else if chartStartDate && chartEndDate}
+          <div class="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm mb-4">
+            Không có snapshot nào trong khoảng ngày này
+          </div>
+        {/if}
+
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
           <div class="px-5 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
             Thống kê theo công đoạn · {layoutName} · Ngày {selectedDate ? fmt(selectedDate) : '—'}
@@ -301,6 +400,37 @@
         </div>
 
       {:else}
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          <select
+            bind:value={occLayoutId}
+            onchange={loadOccupation}
+            class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400"
+          >
+            <option value="">Tất cả layout</option>
+            {#each layouts as l}<option value={l.id}>{l.name}</option>{/each}
+          </select>
+          <input
+            type="date"
+            bind:value={occStartDate}
+            onchange={loadOccupation}
+            class="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400"
+          />
+          <span class="text-xs text-gray-400">—</span>
+          <input
+            type="date"
+            bind:value={occEndDate}
+            onchange={loadOccupation}
+            class="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400"
+          />
+          <button
+            onclick={exportCSV}
+            disabled={occupation.length === 0}
+            class="ml-auto px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 disabled:opacity-40"
+          >
+            ⬇ Xuất CSV
+          </button>
+        </div>
+
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
           <div class="px-5 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
             Thời gian chiếm dụng mặt bằng (toàn dự án)
