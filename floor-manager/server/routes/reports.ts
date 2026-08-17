@@ -81,7 +81,12 @@ router.get('/by-process', async (req: Request, res: Response) => {
 // projectId now filters by the PRODUCT's project (layouts are cross-project)
 router.get('/occupation', async (req: Request, res: Response) => {
   try {
-    const { projectId, layoutId } = req.query as { projectId?: string; layoutId?: string };
+    const { projectId, layoutId, startDate, endDate } = req.query as {
+      projectId?: string;
+      layoutId?: string;
+      startDate?: string;
+      endDate?: string;
+    };
 
     let layoutIds: string[];
     if (layoutId) {
@@ -93,7 +98,17 @@ router.get('/occupation', async (req: Request, res: Response) => {
     if (layoutIds.length === 0) return res.json([]);
 
     const snapshots = await prisma.snapshot.findMany({
-      where: { layoutId: { in: layoutIds } },
+      where: {
+        layoutId: { in: layoutIds },
+        ...(startDate || endDate
+          ? {
+              date: {
+                ...(startDate ? { gte: new Date(startDate) } : {}),
+                ...(endDate ? { lte: new Date(endDate) } : {}),
+              },
+            }
+          : {}),
+      },
       orderBy: { date: 'asc' },
       include: {
         positions: {
