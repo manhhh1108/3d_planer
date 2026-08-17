@@ -712,7 +712,8 @@
         const hits = raycaster.intersectObjects(wallGroup.children, true);
         if (hits.length > 0) {
           let obj: THREE.Object3D | null = hits[0].object;
-          while (obj && !obj.userData.furnitureId && obj.parent) obj = obj.parent;
+          // Traverse up to the top-level furniture container (direct child of wallGroup)
+          while (obj && obj.parent && obj.parent !== wallGroup) obj = obj.parent;
           if (obj?.userData.furnitureId) {
             _dragFurnitureId = obj.userData.furnitureId as string;
             _dragMesh = obj;
