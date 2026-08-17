@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
-  import { api, type ApiLayout, type ApiSnapshot } from '$lib/services/api';
+  import { api, authApi, type ApiLayout, type ApiSnapshot } from '$lib/services/api';
   import StageBarChart from '$lib/components/reports/StageBarChart.svelte';
-  import { jsPDF } from 'jspdf';
+  import { createPdf, addTitleBlock, drawFloorPlan, addBlockTable } from '$lib/utils/pdfUtils';
   import autoTable from 'jspdf-autotable';
 
   const projectId = $page.params.projectId ?? '';
@@ -28,6 +28,8 @@
   let occStartDate = $state('');
   let occEndDate = $state('');
   let occLayoutId = $state('');
+  let siteName = $state('');
+  let currentUserEmail = $state('');
 
   // Data
   let summary = $state<Awaited<ReturnType<typeof api.reports.summary>> | null>(null);
@@ -50,12 +52,14 @@
 
   onMount(async () => {
     try {
-      const [proj, allLayouts] = await Promise.all([
+      const [proj, allLayouts, me] = await Promise.all([
         api.projects.get(projectId),
         api.layouts.list(),
+        authApi.me(),
       ]);
       projectName = proj.name;
       layouts = allLayouts;
+      currentUserEmail = me.email;
       if (layouts.length > 0) {
         selectedLayoutId = layouts[0].id;
         await onLayoutChange();
@@ -67,6 +71,17 @@
   });
 
   async function onLayoutChange() {
+    const layout = layouts.find((l) => l.id === selectedLayoutId);
+    if (layout?.siteId) {
+      try {
+        const site = await api.sites.get(layout.siteId);
+        siteName = site.name;
+      } catch {
+        siteName = '';
+      }
+    } else {
+      siteName = '';
+    }
     snapshots = await api.snapshots.list(selectedLayoutId);
     if (snapshots.length > 0) {
       selectedDate = snapshots[0].date.slice(0, 10);
@@ -124,69 +139,91 @@
 
   const layoutName = $derived(layouts.find((l) => l.id === selectedLayoutId)?.name ?? '');
 
-  /** Xuất PDF (font mặc định của jsPDF không có dấu tiếng Việt -> dùng không dấu) */
-  function exportPDF() {
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text(`Floor Manager - Bao cao`, 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Du an: ${stripDiacritics(projectName)}`, 14, 22);
+  async function exportPDF() {
+    const doc = await createPdf();
+    const today = new Date().toLocaleDateString('vi-VN');
+    const layout = layouts.find((l) => l.id === selectedLayoutId);
 
     if (tab === 'summary' && summary) {
-      doc.text(`Tong hop mat bang: ${stripDiacritics(layoutName)} - Ngay ${fmt(selectedDate)}`, 14, 28);
-      autoTable(doc, {
-        startY: 34,
-        head: [['STT', 'San pham', 'Ma', 'Vi tri (X, Y)', 'Dien tich (m2)', 'Khoi luong (T)', 'Cong doan']],
-        body: (summary.snapshot.positions ?? []).map((p, i) => [
-          i + 1,
-          stripDiacritics(p.product?.name ?? ''),
-          p.product?.code ?? '',
-          `${p.x.toFixed(1)}, ${p.y.toFixed(1)}`,
-          p.product?.areaM2 ?? '',
-          p.product?.weightKg ? (p.product.weightKg / 1000).toFixed(1) : '',
-          stripDiacritics(p.product?.processStage ?? ''),
-        ]),
-        foot: [[
-          '', 'Tong cong', '', '',
-          summary.totalArea.toFixed(1),
-          (summary.totalWeight / 1000).toFixed(1),
-          `Su dung: ${summary.usageRate}%`,
-        ]],
+      let y = addTitleBlock(doc, {
+        siteName,
+        layoutName,
+        snapshotDate: fmt(selectedDate),
+        exportedBy: currentUserEmail,
+        exportDate: today,
+        title: 'Tổng hợp mặt bằng',
       });
-      doc.save(`bao-cao-mat-bang-${selectedDate}.pdf`);
+
+      if (layout && summary.snapshot.positions && summary.snapshot.positions.length > 0) {
+        y = drawFloorPlan(
+          doc,
+          summary.snapshot.positions,
+          layout.widthM,
+          layout.heightM,
+          y,
+          90,
+        );
+      }
+
+      addBlockTable(
+        doc,
+        (summary.snapshot.positions ?? []).map((p) => ({
+          code: p.product?.code ?? '',
+          name: p.product?.name ?? '',
+          projectName,
+          processStage: p.product?.processStage ?? '',
+          weightKg: p.product?.weightKg ?? null,
+          areaM2: p.product?.areaM2 ?? null,
+        })),
+        y,
+      );
+      doc.save(`mat-bang-${selectedDate}.pdf`);
+
     } else if (tab === 'process') {
-      doc.text(`Thong ke theo cong doan: ${stripDiacritics(layoutName)} - Ngay ${fmt(selectedDate)}`, 14, 28);
-      autoTable(doc, {
-        startY: 34,
-        head: [['Cong doan', 'So san pham', 'Tong dien tich (m2)', 'Tong khoi luong (T)', 'Ty le dien tich (%)']],
-        body: byProcess.map((r) => [
-          stripDiacritics(r.processStage),
-          r.count,
-          r.totalArea.toFixed(1),
-          (r.totalWeight / 1000).toFixed(1),
-          `${r.areaPercent}%`,
-        ]),
+      const y = addTitleBlock(doc, {
+        siteName,
+        layoutName,
+        snapshotDate: fmt(selectedDate),
+        exportedBy: currentUserEmail,
+        exportDate: today,
+        title: 'Thống kê theo công đoạn',
       });
-      doc.save(`bao-cao-cong-doan-${selectedDate}.pdf`);
+      addBlockTable(
+        doc,
+        byProcess.map((r) => ({
+          code: '',
+          name: r.processStage,
+          projectName,
+          processStage: r.processStage,
+          weightKg: r.totalWeight,
+          areaM2: r.totalArea,
+        })),
+        y,
+      );
+      doc.save(`cong-doan-${selectedDate}.pdf`);
+
     } else {
-      doc.text(`Thoi gian chiem dung mat bang`, 14, 28);
-      autoTable(doc, {
-        startY: 34,
-        head: [['San pham', 'Ma', 'Du an', 'Layout', 'Tu ngay', 'Den ngay', 'So ngay', 'Dien tich (m2)', 'm2 x ngay']],
-        body: occupation.map((r) => [
-          stripDiacritics(r.productName),
-          r.productCode,
-          stripDiacritics(r.projectName),
-          stripDiacritics(r.layoutName),
-          fmt(r.startDate),
-          fmt(r.endDate),
-          r.days,
-          r.areaM2,
-          r.areaDays,
-        ]),
-        foot: [['', '', '', '', '', '', '', 'Tong', occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)]],
+      const y = addTitleBlock(doc, {
+        siteName,
+        layoutName: occLayoutId ? (layouts.find((l) => l.id === occLayoutId)?.name ?? 'Tất cả') : 'Tất cả',
+        snapshotDate: '',
+        exportedBy: currentUserEmail,
+        exportDate: today,
+        title: 'Thời gian chiếm dụng mặt bằng',
       });
-      doc.save(`bao-cao-chiem-dung.pdf`);
+      autoTable(doc, {
+        startY: y,
+        styles: { font: 'NotoSans', fontSize: 8 },
+        headStyles: { font: 'NotoSans', fillColor: [51, 65, 85] },
+        footStyles: { font: 'NotoSans', fillColor: [226, 232, 240] },
+        head: [['Sản phẩm', 'Mã', 'Dự án', 'Layout', 'Từ ngày', 'Đến ngày', 'Số ngày', 'Diện tích (m²)', 'm² × ngày']],
+        body: occupation.map((r) => [
+          r.productName, r.productCode, r.projectName, r.layoutName,
+          fmt(r.startDate), fmt(r.endDate), r.days, r.areaM2, r.areaDays,
+        ]),
+        foot: [['', '', '', '', '', '', '', 'Tổng', occupation.reduce((s, r) => s + r.areaDays, 0).toFixed(1)]],
+      });
+      doc.save('chiem-dung-mat-bang.pdf');
     }
   }
 
@@ -208,9 +245,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function stripDiacritics(s: string): string {
-    return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
-  }
+
 </script>
 
 <div class="min-h-screen bg-gray-50">
