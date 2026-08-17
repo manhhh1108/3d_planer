@@ -717,10 +717,11 @@
             _dragFurnitureId = obj.userData.furnitureId as string;
             _dragMesh = obj;
             _isDraggingBlock = false;
+            // Save orbit state BEFORE disabling, then disable
+            controls.saveState();
             controls.enabled = false;
-            // Calculate offset between click point on floor and block center
-            const hitPt = new THREE.Vector3();
-            raycaster.ray.intersectPlane(floorPlane, hitPt);
+            // Use the actual hit point on the block mesh (not floor plane) for precise offset
+            const hitPt = hits[0].point;
             _dragOffset.set(obj.position.x - hitPt.x, 0, obj.position.z - hitPt.z);
             // Highlight dragged block
             obj.traverse((c: any) => {
@@ -750,11 +751,10 @@
         _dragFurnitureId = null;
         _dragMesh = null;
         _isDraggingBlock = false;
-        // Remove coordinate label
         if (_dragLabel) { _dragLabel.remove(); _dragLabel = null; }
-        // Delay re-enabling OrbitControls to prevent zoom jump from accumulated events
-        e.stopPropagation();
-        requestAnimationFrame(() => { controls.enabled = true; });
+        // Restore orbit controls to pre-drag state to prevent zoom/pan jump
+        controls.reset();
+        controls.enabled = true;
         return;
       }
       // Only select in edit mode, and only if mouse didn't move much (not a drag/orbit)
