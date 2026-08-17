@@ -132,8 +132,7 @@
     updateInteriorCamera();
     const offRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     offRenderer.setSize(width, height);
-    offRenderer.shadowMap.enabled = true;
-    offRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    offRenderer.shadowMap.enabled = false;
     offRenderer.toneMapping = THREE.ACESFilmicToneMapping;
     if (cameraHelper) cameraHelper.visible = false;
     setSpritesVisible(false);
@@ -443,8 +442,7 @@
     const offRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false });
     offRenderer.setSize(width, height);
     offRenderer.setPixelRatio(1);
-    offRenderer.shadowMap.enabled = true;
-    offRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    offRenderer.shadowMap.enabled = false;
     offRenderer.toneMapping = THREE.ACESFilmicToneMapping;
     offRenderer.toneMappingExposure = 1.0;
 
@@ -477,8 +475,7 @@
 
     if (!cameraPreviewRenderer) {
       cameraPreviewRenderer = new THREE.WebGLRenderer({ canvas: cameraPreviewCanvas, antialias: true, alpha: false });
-      cameraPreviewRenderer.shadowMap.enabled = true;
-      cameraPreviewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      cameraPreviewRenderer.shadowMap.enabled = false;
       cameraPreviewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
       cameraPreviewRenderer.toneMappingExposure = 1.0;
     }
@@ -672,7 +669,6 @@
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -1;
-    ground.receiveShadow = true;
     scene.add(ground);
 
     camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 1, 2000000);
@@ -681,8 +677,7 @@
     renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     container.appendChild(renderer.domElement);
@@ -824,14 +819,7 @@
     // Key light (sun)
     sunLight = new THREE.DirectionalLight(0xfff8e7, 1.0);
     sunLight.position.set(500, 1200, 800);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.camera.left = -1500;
-    sunLight.shadow.camera.right = 1500;
-    sunLight.shadow.camera.top = 1500;
-    sunLight.shadow.camera.bottom = -1500;
-    sunLight.shadow.bias = -0.0005;
+    sunLight.castShadow = false;
     scene.add(sunLight);
 
     // Fill light — softer, opposite side to reduce harsh shadows
@@ -851,7 +839,6 @@
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.y = 0.5;
-    floorMesh.receiveShadow = true;
     scene.add(floorMesh);
 
     wallGroup = new THREE.Group();
@@ -919,15 +906,7 @@
       const maxDim = Math.max(size.x, size.z, 200);
       controls.target.set(center.x, 0, center.z);
       camera.position.set(center.x + maxDim * 1.8, maxDim * 1.4, center.z + maxDim * 1.8);
-      // Expand shadow frustum to cover the actual scene extent
-      const halfExt = maxDim * 1.5;
       sunLight.position.set(center.x + 500, 1200, center.z + 800);
-      sunLight.shadow.camera.left = -halfExt;
-      sunLight.shadow.camera.right = halfExt;
-      sunLight.shadow.camera.top = halfExt;
-      sunLight.shadow.camera.bottom = -halfExt;
-      sunLight.shadow.camera.far = halfExt * 4;
-      sunLight.shadow.camera.updateProjectionMatrix();
     } else {
       controls.target.set(0, 0, 0);
       camera.position.set(500, 700, 500);
