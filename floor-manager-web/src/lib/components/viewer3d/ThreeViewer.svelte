@@ -663,10 +663,8 @@
     const groundTex = new THREE.CanvasTexture(groundCanvas);
     groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
     groundTex.repeat.set(groundSize / 4000, groundSize / 4000);
-    const groundMat = new THREE.MeshStandardMaterial({
+    const groundMat = new THREE.MeshBasicMaterial({
       map: groundTex,
-      roughness: 0.92,
-      metalness: 0
     });
     groundMat.polygonOffset = true;
     groundMat.polygonOffsetFactor = 2;
@@ -683,8 +681,7 @@
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = false;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMapping = THREE.NoToneMapping;
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
@@ -860,32 +857,24 @@
       }
     });
 
-    // Lights — improved multi-source setup
-    ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    // Lights — đơn giản, chỉ cần hiển thị hình dạng rõ ràng
+    ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
-    hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.4);
+    hemiLight = new THREE.HemisphereLight(0xffffff, 0xcccccc, 0.5);
     scene.add(hemiLight);
 
-    // Key light (sun)
-    sunLight = new THREE.DirectionalLight(0xfff8e7, 1.0);
+    sunLight = new THREE.DirectionalLight(0xffffff, 0.6);
     sunLight.position.set(500, 1200, 800);
     sunLight.castShadow = false;
     scene.add(sunLight);
 
-    // Fill light — softer, opposite side to reduce harsh shadows
-    fillLight = new THREE.DirectionalLight(0xc8d8f0, 0.4);
-    fillLight.position.set(-600, 800, -400);
-    scene.add(fillLight);
-
-    // Rim/back light for depth
-    rimLight = new THREE.DirectionalLight(0xffe4c4, 0.25);
-    rimLight.position.set(-200, 600, 1000);
-    scene.add(rimLight);
+    fillLight = sunLight; // giữ reference
+    rimLight = sunLight;
 
     // Textured floor
     const floorTex = createFloorTexture();
     const floorGeo = new THREE.PlaneGeometry(4000, 4000);
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, side: THREE.DoubleSide, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, side: THREE.DoubleSide });
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.y = 0.5;
