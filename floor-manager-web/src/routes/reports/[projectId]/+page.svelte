@@ -183,7 +183,7 @@
       const y = addTitleBlock(doc, {
         siteName,
         layoutName,
-        snapshotDate: fmt(selectedDate),
+        snapshotDate: selectedDate ? fmt(selectedDate) : '—',
         exportedBy: currentUserEmail,
         exportDate: today,
         title: 'Thống kê theo công đoạn',
