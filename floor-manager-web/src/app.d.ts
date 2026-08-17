@@ -8,7 +8,7 @@ declare global {
 				id: string;
 				email: string;
 				name: string;
-				role: 'ADMIN' | 'PLANNING' | 'VIEWER';
+				role: 'ADMIN' | 'PLANNING' | 'VIEWER' | 'PENDING';
 				active: boolean;
 			};
 		}
@@ -17,7 +17,7 @@ declare global {
 				id: string;
 				email: string;
 				name: string;
-				role: 'ADMIN' | 'PLANNING' | 'VIEWER';
+				role: 'ADMIN' | 'PLANNING' | 'VIEWER' | 'PENDING';
 				active: boolean;
 			} | null;
 		}

@@ -22,7 +22,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			});
 			if (me.ok) {
 				event.locals.user = await me.json();
-				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
+				if (event.locals.user!.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
 					throw redirect(303, '/pending');
 				}
 				return resolve(event);
@@ -50,7 +50,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 					maxAge: 15 * 60,
 				});
 				event.locals.user = user;
-				if (event.locals.user.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
+				if (event.locals.user!.role === 'PENDING' && !path.startsWith('/pending') && !path.startsWith('/api/auth')) {
 					throw redirect(303, '/pending');
 				}
 				return resolve(event);
