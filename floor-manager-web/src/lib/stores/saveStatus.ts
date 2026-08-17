@@ -3,6 +3,7 @@ import { currentProject } from './project';
 import { getActiveStore } from '$lib/services/datastore';
 import { saveSnapshot } from '$lib/stores/versionHistory';
 import { isTimelineReadonly } from './timeline';
+import { todayStr } from '$lib/services/mapping';
 
 export type SaveState = 'saved' | 'unsaved' | 'saving';
 
@@ -71,14 +72,14 @@ async function autoSave() {
 }
 
 /** Manual save */
-export async function manualSave() {
+export async function manualSave(date?: string) {
   if (isTimelineReadonly()) return; // không lưu khi đang xem ngày cũ
   if (debounceTimer) clearTimeout(debounceTimer);
   const p = get(currentProject);
   if (!p) return;
   saveState.set('saving');
   try {
-    await getActiveStore().save(p);
+    await getActiveStore().save(p, date ?? todayStr());
     captureThumbnail(p.id);
     saveSnapshot(p, 'Manual save');
     saveState.set('saved');

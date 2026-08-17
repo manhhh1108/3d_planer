@@ -4,7 +4,7 @@ import { layoutToProject, projectToPositions, todayStr } from './mapping';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
 
 export interface DataStore {
-  save(project: Project): Promise<void>;
+  save(project: Project, date?: string): Promise<void>;
   load(id: string): Promise<Project | null>;
   list(): Promise<{ id: string; name: string; updatedAt: string }[]>;
   delete(id: string): Promise<void>;
@@ -24,7 +24,7 @@ function getAll(): Record<string, string> {
 }
 
 export const localStore: DataStore = {
-  async save(project) {
+  async save(project, _date?) {
     const all = getAll();
     all[project.id] = JSON.stringify(project);
     try {
@@ -116,10 +116,10 @@ export const localStore: DataStore = {
  * save() upsert snapshot của NGÀY HÔM NAY qua POST /api/snapshots.
  */
 export const backendStore: DataStore = {
-  async save(project) {
+  async save(project, date?) {
     await api.snapshots.save({
       layoutId: project.id,
-      date: todayStr(),
+      date: date ?? todayStr(),
       positions: projectToPositions(project),
     });
   },

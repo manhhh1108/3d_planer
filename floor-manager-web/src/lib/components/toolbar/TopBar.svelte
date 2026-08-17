@@ -7,6 +7,7 @@
   import type { Floor, Project } from '$lib/models/types';
   import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
   import SettingsDialog from './SettingsDialog.svelte';
+  import SaveModal from '$lib/components/editor/SaveModal.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
   import { timelineReadonly } from '$lib/stores/timeline';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
@@ -17,6 +18,7 @@
   let { saveLabel = 'Save' }: { saveLabel?: string } = $props();
 
   let settingsOpen = $state(false);
+  let showSaveModal = $state(false);
 
   let projectName = $state('');
   let mode = $state<'2d' | '3d'>('2d');
@@ -61,8 +63,13 @@
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
   }
 
-  async function save() {
-    await manualSave();
+  function openSaveModal() {
+    showSaveModal = true;
+  }
+
+  async function confirmSave(date: string) {
+    showSaveModal = false;
+    await manualSave(date);
   }
 
   // Relative time for tooltip
@@ -455,7 +462,7 @@
     {/if}
   </span>
   <button
-    onclick={save}
+    onclick={openSaveModal}
     disabled={$timelineReadonly}
     class="px-3 py-1.5 max-md:px-2.5 text-sm bg-white text-slate-800 font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
     title={$timelineReadonly ? 'Đang xem snapshot cũ — về hôm nay để lưu' : ''}
@@ -465,3 +472,10 @@
 </div>
 
 <SettingsDialog bind:open={settingsOpen} />
+
+{#if showSaveModal}
+  <SaveModal
+    onConfirm={confirmSave}
+    onCancel={() => (showSaveModal = false)}
+  />
+{/if}
