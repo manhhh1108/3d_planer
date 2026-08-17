@@ -41,7 +41,32 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / — create product
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const product = await prisma.product.create({ data: req.body });
+    const {
+      projectId, name, code, weightKg, areaM2, processStage,
+      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId
+    } = req.body as {
+      projectId: string; name: string; code: string;
+      weightKg?: number; areaM2?: number; processStage?: string;
+      category?: string; color?: string; file2dUrl?: string; file3dUrl?: string;
+      sharepointLink?: string; metadata?: object; quantity?: number; assetId?: string;
+    };
+    const product = await prisma.product.create({
+      data: {
+        projectId, name, code,
+        ...(weightKg !== undefined ? { weightKg } : {}),
+        ...(areaM2 !== undefined ? { areaM2 } : {}),
+        ...(processStage !== undefined ? { processStage } : {}),
+        ...(category !== undefined ? { category } : {}),
+        ...(color !== undefined ? { color } : {}),
+        ...(file2dUrl !== undefined ? { file2dUrl } : {}),
+        ...(file3dUrl !== undefined ? { file3dUrl } : {}),
+        ...(sharepointLink !== undefined ? { sharepointLink } : {}),
+        ...(metadata !== undefined ? { metadata } : {}),
+        quantity: quantity ?? 1,
+        ...(assetId !== undefined ? { assetId } : {}),
+      },
+      include: { asset: true },
+    });
     res.status(201).json(product);
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -51,9 +76,33 @@ router.post('/', async (req: Request, res: Response) => {
 // PUT /:id — update product
 router.put('/:id', async (req: Request, res: Response) => {
   try {
+    const {
+      name, code, weightKg, areaM2, processStage,
+      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId
+    } = req.body as {
+      name?: string; code?: string; weightKg?: number; areaM2?: number;
+      processStage?: string; category?: string; color?: string;
+      file2dUrl?: string; file3dUrl?: string; sharepointLink?: string;
+      metadata?: object; quantity?: number; assetId?: string;
+    };
     const product = await prisma.product.update({
       where: { id: String(req.params.id) },
-      data: req.body,
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(code !== undefined ? { code } : {}),
+        ...(weightKg !== undefined ? { weightKg } : {}),
+        ...(areaM2 !== undefined ? { areaM2 } : {}),
+        ...(processStage !== undefined ? { processStage } : {}),
+        ...(category !== undefined ? { category } : {}),
+        ...(color !== undefined ? { color } : {}),
+        ...(file2dUrl !== undefined ? { file2dUrl } : {}),
+        ...(file3dUrl !== undefined ? { file3dUrl } : {}),
+        ...(sharepointLink !== undefined ? { sharepointLink } : {}),
+        ...(metadata !== undefined ? { metadata } : {}),
+        ...(quantity !== undefined ? { quantity } : {}),
+        ...(assetId !== undefined ? { assetId } : {}),
+      },
+      include: { asset: true },
     });
     res.json(product);
   } catch (err) {
