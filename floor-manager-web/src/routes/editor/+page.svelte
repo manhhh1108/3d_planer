@@ -2,7 +2,9 @@
   import { onMount } from 'svelte';
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
-  import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult } from '$lib/services/api';
+  import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult, type ApiComment } from '$lib/services/api';
+  import { currentUser, canEdit } from '$lib/stores/auth';
+  import CommentPanel from '$lib/components/editor/CommentPanel.svelte';
   import ComparisonOverlay from '$lib/components/editor/ComparisonOverlay.svelte';
   import PlanToolbar from '$lib/components/editor/PlanToolbar.svelte';
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
@@ -63,6 +65,18 @@
   let loadError = $state<string | null>(null);
   let backendLayoutId = $state<string | null>(null);
 
+  let comments = $state<ApiComment[]>([]);
+  let showComments = $state(false);
+
+  async function loadComments() {
+    if (!backendLayoutId) return;
+    try {
+      comments = await api.comments.list(backendLayoutId);
+    } catch {
+      // không block editor nếu comments fail
+    }
+  }
+
   let activeTab = $state<'layout' | 'planning'>('layout');
   let showComparison = $state(false);
   let plans = $state<ApiPlan[]>([]);
@@ -115,6 +129,7 @@
           loadError = e?.message ?? 'Không tải được layout từ server';
         }
         ready = true;
+        await loadComments();
         return;
       }
 
@@ -166,7 +181,15 @@
           class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'planning' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
           onclick={() => { activeTab = 'planning'; loadPlans(); }}
         >Kế hoạch</button>
-        <div class="ml-auto flex items-center">
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            onclick={() => (showComments = !showComments)}
+            class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {showComments
+              ? 'bg-blue-100 text-blue-600'
+              : 'text-gray-600 hover:bg-gray-100'}"
+          >
+            💬{comments.length > 0 ? ` (${comments.length})` : ''}
+          </button>
           <button
             class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors {showComparison ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}"
             onclick={() => showComparison = !showComparison}
@@ -209,6 +232,17 @@
           <LayersPanel />
         {/if}
         <PropertiesPanel is3D={mode === '3d'} />
+        {#if showComments && backendLayoutId}
+          <div class="w-72 flex-shrink-0 border-l border-gray-200 flex flex-col overflow-hidden">
+            <CommentPanel
+              layoutId={backendLayoutId}
+              {comments}
+              currentUserEmail={$currentUser?.email ?? ''}
+              canEdit={$canEdit}
+              onRefresh={loadComments}
+            />
+          </div>
+        {/if}
         <ComparisonOverlay layoutId={backendLayoutId ?? ''} show={showComparison} onClose={() => showComparison = false} />
       </div>
       {#if backendLayoutId}
