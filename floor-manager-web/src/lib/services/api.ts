@@ -168,40 +168,56 @@ export const api = {
 		fetchInserts: (id: string) =>
 			http<DxfInsertData[]>(`/layouts/${id}/background/inserts`),
 	},
-	reports: {
-		summary: (layoutId: string, date: string) =>
-			http<{
-				snapshot: ApiSnapshot;
-				totalArea: number;
-				totalWeight: number;
-				layoutArea: number;
-				usageRate: number;
-			}>(`/reports/summary?layoutId=${layoutId}&date=${date}`),
-		byProcess: (layoutId: string, date: string) =>
-			http<
-				{
-					processStage: string;
-					count: number;
-					totalArea: number;
-					totalWeight: number;
-					areaPercent: number;
-				}[]
-			>(`/reports/by-process?layoutId=${layoutId}&date=${date}`),
-		occupation: (projectId?: string) =>
-			http<
-				{
-					productName: string;
-					productCode: string;
-					projectName: string;
-					layoutName: string;
-					startDate: string;
-					endDate: string;
-					days: number;
-					areaM2: number;
-					areaDays: number;
-				}[]
-			>(projectId ? `/reports/occupation?projectId=${projectId}` : '/reports/occupation'),
-	},
+  reports: {
+    summary: (layoutId: string, date: string) =>
+      http<{
+        snapshot: ApiSnapshot;
+        totalArea: number;
+        totalWeight: number;
+        layoutArea: number;
+        usageRate: number;
+      }>(`/reports/summary?layoutId=${layoutId}&date=${date}`),
+    byProcess: (layoutId: string, date: string) =>
+      http<
+        {
+          processStage: string;
+          count: number;
+          totalArea: number;
+          totalWeight: number;
+          areaPercent: number;
+        }[]
+      >(`/reports/by-process?layoutId=${layoutId}&date=${date}`),
+    byProcessRange: (layoutId: string, startDate: string, endDate: string) =>
+      http<{ date: string; stages: Record<string, number> }[]>(
+        `/reports/by-process-range?layoutId=${layoutId}&startDate=${startDate}&endDate=${endDate}`
+      ),
+    occupation: (params?: {
+      projectId?: string;
+      layoutId?: string;
+      startDate?: string;
+      endDate?: string;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.projectId) q.set('projectId', params.projectId);
+      if (params?.layoutId) q.set('layoutId', params.layoutId);
+      if (params?.startDate) q.set('startDate', params.startDate);
+      if (params?.endDate) q.set('endDate', params.endDate);
+      const qs = q.toString();
+      return http<
+        {
+          productName: string;
+          productCode: string;
+          projectName: string;
+          layoutName: string;
+          startDate: string;
+          endDate: string;
+          days: number;
+          areaM2: number;
+          areaDays: number;
+        }[]
+      >(`/reports/occupation${qs ? `?${qs}` : ''}`);
+    },
+  },
 	assets: {
 		get: (id: string) => http<ApiAsset>(`/assets/${id}`),
 		remove: (id: string) => http<void>(`/assets/${id}`, { method: 'DELETE' }),
