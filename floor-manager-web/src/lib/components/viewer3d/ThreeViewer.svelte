@@ -514,7 +514,13 @@
   // 3D furniture drag state
   let _dragFurnitureId: string | null = null;
   let _dragMesh: THREE.Object3D | null = null;
+  let _dragLabel: HTMLDivElement | null = null;
+  const DRAG_SNAP = 50; // snap to 50cm (= 50 units in scene) for easier placement
   let _isDraggingBlock = false;
+
+  function snapToGrid(val: number): number {
+    return Math.round(val / DRAG_SNAP) * DRAG_SNAP;
+  }
 
   const TIME_PRESETS = {
     morning: { azimuth: 90, elevation: 25, ambient: 0.3, sunColor: 0xffe0a0, sunIntensity: 0.8, skyTop: '#f5a86c', skyMid: '#fdd89b', skyHorizon: '#ffe8c0', hemiSky: '#fdd89b', hemiGround: '#9b8060' },
@@ -711,6 +717,20 @@
             _dragMesh = obj;
             _isDraggingBlock = false;
             controls.enabled = false;
+            // Highlight dragged block
+            obj.traverse((c: any) => {
+              if (c.isMesh && c.material) {
+                c.material = c.material.clone();
+                c.material.opacity = 0.7;
+                c.material.transparent = true;
+              }
+            });
+            // Show coordinate label
+            if (!_dragLabel) {
+              _dragLabel = document.createElement('div');
+              _dragLabel.style.cssText = 'position:fixed;z-index:9999;background:rgba(0,0,0,0.8);color:#fff;padding:4px 8px;border-radius:6px;font-size:11px;pointer-events:none;font-family:monospace';
+              document.body.appendChild(_dragLabel);
+            }
           }
         }
       }
@@ -722,11 +742,14 @@
           const pos = _dragMesh.position;
           moveFurniture(_dragFurnitureId, { x: pos.x, y: pos.z });
         }
+        // Remove highlight — scene will rebuild from store
         _dragFurnitureId = null;
         _dragMesh = null;
         _isDraggingBlock = false;
         controls.enabled = true;
-        return; // don't process as a click
+        // Remove coordinate label
+        if (_dragLabel) { _dragLabel.remove(); _dragLabel = null; }
+        return;
       }
       // Only select in edit mode, and only if mouse didn't move much (not a drag/orbit)
       if (!editMode) return;
@@ -796,7 +819,7 @@
     // Hover highlight in edit mode
     let hoveredMesh: THREE.Mesh | null = null;
     renderer.domElement.addEventListener('mousemove', (e) => {
-      // 3D block drag
+      // 3D block drag — snap to grid + coordinate label
       if (_dragFurnitureId && _dragMesh) {
         _isDraggingBlock = true;
         const rect = renderer.domElement.getBoundingClientRect();
@@ -805,7 +828,14 @@
         raycaster.setFromCamera(mouse, camera);
         const hit = new THREE.Vector3();
         if (raycaster.ray.intersectPlane(floorPlane, hit)) {
-          _dragMesh.position.set(hit.x, _dragMesh.position.y, hit.z);
+          const sx = snapToGrid(hit.x);
+          const sz = snapToGrid(hit.z);
+          _dragMesh.position.set(sx, _dragMesh.position.y, sz);
+          if (_dragLabel) {
+            _dragLabel.textContent = `x: ${(sx / 100).toFixed(1)}m  y: ${(sz / 100).toFixed(1)}m`;
+            _dragLabel.style.left = (e.clientX + 16) + 'px';
+            _dragLabel.style.top = (e.clientY - 30) + 'px';
+          }
         }
         markSceneDirty();
         return;
