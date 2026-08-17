@@ -220,16 +220,16 @@ router.get('/by-process-range', async (req: Request, res: Response) => {
     });
 
     const result = snapshots.map((snap) => {
-      const stageArea: Record<string, number> = {};
+      const raw: Record<string, number> = {};
       for (const pos of snap.positions) {
         const stage = pos.product.processStage ?? 'Khác';
-        stageArea[stage] =
-          Math.round(((stageArea[stage] ?? 0) + (pos.product.areaM2 ?? 0)) * 10) / 10;
+        raw[stage] = (raw[stage] ?? 0) + (pos.product.areaM2 ?? 0);
       }
-      return {
-        date: snap.date.toISOString().slice(0, 10),
-        stages: stageArea,
-      };
+      const stages: Record<string, number> = {};
+      for (const [s, v] of Object.entries(raw)) {
+        stages[s] = Math.round(v * 10) / 10;
+      }
+      return { date: snap.date.toISOString().slice(0, 10), stages };
     });
 
     res.json(result);
