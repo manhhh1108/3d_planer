@@ -14,6 +14,7 @@ import assetsRouter from './routes/assets.js';
 import usersRouter from './routes/users.js';
 import dashboardRouter from './routes/dashboard.js';
 import plansRouter from './routes/plans.js';
+import commentsRouter from './routes/comments.js';
 import { requireAuth, requireRole, blockPending } from './middleware/auth.js';
 
 const app = express();
@@ -38,6 +39,7 @@ app.use('/api/products', requireAuth, blockPending, productsRouter);
 app.use('/api/sites', requireAuth, blockPending, sitesRouter);
 app.use('/api/layouts', requireAuth, blockPending, layoutsRouter);
 app.use('/api/plans', requireAuth, blockPending, plansRouter);
+app.use('/api/comments', requireAuth, blockPending, commentsRouter);
 app.use('/api/snapshots', requireAuth, blockPending, snapshotsRouter);
 app.use('/api/reports', requireAuth, blockPending, reportsRouter);
 app.use('/api/files', requireAuth, blockPending, filesRouter);
