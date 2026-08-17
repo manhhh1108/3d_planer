@@ -96,6 +96,7 @@ model Product {
   thumbnail      String?
   sharepointLink String?    @map("sharepoint_link")
   metadata       Json?
+  quantity       Int        @default(1)
   assetId        String?    @map("asset_id")
   createdAt      DateTime   @default(now()) @map("created_at")
   project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -134,7 +135,6 @@ model Position {
   snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([snapshotId, productId])
   @@map("positions")
 }
 
