@@ -11,7 +11,7 @@
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { createFurnitureModel } from '$lib/utils/furnitureModels3d';
   import { createFurnitureModelWithGLB } from '$lib/utils/furnitureModelLoader';
-  import { addFurniture } from '$lib/stores/project';
+  import { addFurniture, moveFurniture } from '$lib/stores/project';
 
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer;
@@ -511,6 +511,11 @@
   let floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0 plane
   let ghostIntersection = new THREE.Vector3();
 
+  // 3D furniture drag state
+  let _dragFurnitureId: string | null = null;
+  let _dragMesh: THREE.Object3D | null = null;
+  let _isDraggingBlock = false;
+
   const TIME_PRESETS = {
     morning: { azimuth: 90, elevation: 25, ambient: 0.3, sunColor: 0xffe0a0, sunIntensity: 0.8, skyTop: '#f5a86c', skyMid: '#fdd89b', skyHorizon: '#ffe8c0', hemiSky: '#fdd89b', hemiGround: '#9b8060' },
     noon:    { azimuth: 180, elevation: 80, ambient: 0.45, sunColor: 0xffffff, sunIntensity: 1.2, skyTop: '#3a7bd5', skyMid: '#87ceeb', skyHorizon: '#c8e8f8', hemiSky: '#87ceeb', hemiGround: '#8b7355' },
@@ -694,8 +699,38 @@
     let pointerDownPos = { x: 0, y: 0 };
     renderer.domElement.addEventListener('pointerdown', (e) => {
       pointerDownPos = { x: e.clientX, y: e.clientY };
+      // Drag detection: check if a furniture mesh was hit
+      if (!furniturePlacementMode) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObjects(wallGroup.children, true);
+        if (hits.length > 0) {
+          let obj: THREE.Object3D | null = hits[0].object;
+          while (obj && !obj.userData.furnitureId && obj.parent) obj = obj.parent;
+          if (obj?.userData.furnitureId) {
+            _dragFurnitureId = obj.userData.furnitureId as string;
+            _dragMesh = obj;
+            _isDraggingBlock = false;
+            controls.enabled = false;
+          }
+        }
+      }
     });
     renderer.domElement.addEventListener('pointerup', (e) => {
+      // Commit 3D drag
+      if (_dragFurnitureId) {
+        if (_isDraggingBlock && _dragMesh) {
+          const pos = _dragMesh.position;
+          moveFurniture(_dragFurnitureId, { x: pos.x, y: pos.z });
+        }
+        _dragFurnitureId = null;
+        _dragMesh = null;
+        _isDraggingBlock = false;
+        controls.enabled = true;
+        return; // don't process as a click
+      }
       // Only select in edit mode, and only if mouse didn't move much (not a drag/orbit)
       if (!editMode) return;
       const dx = e.clientX - pointerDownPos.x;
@@ -764,6 +799,21 @@
     // Hover highlight in edit mode
     let hoveredMesh: THREE.Mesh | null = null;
     renderer.domElement.addEventListener('mousemove', (e) => {
+      // 3D block drag
+      if (_dragFurnitureId && _dragMesh) {
+        _isDraggingBlock = true;
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const hit = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(floorPlane, hit)) {
+          _dragMesh.position.set(hit.x, _dragMesh.position.y, hit.z);
+        }
+        markSceneDirty();
+        return;
+      }
+
       // Furniture placement ghost preview
       if (editMode && furniturePlacementMode && selectedCatalogId) {
         const rect = renderer.domElement.getBoundingClientRect();
@@ -956,6 +1006,9 @@
         model.scale.x *= fi.scale.x;
         model.scale.z *= fi.scale.y;
       }
+      // Tag for drag-and-drop raycasting
+      model.userData.furnitureId = fi.id;
+      model.traverse((child) => { child.userData.furnitureId = fi.id; });
       wallGroup.add(model);
     }
 
