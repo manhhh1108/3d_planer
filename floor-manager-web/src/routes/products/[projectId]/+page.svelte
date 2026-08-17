@@ -33,6 +33,7 @@
   let fWidthM = $state<number | null>(null);
   let fDepthM = $state<number | null>(null);
   let fHeightM = $state<number | null>(null);
+  let fQuantity = $state<number>(1);
   let confirmDeleteId = $state<string | null>(null);
 
   let uploadingFor = $state<string | null>(null);
@@ -107,6 +108,7 @@
     fName = ''; fCode = ''; fWeight = null; fArea = null;
     fStage = 'Hàn'; fCategory = 'san_pham'; fColor = '#3b82f6';
     fWidthM = null; fDepthM = null; fHeightM = null;
+    fQuantity = 1;
     showForm = true;
   }
 
@@ -118,6 +120,7 @@
     fWidthM = p.metadata?.widthM ?? null;
     fDepthM = p.metadata?.depthM ?? null;
     fHeightM = p.metadata?.heightM ?? null;
+    fQuantity = p.quantity ?? 1;
     showForm = true;
   }
 
@@ -136,6 +139,7 @@
       category: fCategory,
       color: fColor,
       metadata: Object.keys(metadata).length ? metadata : null,
+      quantity: fQuantity,
     };
     if (editingId) {
       await api.products.update(editingId, data);
@@ -313,6 +317,16 @@
               <input type="number" bind:value={fHeightM} placeholder="Cao" step="0.1" class="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
             </div>
           </div>
+          <label class="block">
+            <span class="text-xs font-medium text-gray-500">Số lượng</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={fQuantity}
+              class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400"
+            />
+          </label>
         </div>
         <div class="flex gap-2 justify-end mt-5">
           <button onclick={() => showForm = false} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Hủy</button>

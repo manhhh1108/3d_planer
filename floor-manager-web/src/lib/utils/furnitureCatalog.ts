@@ -16,6 +16,8 @@ export interface FurnitureDef {
   assetStatus?: 'pending' | 'processing' | 'ready' | 'failed';
   /** URL mesh.glb (đường dẫn tương đối backend) cho viewer 3D */
   file3dUrl?: string;
+  /** Maximum number of instances allowed on the floor plan */
+  quantity?: number;
 }
 
 /**

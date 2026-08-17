@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectedTool, placingFurnitureId, setBackgroundImage } from '$lib/stores/project';
+  import { selectedTool, placingFurnitureId, setBackgroundImage, activeFloor } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
@@ -11,6 +11,13 @@
 
   let catalogItems = $derived($productCatalog);
   let categories = $derived([...new Set($productCatalog.map((f) => f.category))]);
+
+  const placedCounts = $derived(
+    ($activeFloor?.furniture ?? []).reduce<Record<string, number>>((acc, fi) => {
+      acc[fi.catalogId] = (acc[fi.catalogId] ?? 0) + 1;
+      return acc;
+    }, {})
+  );
 
   function setTool(tool: Tool) {
     selectedTool.set(tool);
@@ -24,6 +31,9 @@
   placingFurnitureId.subscribe((id) => { currentPlacing = id; });
 
   function onFurnitureClick(item: FurnitureDef) {
+    const placed = placedCounts[item.id] ?? 0;
+    const qty = item.quantity ?? 1;
+    if (placed >= qty) return; // quantity limit reached
     selectedTool.set('furniture');
     placingFurnitureId.set(item.id);
     addToRecent(item.id);
@@ -319,10 +329,13 @@
           {#each filtered as item}
             {@const s = search.toLowerCase()}
             {@const notReady = item.assetStatus != null && item.assetStatus !== 'ready'}
+            {@const placed = placedCounts[item.id] ?? 0}
+            {@const qty = item.quantity ?? 1}
+            {@const isFull = placed >= qty}
             <button
-              class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors {notReady ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
-              onclick={() => { if (!notReady) onFurnitureClick(item); }}
-              disabled={notReady}
+              class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors {notReady || isFull ? 'opacity-50 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
+              onclick={() => { if (!notReady && !isFull) onFurnitureClick(item); }}
+              disabled={notReady || isFull}
               draggable="true"
               ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); }}
               onmouseenter={(e) => onItemMouseEnter(e, item)}
@@ -352,6 +365,7 @@
                 <span class="text-xs font-medium text-gray-600">{item.name}</span>
               {/if}
               <span class="text-[10px] text-gray-400">{item.width}×{item.depth}cm</span>
+              <span class="text-[10px] {isFull ? 'text-red-400 font-medium' : 'text-gray-400'}">{placed}/{qty}</span>
               {#if item.assetStatus === 'failed'}
                 <span class="text-[10px] text-red-500">CAD lỗi</span>
               {:else if notReady}

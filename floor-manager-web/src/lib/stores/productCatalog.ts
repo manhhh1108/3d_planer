@@ -21,6 +21,7 @@ export function productToDef(p: ApiProduct): FurnitureDef {
 		height: Math.max(10, Math.round(hM * 100)),
 		assetStatus: p.asset?.status,
 		file3dUrl: p.file3dUrl ?? undefined,
+		quantity: p.quantity,
 	};
 }
 
