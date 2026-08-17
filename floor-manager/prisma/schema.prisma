@@ -76,6 +76,7 @@ model Layout {
   site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]
   plans      Plan[]
+  comments   Comment[]
 
   @@map("layouts")
 }
@@ -115,6 +116,7 @@ model Snapshot {
   version   Int        @default(1)
   layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
   positions Position[]
+  comments  Comment[]
 
   @@unique([layoutId, date])
   @@map("snapshots")
@@ -163,4 +165,23 @@ model PlanItem {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("plan_items")
+}
+
+model Comment {
+  id         String    @id @default(cuid())
+  layoutId   String    @map("layout_id")
+  snapshotId String?   @map("snapshot_id")
+  positionX  Float?    @map("position_x")
+  positionY  Float?    @map("position_y")
+  text       String
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  layout   Layout    @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  snapshot Snapshot? @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+  @@index([layoutId])
+  @@index([snapshotId])
 }
