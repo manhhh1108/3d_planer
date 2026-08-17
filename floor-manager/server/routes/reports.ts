@@ -195,4 +195,47 @@ router.get('/occupation', async (req: Request, res: Response) => {
   }
 });
 
+// GET /by-process-range?layoutId=xxx&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+router.get('/by-process-range', async (req: Request, res: Response) => {
+  try {
+    const { layoutId, startDate, endDate } = req.query as {
+      layoutId?: string;
+      startDate?: string;
+      endDate?: string;
+    };
+    if (!layoutId || !startDate || !endDate) {
+      return res.status(400).json({ error: 'layoutId, startDate và endDate là bắt buộc' });
+    }
+
+    const snapshots = await prisma.snapshot.findMany({
+      where: {
+        layoutId: String(layoutId),
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      },
+      orderBy: { date: 'asc' },
+      include: { positions: { include: { product: true } } },
+    });
+
+    const result = snapshots.map((snap) => {
+      const stageArea: Record<string, number> = {};
+      for (const pos of snap.positions) {
+        const stage = pos.product.processStage ?? 'Khác';
+        stageArea[stage] =
+          Math.round(((stageArea[stage] ?? 0) + (pos.product.areaM2 ?? 0)) * 10) / 10;
+      }
+      return {
+        date: snap.date.toISOString().slice(0, 10),
+        stages: stageArea,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
