@@ -1,194 +1,423 @@
 <script lang="ts">
   import { currentProject } from '$lib/stores/project';
   import { get } from 'svelte/store';
-  import { onMount } from 'svelte';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import type { Project, Floor } from '$lib/models/types';
 
   let { open = $bindable(false) } = $props();
 
-  let pageSize = $state<'a4' | 'letter'>('letter');
+  let pageSize = $state<'a4' | 'letter'>('a4');
   let orientation = $state<'landscape' | 'portrait'>('landscape');
   let scale = $state('1:50');
+  let showLegend = $state(true);
   let printCanvas: HTMLCanvasElement;
+  let exporting = $state(false);
 
-  const scaleOptions = ['1:25', '1:50', '1:100', '1:200'];
+  const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
+  const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
+  const TITLE_H = 68;
+  const FOOTER_H = 26;
+  const PAD = 36;
 
   function getActiveFloor(project: Project): Floor | undefined {
     return project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
   }
 
-  function renderPrintCanvas() {
-    if (!printCanvas) return;
+  function getProjectName(): string {
+    return get(currentProject)?.name ?? 'Mặt bằng';
+  }
+
+  function todayViVN(): string {
+    return new Date().toLocaleDateString('vi-VN', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  /** Core rendering — works for screen preview (dpr>1) and PDF export (dpr=1). */
+  function renderToCanvas(ctx: CanvasRenderingContext2D, cw: number, ch: number, dpr = 1) {
     const project = get(currentProject);
     if (!project) return;
     const floor = getActiveFloor(project);
-    if (!floor || floor.furniture.length === 0) return;
 
-    const ctx = printCanvas.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+
+    // ── Title block ──────────────────────────────────────────────
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold 17px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(project.name, PAD, 13);
+
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = '#475569';
+    ctx.fillText(floor?.name ?? '', PAD, 35);
+
+    ctx.textAlign = 'right';
+    ctx.font = `bold 11px ${FONT}`;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 13);
+    ctx.font = `11px ${FONT}`;
+    ctx.fillStyle = '#475569';
+    ctx.fillText(todayViVN(), cw - PAD, 32);
+
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(PAD, TITLE_H - 4);
+    ctx.lineTo(cw - PAD, TITLE_H - 4);
+    ctx.stroke();
+
+    // ── Legend column (right side) ───────────────────────────────
+    const legendW = showLegend ? 160 : 0;
+    const planAreaX = PAD;
+    const planAreaY = TITLE_H + 4;
+    const planAreaW = cw - PAD * 2 - legendW - (legendW > 0 ? 12 : 0);
+    const planAreaH = ch - TITLE_H - FOOTER_H - 8;
+
+    if (showLegend && floor?.furniture?.length) {
+      const lx = planAreaX + planAreaW + 12;
+      const ly = planAreaY + 4;
+      ctx.font = `bold 9px ${FONT}`;
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('DANH SÁCH BLOCK', lx, ly);
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly + 13);
+      ctx.lineTo(lx + legendW - 4, ly + 13);
+      ctx.stroke();
+
+      // Group by catalogId
+      const counts = new Map<string, number>();
+      for (const fi of floor.furniture) {
+        counts.set(fi.catalogId, (counts.get(fi.catalogId) ?? 0) + 1);
+      }
+
+      let rowY = ly + 18;
+      const rowH = 18;
+      for (const [cid, cnt] of counts) {
+        const cat = getCatalogItem(cid);
+        if (!cat) continue;
+        if (rowY + rowH > ch - FOOTER_H - 8) break;
+
+        // Color dot
+        ctx.fillStyle = cat.color ?? '#3b82f6';
+        ctx.beginPath();
+        ctx.arc(lx + 5, rowY + 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1e293b';
+        ctx.font = `8px ${FONT}`;
+        ctx.textBaseline = 'top';
+
+        // Truncate long names
+        let name = cat.name;
+        if (name.length > 16) name = name.slice(0, 15) + '…';
+        ctx.fillText(name, lx + 14, rowY + 1);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = `7.5px ${FONT}`;
+        ctx.fillText(`SL: ${cnt}  |  ${cat.width ?? 0}×${cat.depth ?? 0}cm`, lx + 14, rowY + 11);
+
+        rowY += rowH;
+      }
+    }
+
+    // ── Floor plan ───────────────────────────────────────────────
+    if (!floor?.furniture?.length) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = `13px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Chưa có sản phẩm nào trên mặt bằng', planAreaX + planAreaW / 2, planAreaY + planAreaH / 2);
+    } else {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const fi of floor.furniture) {
+        const cat = getCatalogItem(fi.catalogId);
+        const hw = (fi.width ?? cat?.width ?? 30) / 2;
+        const hd = (fi.depth ?? cat?.depth ?? 30) / 2;
+        minX = Math.min(minX, fi.position.x - hw);
+        minY = Math.min(minY, fi.position.y - hd);
+        maxX = Math.max(maxX, fi.position.x + hw);
+        maxY = Math.max(maxY, fi.position.y + hd);
+      }
+      const planW = maxX - minX;
+      const planH = maxY - minY;
+
+      if (planW > 0 && planH > 0) {
+        const fitScale = Math.min(planAreaW / planW, planAreaH / planH) * 0.92;
+        const drawnW = planW * fitScale;
+        const drawnH = planH * fitScale;
+        const offsetX = planAreaX + (planAreaW - drawnW) / 2 - minX * fitScale;
+        const offsetY = planAreaY + (planAreaH - drawnH) / 2 - minY * fitScale;
+
+        // Clip to plan area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(planAreaX, planAreaY, planAreaW, planAreaH);
+        ctx.clip();
+
+        // Grid
+        ctx.strokeStyle = 'rgba(148,163,184,0.18)';
+        ctx.lineWidth = 0.6;
+        const gridCm = 500;
+        for (let x = Math.floor(minX / gridCm) * gridCm; x <= maxX + gridCm; x += gridCm) {
+          const px = offsetX + x * fitScale;
+          ctx.beginPath(); ctx.moveTo(px, planAreaY); ctx.lineTo(px, planAreaY + planAreaH); ctx.stroke();
+        }
+        for (let y = Math.floor(minY / gridCm) * gridCm; y <= maxY + gridCm; y += gridCm) {
+          const py = offsetY + y * fitScale;
+          ctx.beginPath(); ctx.moveTo(planAreaX, py); ctx.lineTo(planAreaX + planAreaW, py); ctx.stroke();
+        }
+
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(fitScale, fitScale);
+
+        for (const fi of floor.furniture) {
+          const cat = getCatalogItem(fi.catalogId);
+          const fw = fi.width ?? cat?.width ?? 30;
+          const fd = fi.depth ?? cat?.depth ?? 30;
+          const color = fi.color ?? cat?.color ?? '#3b82f6';
+          const rot = (fi.rotation || 0) * Math.PI / 180;
+
+          ctx.save();
+          ctx.translate(fi.position.x, fi.position.y);
+          ctx.rotate(rot);
+
+          // Fill
+          ctx.fillStyle = color + 'bb';
+          ctx.fillRect(-fw / 2, -fd / 2, fw, fd);
+
+          // Border
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.2 / fitScale;
+          ctx.strokeRect(-fw / 2, -fd / 2, fw, fd);
+
+          // Label
+          if (cat) {
+            const maxFontPx = Math.min(fw, fd) * 0.28;
+            const fontSize = Math.max(5 / fitScale, Math.min(10 / fitScale, maxFontPx));
+            ctx.fillStyle = '#1e293b';
+            ctx.font = `bold ${fontSize}px ${FONT}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const maxW = fw * 0.88;
+            ctx.fillText(cat.name, 0, fd > fw * 1.5 ? -fontSize * 0.6 : 0, maxW);
+            if (fd > fw * 1.2) {
+              ctx.font = `${fontSize * 0.75}px ${FONT}`;
+              ctx.fillStyle = '#475569';
+              ctx.fillText(cat.id.slice(-6).toUpperCase(), 0, fontSize * 0.9, maxW);
+            }
+          }
+          ctx.restore();
+        }
+
+        ctx.restore(); // undo clip + translate/scale
+
+        // Scale bar (bottom-left of plan area)
+        const barM = 5;
+        const barPx = barM * 100 * fitScale;
+        const bx = planAreaX + 4;
+        const by = planAreaY + planAreaH - 10;
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(bx, by - 3, barPx / 2, 3);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(bx + barPx / 2, by - 3, barPx / 2, 3);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath(); ctx.moveTo(bx, by - 3); ctx.lineTo(bx, by + 1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + barPx, by - 3); ctx.lineTo(bx + barPx, by + 1); ctx.stroke();
+        ctx.fillStyle = '#475569';
+        ctx.font = `8px ${FONT}`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('0', bx, by - 5);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${barM}m`, bx + barPx, by - 5);
+
+        // North arrow (bottom-right of plan area)
+        const ax = planAreaX + planAreaW - 16;
+        const ay = planAreaY + planAreaH - 14;
+        const aw = 8;
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.moveTo(ax, ay - aw); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay - aw * 0.35); ctx.lineTo(ax - aw * 0.55, ay);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath();
+        ctx.moveTo(ax, ay - aw * 0.35); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay + aw); ctx.lineTo(ax - aw * 0.55, ay);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.font = `bold 8px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('N', ax, ay - aw - 1);
+      }
+    }
+
+    // ── Footer ───────────────────────────────────────────────────
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(PAD, ch - FOOTER_H + 5);
+    ctx.lineTo(cw - PAD, ch - FOOTER_H + 5);
+    ctx.stroke();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `8.5px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Floor Manager — Hệ thống quản lý mặt bằng sản xuất', PAD, ch - 8);
+    ctx.textAlign = 'right';
+    ctx.fillText('Trang 1 / 1', cw - PAD, ch - 8);
+  }
+
+  function renderPrintCanvas() {
+    if (!printCanvas) return;
     const dpr = window.devicePixelRatio || 1;
     const cw = printCanvas.clientWidth;
     const ch = printCanvas.clientHeight;
     printCanvas.width = cw * dpr;
     printCanvas.height = ch * dpr;
-    ctx.scale(dpr, dpr);
-
-    // Clear
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, cw, ch);
-
-    // Compute bounds from furniture
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const fi of floor.furniture) {
-      const cat = getCatalogItem(fi.catalogId);
-      const hw = (fi.width ?? cat?.width ?? 30) / 2;
-      const hd = (fi.depth ?? cat?.depth ?? 30) / 2;
-      minX = Math.min(minX, fi.position.x - hw);
-      minY = Math.min(minY, fi.position.y - hd);
-      maxX = Math.max(maxX, fi.position.x + hw);
-      maxY = Math.max(maxY, fi.position.y + hd);
-    }
-    const planW = maxX - minX;
-    const planH = maxY - minY;
-    if (planW <= 0 || planH <= 0) return;
-
-    const padding = 40;
-    const availW = cw - padding * 2;
-    const availH = ch - padding * 2;
-    const fitScale = Math.min(availW / planW, availH / planH);
-    const offsetX = padding + (availW - planW * fitScale) / 2 - minX * fitScale;
-    const offsetY = padding + (availH - planH * fitScale) / 2 - minY * fitScale;
-
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(fitScale, fitScale);
-
-    // Draw furniture
-    for (const fi of floor.furniture) {
-      const cat = getCatalogItem(fi.catalogId);
-      const fw = fi.width ?? cat?.width ?? 30;
-      const fd = fi.depth ?? cat?.depth ?? 30;
-      const color = fi.color ?? cat?.color ?? '#a0c4e8';
-      const rot = (fi.rotation || 0) * Math.PI / 180;
-      ctx.save();
-      ctx.translate(fi.position.x, fi.position.y);
-      ctx.rotate(rot);
-      ctx.globalAlpha = 0.8;
-      ctx.fillStyle = color;
-      ctx.fillRect(-fw / 2, -fd / 2, fw, fd);
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 0.5 / fitScale;
-      ctx.strokeRect(-fw / 2, -fd / 2, fw, fd);
-      ctx.globalAlpha = 1;
-      if (cat) {
-        ctx.fillStyle = '#333';
-        ctx.font = `${9 / fitScale}px system-ui`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(cat.name, 0, 0);
-      }
-      ctx.restore();
-    }
-
-    ctx.restore();
+    renderToCanvas(printCanvas.getContext('2d')!, cw, ch, dpr);
   }
+
+  async function exportPDF() {
+    exporting = true;
+    try {
+      await document.fonts.ready;
+
+      const isLandscape = orientation === 'landscape';
+      const isA4 = pageSize === 'a4';
+
+      // 150 dpi resolution
+      const W = isA4 ? (isLandscape ? 1754 : 1240) : (isLandscape ? 1650 : 1275);
+      const H = isA4 ? (isLandscape ? 1240 : 1754) : (isLandscape ? 1275 : 1650);
+
+      const off = document.createElement('canvas');
+      off.width = W;
+      off.height = H;
+      renderToCanvas(off.getContext('2d')!, W, H, 1);
+
+      const imgData = off.toDataURL('image/jpeg', 0.93);
+
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({
+        orientation: isLandscape ? 'landscape' : 'portrait',
+        unit: 'mm',
+        format: isA4 ? 'a4' : 'letter',
+      });
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+      pdf.save(`${getProjectName()}-matbang.pdf`);
+    } finally {
+      exporting = false;
+    }
+  }
+
+  function doPrint() { window.print(); }
+  function close() { open = false; }
 
   $effect(() => {
-    if (open) {
-      // Small delay to let DOM render
-      setTimeout(renderPrintCanvas, 50);
-    }
+    if (open) setTimeout(renderPrintCanvas, 60);
   });
-
-  // Re-render when settings change
   $effect(() => {
-    if (open) {
-      // Track reactive deps
-      void pageSize;
-      void orientation;
-      void scale;
-      setTimeout(renderPrintCanvas, 20);
-    }
+    if (open) { void pageSize; void orientation; void scale; void showLegend; setTimeout(renderPrintCanvas, 20); }
   });
-
-  function doPrint() {
-    window.print();
-  }
-
-  function close() {
-    open = false;
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close();
-  }
-
-  function getProjectName(): string {
-    return get(currentProject)?.name ?? 'Untitled';
-  }
-
-  function getFloorName(): string {
-    const project = get(currentProject);
-    if (!project) return '';
-    const floor = getActiveFloor(project);
-    return floor?.name ?? '';
-  }
-
-  function todayStr(): string {
-    return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape') close(); }} />
 
 {#if open}
-  <!-- Print overlay - visible on screen for preview, and is the print target -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center overflow-auto print-overlay-backdrop" onclick={close} onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
-    <!-- Control bar (hidden when printing) -->
+  <div
+    class="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center overflow-auto print-overlay-backdrop"
+    onclick={close}
+    onkeydown={(e) => { if (e.key === 'Escape') close(); }}
+  >
+    <!-- Toolbar (hidden on print) -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="fixed top-0 left-0 right-0 bg-slate-800 text-white px-6 py-3 flex items-center gap-4 z-[101] print-hide" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
-      <h3 class="font-semibold text-sm">Print Preview</h3>
+    <div
+      class="fixed top-0 left-0 right-0 bg-slate-800 text-white px-5 py-2.5 flex items-center gap-3 z-[101] print-hide"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={() => {}}
+    >
+      <span class="font-semibold text-sm text-white/90">Xuất mặt bằng</span>
       <div class="h-4 w-px bg-white/20"></div>
 
-      <label class="text-xs text-white/70">
-        Page:
-        <select bind:value={pageSize} class="ml-1 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
-          <option value="letter">Letter</option>
+      <label class="text-xs text-white/70 flex items-center gap-1.5">
+        Khổ
+        <select bind:value={pageSize} class="bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
           <option value="a4">A4</option>
+          <option value="letter">Letter</option>
         </select>
       </label>
 
-      <label class="text-xs text-white/70">
-        Orientation:
-        <select bind:value={orientation} class="ml-1 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
-          <option value="landscape">Landscape</option>
-          <option value="portrait">Portrait</option>
+      <label class="text-xs text-white/70 flex items-center gap-1.5">
+        Chiều
+        <select bind:value={orientation} class="bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
+          <option value="landscape">Ngang</option>
+          <option value="portrait">Dọc</option>
         </select>
       </label>
 
-      <label class="text-xs text-white/70">
-        Scale:
-        <select bind:value={scale} class="ml-1 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
-          {#each scaleOptions as s}
-            <option value={s}>{s}</option>
-          {/each}
+      <label class="text-xs text-white/70 flex items-center gap-1.5">
+        Tỉ lệ
+        <select bind:value={scale} class="bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600">
+          {#each SCALE_OPTIONS as s}<option value={s}>{s}</option>{/each}
         </select>
+      </label>
+
+      <label class="text-xs text-white/70 flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" bind:checked={showLegend} class="accent-blue-400" />
+        Danh sách block
       </label>
 
       <div class="flex-1"></div>
 
-      <button onclick={doPrint} class="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        Print
+      <button
+        onclick={exportPDF}
+        disabled={exporting}
+        class="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
+      >
+        {#if exporting}
+          <span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+          Đang xuất...
+        {:else}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Xuất PDF
+        {/if}
       </button>
-      <button onclick={close} class="px-3 py-1.5 text-white/70 hover:text-white text-sm transition-colors">✕ Close</button>
+
+      <button
+        onclick={doPrint}
+        class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 6 2 18 2 18 9"/>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 0 2 2v5a2 2 0 0 1-2 2h-2"/>
+          <rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        In
+      </button>
+
+      <button onclick={close} class="px-2.5 py-1.5 text-white/60 hover:text-white text-sm transition-colors">✕</button>
     </div>
 
-    <!-- Print page -->
+    <!-- Preview page -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="bg-white shadow-2xl mt-16 mb-8 print-page relative"
+      class="bg-white shadow-2xl mt-14 mb-8 print-page relative"
       class:print-landscape={orientation === 'landscape'}
       class:print-portrait={orientation === 'portrait'}
       class:print-a4={pageSize === 'a4'}
@@ -196,67 +425,36 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={() => {}}
     >
-      <!-- Title block -->
-      <div class="border-b-2 border-slate-800 pb-3 mb-4 flex items-end justify-between print-title-block">
-        <div>
-          <h1 class="text-xl font-bold text-slate-800">{getProjectName()}</h1>
-          <p class="text-sm text-slate-500">{getFloorName()}</p>
-        </div>
-        <div class="text-right text-xs text-slate-500">
-          <p class="font-semibold text-slate-700">Scale: {scale}</p>
-          <p>{todayStr()}</p>
-        </div>
-      </div>
-
-      <!-- Floor plan canvas -->
-      <div class="flex-1 relative print-canvas-container">
-        <canvas bind:this={printCanvas} class="w-full" style="height: calc(100% - 20px);"></canvas>
-
-        <!-- North arrow -->
-        <div class="absolute top-2 right-2 print-north-arrow">
-          <svg width="40" height="40" viewBox="0 0 40 40">
-            <polygon points="20,2 24,16 20,12 16,16" fill="#1e293b"/>
-            <polygon points="20,38 24,24 20,28 16,24" fill="#94a3b8"/>
-            <text x="20" y="10" text-anchor="middle" fill="#1e293b" font-size="8" font-weight="bold">N</text>
-          </svg>
-        </div>
-
-        <!-- Scale bar -->
-        <div class="absolute bottom-1 left-2 flex items-center gap-2 text-[10px] text-slate-600 print-scale-bar">
-          <div class="flex items-end gap-0">
-            <div class="w-12 h-1 bg-slate-800"></div>
-            <div class="w-12 h-1 bg-slate-400"></div>
-          </div>
-          <span>{scale}</span>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="border-t border-slate-200 pt-2 mt-3 flex justify-between text-[9px] text-slate-400 print-footer">
-        <span>Generated by Open3D Floorplan</span>
-        <span>Page 1 of 1</span>
-      </div>
+      <canvas bind:this={printCanvas} class="w-full h-full block"></canvas>
     </div>
   </div>
 {/if}
 
 <style>
   .print-page {
-    display: flex;
-    flex-direction: column;
-    padding: 24px;
     box-sizing: border-box;
+    overflow: hidden;
   }
-  .print-landscape.print-letter { width: 11in; min-height: 8.5in; }
-  .print-portrait.print-letter  { width: 8.5in; min-height: 11in; }
-  .print-landscape.print-a4     { width: 297mm; min-height: 210mm; }
-  .print-portrait.print-a4      { width: 210mm; min-height: 297mm; }
+  .print-landscape.print-a4    { width: 297mm; height: 210mm; }
+  .print-portrait.print-a4     { width: 210mm; height: 297mm; }
+  .print-landscape.print-letter { width: 11in; height: 8.5in; }
+  .print-portrait.print-letter  { width: 8.5in; height: 11in; }
 
-  .print-canvas-container {
-    flex: 1;
-    min-height: 0;
-  }
-  .print-canvas-container canvas {
-    display: block;
+  @media print {
+    .print-overlay-backdrop {
+      position: fixed;
+      inset: 0;
+      background: white;
+      display: block;
+      overflow: visible;
+    }
+    .print-hide { display: none !important; }
+    .print-page {
+      position: fixed;
+      top: 0; left: 0;
+      margin: 0;
+      box-shadow: none;
+      page-break-after: always;
+    }
   }
 </style>

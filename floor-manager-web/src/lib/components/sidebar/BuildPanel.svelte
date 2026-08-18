@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectedTool, placingFurnitureId, setBackgroundImage, activeFloor } from '$lib/stores/project';
+  import { selectedTool, placingFurnitureId, setBackgroundImage, activeFloor, draggingCatalogId } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
@@ -295,7 +295,8 @@
                   class="relative flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-colors cursor-grab active:cursor-grabbing {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
                   onclick={() => onFurnitureClick(item)}
                   draggable="true"
-                  ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); }}
+                  ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); draggingCatalogId.set(item.id); }}
+                  ondragend={() => draggingCatalogId.set(null)}
                   onmouseenter={(e) => onItemMouseEnter(e, item)}
                   onmousemove={onItemMouseMove}
                   onmouseleave={onItemMouseLeave}
@@ -337,7 +338,8 @@
               onclick={() => { if (!notReady && !isFull) onFurnitureClick(item); }}
               disabled={notReady || isFull}
               draggable="true"
-              ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); }}
+              ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); draggingCatalogId.set(item.id); }}
+              ondragend={() => draggingCatalogId.set(null)}
               onmouseenter={(e) => onItemMouseEnter(e, item)}
               onmousemove={onItemMouseMove}
               onmouseleave={onItemMouseLeave}

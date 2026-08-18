@@ -24,6 +24,7 @@ export function createDefaultProject(name = 'Untitled Project'): Project {
 }
 
 export const currentProject = writable<Project | null>(null);
+export const draggingCatalogId = writable<string | null>(null);
 
 export const activeFloor = derived(currentProject, ($p) => {
   if (!$p) return null;

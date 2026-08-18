@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { activeFloor, currentProject, selectedElementId } from '$lib/stores/project';
+  import { activeFloor, currentProject, selectedElementId, draggingCatalogId } from '$lib/stores/project';
   import type { Floor } from '$lib/models/types';
   import { projectSettings } from '$lib/stores/settings';
   import * as THREE from 'three';
@@ -878,6 +878,50 @@
       }
       renderer.domElement.style.cursor = 'crosshair';
       hoveredMesh = null;
+    });
+
+    // Drag new block from BuildPanel into 3D scene
+    renderer.domElement.addEventListener('dragover', (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('application/o3d-id')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      const catalogId = get(draggingCatalogId);
+      if (!catalogId) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hit = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(floorPlane, hit)) {
+        if (!ghostGroup || ghostGroup.userData.catalogId !== catalogId) {
+          createGhostPreview(catalogId);
+          if (ghostGroup) ghostGroup.userData.catalogId = catalogId;
+        }
+        if (ghostGroup) {
+          ghostGroup.position.set(snapToGrid(hit.x), 1.5, snapToGrid(hit.z));
+          ghostGroup.visible = true;
+        }
+        markSceneDirty();
+      }
+    });
+
+    renderer.domElement.addEventListener('dragleave', () => {
+      if (ghostGroup) { ghostGroup.visible = false; markSceneDirty(); }
+    });
+
+    renderer.domElement.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault();
+      const catalogId = e.dataTransfer?.getData('application/o3d-id');
+      if (!catalogId) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hit = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(floorPlane, hit)) {
+        addFurniture(catalogId, { x: snapToGrid(hit.x), y: snapToGrid(hit.z) });
+      }
+      if (ghostGroup) { ghostGroup.visible = false; markSceneDirty(); }
     });
 
     // Initialize PointerLock controls for walkthrough mode
