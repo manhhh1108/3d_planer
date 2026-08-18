@@ -199,7 +199,6 @@
     {/if}
     {#if activeTab === 'layout' || !backendLayoutId}
       <div class="flex flex-1 overflow-hidden">
-        {#if mode === '2d'}
           <!-- Build panel: inline sidebar on md+, off-canvas drawer on phones -->
           {#if buildPanelOpen}
             <div
@@ -211,7 +210,6 @@
           <div class="h-full max-md:fixed max-md:left-0 max-md:top-12 max-md:bottom-0 max-md:h-auto max-md:z-50 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 {buildPanelOpen ? '' : 'max-md:-translate-x-full'}">
             <BuildPanel />
           </div>
-        {/if}
         <div class="flex-1 min-w-0 relative">
           {#if mode === '2d'}
             <FloorPlanCanvas />
