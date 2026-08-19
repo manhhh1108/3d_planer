@@ -250,7 +250,7 @@
     {:else}
       <!-- Planning tab -->
       <div class="flex flex-1 overflow-hidden">
-        <PlanProductSidebar projectId={$currentProject?.id ?? ''} />
+        <PlanProductSidebar />
         <div class="flex flex-1 overflow-hidden flex-col">
         <PlanToolbar
           {plans}

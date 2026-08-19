@@ -1,21 +1,18 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { api, type ApiProduct } from '$lib/services/api';
-  import { currentProject } from '$lib/stores/project';
-
-  let { projectId = '' }: { projectId: string } = $props();
 
   let products = $state<ApiProduct[]>([]);
   let loading = $state(false);
   let search = $state('');
 
-  $effect(() => {
-    if (projectId) loadProducts();
-  });
+  onMount(loadProducts);
 
   async function loadProducts() {
     loading = true;
     try {
-      products = await api.products.list(projectId);
+      // Sản phẩm không gắn với layout/project của editor (xem loadProductCatalog) — lấy toàn bộ danh mục.
+      products = await api.products.list();
     } finally {
       loading = false;
     }

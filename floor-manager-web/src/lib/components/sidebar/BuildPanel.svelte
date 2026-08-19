@@ -400,10 +400,10 @@
         {/if}
       </div>
       <div class="p-3 space-y-1.5">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold text-gray-800">{item.name}</span>
+        <div class="flex items-start justify-between gap-2">
+          <span class="min-w-0 text-sm font-semibold text-gray-800 break-words">{item.name}</span>
           <span
-            class="px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white"
+            class="shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white"
             style="background-color: {categoryColors[item.category] ?? '#6b7280'}"
           >{item.category}</span>
         </div>

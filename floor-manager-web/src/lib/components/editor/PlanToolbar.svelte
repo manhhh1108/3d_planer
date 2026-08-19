@@ -13,24 +13,38 @@
   let showCreate = $state(false);
   let newName = $state('');
   let confirmDeleteId = $state<string | null>(null);
+  let errorMsg = $state<string | null>(null);
 
   async function createPlan() {
     if (!newName.trim() || !layoutId) return;
-    const plan = await api.plans.create({ layoutId, name: newName.trim() });
-    newName = '';
-    showCreate = false;
-    await onPlansChanged();
-    onSelectPlan(plan.id);
+    errorMsg = null;
+    try {
+      const plan = await api.plans.create({ layoutId, name: newName.trim() });
+      newName = '';
+      showCreate = false;
+      await onPlansChanged();
+      onSelectPlan(plan.id);
+    } catch (err) {
+      console.error('createPlan failed', err);
+      errorMsg = 'Tạo plan thất bại. Vui lòng thử lại.';
+    }
   }
 
   async function deletePlan(id: string) {
-    await api.plans.remove(id);
-    confirmDeleteId = null;
-    await onPlansChanged();
-    // Nếu xoá plan đang chọn, chọn plan đầu tiên còn lại
-    if (selectedPlanId === id) {
-      const remaining = plans.filter(p => p.id !== id);
-      onSelectPlan(remaining.length > 0 ? remaining[0].id : '');
+    errorMsg = null;
+    try {
+      await api.plans.remove(id);
+      confirmDeleteId = null;
+      await onPlansChanged();
+      // Nếu xoá plan đang chọn, chọn plan đầu tiên còn lại
+      if (selectedPlanId === id) {
+        const remaining = plans.filter(p => p.id !== id);
+        onSelectPlan(remaining.length > 0 ? remaining[0].id : '');
+      }
+    } catch (err) {
+      console.error('deletePlan failed', err);
+      confirmDeleteId = null;
+      errorMsg = 'Xoá plan thất bại. Vui lòng thử lại.';
     }
   }
 </script>
@@ -78,5 +92,9 @@
         <button onclick={() => confirmDeleteId = selectedPlanId} class="ml-auto px-3 py-1.5 text-xs text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Xoá plan</button>
       {/if}
     {/if}
+  {/if}
+
+  {#if errorMsg}
+    <span class="text-xs text-red-500">{errorMsg}</span>
   {/if}
 </div>
