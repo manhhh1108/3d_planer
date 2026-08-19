@@ -9,6 +9,7 @@
   import PlanToolbar from '$lib/components/editor/PlanToolbar.svelte';
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
   import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
+  import PlanProductSidebar from '$lib/components/editor/PlanProductSidebar.svelte';
   import { markClean } from '$lib/stores/saveStatus';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
@@ -248,7 +249,9 @@
       {/if}
     {:else}
       <!-- Planning tab -->
-      <div class="flex flex-1 overflow-hidden flex-col">
+      <div class="flex flex-1 overflow-hidden">
+        <PlanProductSidebar projectId={$currentProject?.id ?? ''} />
+        <div class="flex flex-1 overflow-hidden flex-col">
         <PlanToolbar
           {plans}
           {selectedPlanId}
@@ -269,6 +272,7 @@
           planId={selectedPlanId}
           onApplySuggestion={loadPlanItems}
         />
+        </div>
       </div>
     {/if}
   </div>
