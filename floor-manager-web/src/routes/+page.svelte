@@ -157,136 +157,6 @@
     {:else if loading}
       <div class="text-center py-24 text-gray-400">Đang tải...</div>
     {:else}
-      <!-- ===== Dashboard ===== -->
-      {#if dashboard}
-        <!-- Date picker -->
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-base font-bold text-gray-800">Tổng quan</h2>
-          <div class="flex items-center gap-2">
-            <input
-              type="date"
-              bind:value={dashDate}
-              onchange={() => refreshDashboard()}
-              class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400"
-            />
-            {#if dashDate}
-              <button onclick={() => { dashDate = ''; refreshDashboard(); }}
-                class="px-3 py-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 font-medium">
-                Mới nhất
-              </button>
-            {/if}
-          </div>
-        </div>
-
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Mặt bằng</p>
-            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.sites}</p>
-          </div>
-          <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Dự án</p>
-            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.projects}</p>
-          </div>
-          <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">SP trên mặt bằng</p>
-            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.productsOnLayout}</p>
-          </div>
-          <div class="bg-white rounded-xl border border-gray-200 p-4">
-            <p class="text-xs text-gray-400 font-medium uppercase">Tổng khối lượng</p>
-            <p class="text-2xl font-bold text-gray-800 mt-1">{(dashboard.counts.totalWeightKg / 1000).toFixed(1)} T</p>
-          </div>
-        </div>
-
-        <!-- Layout Usage + Process Stage row -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <!-- Layout Usage Cards -->
-          <div>
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Tỷ lệ lấp đầy</h3>
-            {#if dashboard.layoutUsage.length === 0}
-              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có layout</div>
-            {:else}
-              <div class="space-y-3">
-                {#each dashboard.layoutUsage as lu}
-                  <a href={`${base}/editor?layoutId=${lu.layoutId}`}
-                    class="block bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
-                    <div class="flex items-center justify-between mb-2">
-                      <div>
-                        <span class="font-medium text-gray-800 text-sm">{lu.layoutName}</span>
-                        <span class="text-xs text-gray-400 ml-2">{lu.siteName}</span>
-                      </div>
-                      <span class="text-sm font-semibold {lu.usagePercent > 80 ? 'text-red-600' : lu.usagePercent > 50 ? 'text-amber-600' : 'text-green-600'}">
-                        {lu.usagePercent}%
-                      </span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                      <div
-                        class="h-2.5 rounded-full transition-all {lu.usagePercent > 80 ? 'bg-red-500' : lu.usagePercent > 50 ? 'bg-amber-500' : 'bg-green-500'}"
-                        style="width: {Math.min(lu.usagePercent, 100)}%"
-                      ></div>
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1.5">{lu.usedAreaM2} m2 / {lu.totalAreaM2} m2 · {lu.productCount} sản phẩm</p>
-                  </a>
-                {/each}
-              </div>
-            {/if}
-          </div>
-
-          <!-- Process Stage Chart -->
-          <div>
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Theo công đoạn</h3>
-            {#if dashboard.byProcessStage.length === 0}
-              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có dữ liệu</div>
-            {:else}
-              <div class="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-                {#each dashboard.byProcessStage as stage}
-                  <div>
-                    <div class="flex items-center justify-between text-sm mb-1">
-                      <span class="text-gray-700 font-medium">{stage.stage}</span>
-                      <span class="text-gray-400 text-xs">{stage.count} SP · {stage.totalAreaM2} m2 · {(stage.totalWeightKg / 1000).toFixed(1)} T</span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-3">
-                      <div
-                        class="h-3 rounded-full {STAGE_COLORS[stage.stage] ?? 'bg-gray-400'}"
-                        style="width: {(stage.totalAreaM2 / maxStageArea) * 100}%"
-                      ></div>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        </div>
-
-        <!-- Recent Activity -->
-        {#if dashboard.recentActivity.length > 0}
-          <div class="mb-8">
-            <h3 class="text-sm font-semibold text-gray-600 mb-3">Hoạt động gần đây</h3>
-            <div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {#each dashboard.recentActivity as activity}
-                <div class="px-4 py-3 flex items-center gap-3">
-                  <div class="w-7 h-7 rounded-lg flex items-center justify-center text-sm
-                    {activity.type === 'snapshot' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}">
-                    {activity.type === 'snapshot' ? '📸' : '📦'}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-gray-700 truncate">{activity.description}</p>
-                    {#if activity.createdBy}
-                      <p class="text-xs text-gray-400">{activity.createdBy}</p>
-                    {/if}
-                  </div>
-                  <span class="text-xs text-gray-400 whitespace-nowrap">{timeAgo(activity.createdAt)}</span>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        <hr class="border-gray-200 mb-8" />
-      {:else if dashLoading}
-        <div class="text-center py-8 text-gray-400 text-sm mb-6">Đang tải dashboard...</div>
-      {/if}
-
       <!-- ===== Khu Mặt bằng ===== -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-bold text-gray-800">🏭 Mặt bằng ({sites.length})</h2>
@@ -391,6 +261,135 @@
             </div>
           {/each}
         </div>
+      {/if}
+
+      <!-- ===== Tổng quan (dashboard chi tiết, xuống dưới) ===== -->
+      {#if dashboard}
+        <hr class="border-gray-200 mt-10 mb-8" />
+        <!-- Date picker -->
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-base font-bold text-gray-800">Tổng quan</h2>
+          <div class="flex items-center gap-2">
+            <input
+              type="date"
+              bind:value={dashDate}
+              onchange={() => refreshDashboard()}
+              class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400"
+            />
+            {#if dashDate}
+              <button onclick={() => { dashDate = ''; refreshDashboard(); }}
+                class="px-3 py-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 font-medium">
+                Mới nhất
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <p class="text-xs text-gray-400 font-medium uppercase">Mặt bằng</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.sites}</p>
+          </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <p class="text-xs text-gray-400 font-medium uppercase">Dự án</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.projects}</p>
+          </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <p class="text-xs text-gray-400 font-medium uppercase">SP trên mặt bằng</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">{dashboard.counts.productsOnLayout}</p>
+          </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <p class="text-xs text-gray-400 font-medium uppercase">Tổng khối lượng</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">{(dashboard.counts.totalWeightKg / 1000).toFixed(1)} T</p>
+          </div>
+        </div>
+
+        <!-- Layout Usage + Process Stage row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <!-- Layout Usage Cards -->
+          <div>
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Tỷ lệ lấp đầy</h3>
+            {#if dashboard.layoutUsage.length === 0}
+              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có layout</div>
+            {:else}
+              <div class="space-y-3">
+                {#each dashboard.layoutUsage as lu}
+                  <a href={`${base}/editor?layoutId=${lu.layoutId}`}
+                    class="block bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+                    <div class="flex items-center justify-between mb-2">
+                      <div>
+                        <span class="font-medium text-gray-800 text-sm">{lu.layoutName}</span>
+                        <span class="text-xs text-gray-400 ml-2">{lu.siteName}</span>
+                      </div>
+                      <span class="text-sm font-semibold {lu.usagePercent > 80 ? 'text-red-600' : lu.usagePercent > 50 ? 'text-amber-600' : 'text-green-600'}">
+                        {lu.usagePercent}%
+                      </span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                      <div
+                        class="h-2.5 rounded-full transition-all {lu.usagePercent > 80 ? 'bg-red-500' : lu.usagePercent > 50 ? 'bg-amber-500' : 'bg-green-500'}"
+                        style="width: {Math.min(lu.usagePercent, 100)}%"
+                      ></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1.5">{lu.usedAreaM2} m2 / {lu.totalAreaM2} m2 · {lu.productCount} sản phẩm</p>
+                  </a>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <!-- Process Stage Chart -->
+          <div>
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Theo công đoạn</h3>
+            {#if dashboard.byProcessStage.length === 0}
+              <div class="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">Chưa có dữ liệu</div>
+            {:else}
+              <div class="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+                {#each dashboard.byProcessStage as stage}
+                  <div>
+                    <div class="flex items-center justify-between text-sm mb-1">
+                      <span class="text-gray-700 font-medium">{stage.stage}</span>
+                      <span class="text-gray-400 text-xs">{stage.count} SP · {stage.totalAreaM2} m2 · {(stage.totalWeightKg / 1000).toFixed(1)} T</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-3">
+                      <div
+                        class="h-3 rounded-full {STAGE_COLORS[stage.stage] ?? 'bg-gray-400'}"
+                        style="width: {(stage.totalAreaM2 / maxStageArea) * 100}%"
+                      ></div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        {#if dashboard.recentActivity.length > 0}
+          <div class="mb-4">
+            <h3 class="text-sm font-semibold text-gray-600 mb-3">Hoạt động gần đây</h3>
+            <div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {#each dashboard.recentActivity as activity}
+                <div class="px-4 py-3 flex items-center gap-3">
+                  <div class="w-7 h-7 rounded-lg flex items-center justify-center text-sm
+                    {activity.type === 'snapshot' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}">
+                    {activity.type === 'snapshot' ? '📸' : '📦'}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-gray-700 truncate">{activity.description}</p>
+                    {#if activity.createdBy}
+                      <p class="text-xs text-gray-400">{activity.createdBy}</p>
+                    {/if}
+                  </div>
+                  <span class="text-xs text-gray-400 whitespace-nowrap">{timeAgo(activity.createdAt)}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {:else if dashLoading}
+        <div class="text-center py-8 text-gray-400 text-sm">Đang tải dashboard...</div>
       {/if}
     {/if}
   </div>

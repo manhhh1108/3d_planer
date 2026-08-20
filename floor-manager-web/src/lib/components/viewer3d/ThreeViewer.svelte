@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { activeFloor, currentProject, selectedElementId, draggingCatalogId } from '$lib/stores/project';
+  import { activeFloor, currentProject, selectedElementId, draggingCatalogId, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import type { Floor } from '$lib/models/types';
   import { projectSettings } from '$lib/stores/settings';
   import * as THREE from 'three';
@@ -26,6 +26,12 @@
   let animId: number;
   let currentFloor: Floor | null = null;
   let wallGroup: THREE.Group;
+
+  // Nền DXF của layout (giống drawLayoutBackground ở canvas 2D) — mặt phẳng sàn ở top-view
+  let bgPlane: THREE.Mesh | null = null;
+  let bgUrl = $state<string | null>(null);
+  let bgDimsCm = { widthCm: 0, heightCm: 0 };
+  let showBgPlane = $state(true);
 
   // Raycasting for furniture/floor interaction in 3D
   const raycaster = new THREE.Raycaster();
@@ -1020,6 +1026,7 @@
   function autoCenterCamera(_floor: Floor) {
     // Center on scene objects (furniture) if any exist, else default position
     const box = new THREE.Box3().setFromObject(wallGroup);
+    if (bgPlane) box.expandByObject(bgPlane);
     if (!box.isEmpty()) {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
@@ -1046,6 +1053,66 @@
       });
       group.remove(child);
     }
+  }
+
+  function removeLayoutBackground() {
+    if (!bgPlane) return;
+    scene.remove(bgPlane);
+    if (bgPlane.geometry) bgPlane.geometry.dispose();
+    const mat = bgPlane.material as THREE.MeshBasicMaterial;
+    if (mat.map) mat.map.dispose();
+    mat.dispose();
+    bgPlane = null;
+  }
+
+  /** Dựng mặt phẳng sàn từ nền DXF (SVG) của layout, khớp toạ độ với canvas 2D:
+   *  world (x, y) -> 3D (x, z), phủ vùng [0..widthCm] x [0..heightCm]. */
+  function buildLayoutBackground() {
+    removeLayoutBackground();
+    if (!scene || !showBgPlane) return;
+    const { widthCm, heightCm } = bgDimsCm;
+    if (!bgUrl || widthCm <= 0 || heightCm <= 0) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Vẽ SVG lên canvas theo tỷ lệ layout (giống 2D kéo giãn ảnh vừa widthCm×heightCm)
+      const LONG = 2048;
+      const aspect = widthCm / heightCm;
+      const cw = aspect >= 1 ? LONG : Math.round(LONG * aspect);
+      const ch = aspect >= 1 ? Math.round(LONG / aspect) : LONG;
+      const canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      const cx = canvas.getContext('2d');
+      if (!cx) return;
+      cx.fillStyle = '#ffffff';
+      cx.fillRect(0, 0, cw, ch);
+      cx.drawImage(img, 0, 0, cw, ch);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const geo = new THREE.PlaneGeometry(widthCm, heightCm);
+      const mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
+      const plane = new THREE.Mesh(geo, mat);
+      plane.rotation.x = -Math.PI / 2;
+      // Plane tâm ở gốc; layout kéo dài +x, +z từ (0,0) -> dịch tâm về (w/2, h/2)
+      plane.position.set(widthCm / 2, 1.0, heightCm / 2);
+      plane.renderOrder = -1;
+      bgPlane = plane;
+      scene.add(plane);
+      markSceneDirty();
+    };
+    img.onerror = () => { /* nền lỗi -> bỏ qua, vẫn hiện furniture */ };
+    img.src = bgUrl;
   }
 
   function buildWalls(floor: Floor) {
@@ -1169,10 +1236,11 @@
   }
   
   function viewTopDown() {
-    // Calculate center of the plan
+    // Calculate center of the plan — bao gồm cả nền DXF nếu có
     const box = new THREE.Box3().setFromObject(wallGroup);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
+    if (bgPlane) box.expandByObject(bgPlane);
+    const center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+    const size = box.isEmpty() ? new THREE.Vector3(500, 0, 500) : box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.z, 500);
 
     // Animate camera to top-down position
@@ -1288,9 +1356,22 @@
       if (f) rebuildScene();
     });
 
+    // Nền DXF của layout -> mặt phẳng sàn 3D (hiển thị khi xem top-view)
+    const unsubBg = layoutBgFile.subscribe((url) => {
+      bgUrl = url;
+      if (scene) buildLayoutBackground();
+    });
+    const unsubDims = layoutDimsCm.subscribe((d) => {
+      bgDimsCm = d;
+      if (scene) buildLayoutBackground();
+    });
+
     return () => {
       resizeObs.disconnect();
       unsub();
+      unsubBg();
+      unsubDims();
+      removeLayoutBackground();
       cancelAnimationFrame(animId);
       document.removeEventListener('keydown', onKeyDown, false);
       document.removeEventListener('keyup', onKeyUp, false);
@@ -1331,6 +1412,21 @@
         <line x1="18" y1="12" x2="22" y2="12"/>
       </svg>
     </button>
+
+    <!-- DXF Background Toggle (chỉ khi layout có nền DXF) -->
+    {#if bgUrl}
+      <button
+        onclick={() => { showBgPlane = !showBgPlane; buildLayoutBackground(); }}
+        class="p-2 rounded-lg transition-colors {showBgPlane ? 'bg-emerald-600 text-white ring-2 ring-emerald-300' : 'bg-black/70 text-white hover:bg-black/80'}"
+        title={showBgPlane ? 'Ẩn nền DXF' : 'Hiện nền DXF'}
+        aria-label="Bật/tắt nền DXF"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M3 9h18M9 3v18" opacity="0.6"/>
+        </svg>
+      </button>
+    {/if}
 
     <!-- Edit Mode Toggle -->
     <button

@@ -47,6 +47,10 @@
     })
   );
 
+  // Sản phẩm có CAD convert lỗi — hiện banner để biết vì sao block vẫn là hộp
+  let failedCad = $derived(products.filter((p) => p.asset?.status === 'failed'));
+  let dismissFailedBanner = $state(false);
+
   async function refresh() {
     loading = true;
     try {
@@ -188,6 +192,27 @@
     {#if uploadError}
       <div class="mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 text-sm">{uploadError}</div>
     {/if}
+    {#if failedCad.length > 0 && !dismissFailedBanner}
+      <div class="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-red-700 flex items-center gap-1.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              {failedCad.length} sản phẩm convert CAD lỗi — block sẽ hiển thị dạng hộp cho tới khi upload lại file CAD hợp lệ.
+            </p>
+            <ul class="mt-2 space-y-1">
+              {#each failedCad as p}
+                <li class="text-xs text-red-600">
+                  <span class="font-medium">{p.name} ({p.code}):</span>
+                  <span class="text-red-500">{p.asset?.error ?? 'Không rõ lỗi'}</span>
+                </li>
+              {/each}
+            </ul>
+          </div>
+          <button onclick={() => dismissFailedBanner = true} class="text-red-400 hover:text-red-600 text-lg leading-none shrink-0" aria-label="Đóng">✕</button>
+        </div>
+      </div>
+    {/if}
     {#if loading}
       <div class="text-center py-16 text-gray-400">Đang tải...</div>
     {:else if filtered.length === 0}
@@ -247,10 +272,29 @@
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1 justify-end">
                     {#if $canEdit}
-                    <label class="px-2.5 py-1 text-xs text-gray-500 bg-gray-50 rounded-lg hover:bg-blue-50 hover:text-blue-500 font-medium cursor-pointer" title="Upload CAD (dwg, dxf, step, stp, ifc)">
+                    <label
+                      class="px-2.5 py-1 text-xs rounded-lg font-medium cursor-pointer flex items-center gap-1 transition-colors
+                        {p.asset?.status === 'ready' ? 'text-green-600 bg-green-50 hover:bg-green-100'
+                         : p.asset?.status === 'failed' ? 'text-red-600 bg-red-50 hover:bg-red-100'
+                         : p.asset?.status === 'processing' || p.asset?.status === 'pending' ? 'text-amber-600 bg-amber-50'
+                         : 'text-gray-500 bg-gray-50 hover:bg-blue-50 hover:text-blue-500'}"
+                      title={p.asset?.status === 'ready' ? 'CAD đã xử lý — có hình sản phẩm thật. Bấm để thay file.'
+                        : p.asset?.status === 'failed' ? `Convert lỗi: ${p.asset?.error ?? ''} — bấm để thử lại`
+                        : 'Import CAD (dwg, dxf, step, stp, ifc) để hiện hình sản phẩm thật ở 2D/3D'}
+                    >
                       <input type="file" accept=".dwg,.dxf,.step,.stp,.ifc" class="hidden"
                         onchange={(e) => onCadFileChange(p, e)} disabled={uploadingFor === p.id} />
-                      {uploadingFor === p.id ? '...' : 'CAD'}
+                      {#if uploadingFor === p.id}
+                        <span>…</span>
+                      {:else if p.asset?.status === 'ready'}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>CAD</span>
+                      {:else if p.asset?.status === 'failed'}
+                        <span>CAD lỗi</span>
+                      {:else if p.asset?.status === 'processing' || p.asset?.status === 'pending'}
+                        <span>Đang xử lý…</span>
+                      {:else}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Import CAD</span>
+                      {/if}
                     </label>
                     <button onclick={() => openEdit(p)} class="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 font-medium">Sửa</button>
                     {#if confirmDeleteId === p.id}

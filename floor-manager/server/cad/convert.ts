@@ -4,6 +4,7 @@ import { assetPaths } from './paths.js';
 import { meshesToFootprint, footprintToSvg, type Footprint, type CadMesh } from './geometry.js';
 import { meshesToGlb } from './glb.js';
 import { dxfToFootprint } from './convertDxf.js';
+import { stepLengthScaleToMetre } from './units.js';
 import { stepToMeshes } from './convertStep.js';
 import { ifcToMeshes } from './convertIfc.js';
 import { dwgToDxfText } from './convertDwg.js';
@@ -18,28 +19,40 @@ export async function runConversion(assetId: string): Promise<void> {
   try {
     let footprint: Footprint;
     let glb: Uint8Array | null = null;
+    // Hệ số quy đổi thực sự dùng (lưu lại vào Asset để phản ánh đúng đơn vị đã phát hiện).
+    let resolvedUnitScale = asset.unitScale;
+    // Override thủ công = unitScale khác giá trị mặc định 0.001 (UI hiện chưa expose).
+    const override = asset.unitScale && asset.unitScale !== 0.001 ? asset.unitScale : null;
 
     if (asset.fileType === 'dxf' || asset.fileType === 'dwg') {
       const text =
         asset.fileType === 'dwg'
           ? await dwgToDxfText(p.sourceFile!)
           : fs.readFileSync(p.sourceFile!, 'utf8');
-      // DXF: unitScale mặc định 0.001 do route đặt; $INSUNITS trong file được ưu tiên
-      // trừ khi user override qua param (unitScale khác default).
-      footprint = dxfToFootprint(text, asset.unitScale === 0.001 ? undefined : asset.unitScale);
+      // DXF: $INSUNITS trong file được ưu tiên trừ khi user override qua param.
+      footprint = dxfToFootprint(text, override ?? undefined);
     } else {
       const buf = fs.readFileSync(p.sourceFile!);
       let meshes: CadMesh[];
       let upAxis: 'z' | 'y';
+      let scale: number;
       if (asset.fileType === 'ifc') {
         meshes = await ifcToMeshes(buf);
         upAxis = 'y';
+        // web-ifc đã quy hình học về MÉT theo đơn vị length của model -> không nhân thêm.
+        scale = override ?? 1;
       } else {
         meshes = await stepToMeshes(buf);
         upAxis = 'z';
+        // occt trả toạ độ theo ĐƠN VỊ GỐC -> đọc đơn vị length của STEP (fallback mm=0.001).
+        // Bỏ qua detect với file quá lớn để tránh giữ cả file trong RAM dạng string.
+        const detected =
+          buf.length <= 80 * 1024 * 1024 ? stepLengthScaleToMetre(buf.toString('latin1')) : null;
+        scale = override ?? detected ?? 0.001;
       }
-      footprint = meshesToFootprint(meshes, asset.unitScale, upAxis);
-      glb = await meshesToGlb(meshes, asset.unitScale, upAxis);
+      footprint = meshesToFootprint(meshes, scale, upAxis);
+      glb = await meshesToGlb(meshes, scale, upAxis);
+      resolvedUnitScale = scale;
     }
 
     fs.mkdirSync(p.artifactDir, { recursive: true });
@@ -52,6 +65,7 @@ export async function runConversion(assetId: string): Promise<void> {
       data: {
         status: 'ready',
         error: null,
+        unitScale: resolvedUnitScale,
         bboxLengthM: footprint.bbox.lengthM,
         bboxWidthM: footprint.bbox.widthM,
         bboxHeightM: footprint.bbox.heightM,

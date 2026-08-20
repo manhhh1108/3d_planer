@@ -1,8 +1,31 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
 import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
+import { assetPaths } from '../cad/paths.js';
 
 const router = Router();
+
+/**
+ * footprintUrl/meshUrl/thumbUrl là URL tính toán từ assetId (không lưu trong DB).
+ * Route products include asset thô -> phải bổ sung các URL này để frontend
+ * (productCatalog.loadProductCatalog) nạp được footprint, nếu không block sẽ vẽ hộp.
+ */
+function withAssetUrls(product: { asset?: { id: string; status: string } | null } & Record<string, unknown>) {
+  const asset = product.asset;
+  if (!asset) return product;
+  const p = assetPaths(asset.id);
+  const ready = asset.status === 'ready';
+  return {
+    ...product,
+    asset: {
+      ...asset,
+      footprintUrl: ready ? p.footprintUrl : null,
+      meshUrl: ready && fs.existsSync(p.meshFile) ? p.meshUrl : null,
+      thumbUrl: ready ? p.thumbUrl : null,
+    },
+  };
+}
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -18,7 +41,7 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
       include: { asset: true },
     });
-    res.json(products);
+    res.json(products.map(withAssetUrls));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -32,7 +55,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       include: { asset: true },
     });
     if (!product) return res.status(404).json({ error: 'Not found' });
-    res.json(product);
+    res.json(withAssetUrls(product));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -67,7 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
       },
       include: { asset: true },
     });
-    res.status(201).json(product);
+    res.status(201).json(withAssetUrls(product));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -104,7 +127,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       },
       include: { asset: true },
     });
-    res.json(product);
+    res.json(withAssetUrls(product));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

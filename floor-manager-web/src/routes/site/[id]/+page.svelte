@@ -133,13 +133,20 @@
             {#if $isAdmin}
             <div class="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2" onclick={(e) => e.stopPropagation()}>
               {#if layout.backgroundFile}
-                <span class="text-[11px] text-green-600 font-medium">✓ Nền DXF</span>
+                <span class="text-[11px] text-green-600 font-medium flex items-center gap-1">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Đã có nền DXF
+                </span>
+                <label class="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer transition-colors">
+                  <input type="file" accept=".dxf,.dwg" class="hidden" disabled={uploadingBgFor === layout.id} onchange={(e) => onBgFileChange(layout.id, e)} />
+                  {uploadingBgFor === layout.id ? 'Đang xử lý…' : 'Thay nền'}
+                </label>
                 <button
                   onclick={() => deleteBackground(layout.id)}
                   class="text-[11px] text-red-400 hover:text-red-600 transition-colors"
                 >Xóa nền</button>
               {:else}
-                <label class="text-[11px] text-gray-400 hover:text-blue-500 cursor-pointer flex items-center gap-1 transition-colors">
+                <label class="w-full text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-2 cursor-pointer flex items-center justify-center gap-1.5 transition-colors">
                   <input
                     type="file"
                     accept=".dxf,.dwg"
@@ -150,7 +157,8 @@
                   {#if uploadingBgFor === layout.id}
                     <span>Đang xử lý…</span>
                   {:else}
-                    <span>Upload nền DXF/DWG</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span>Import nền DXF/DWG</span>
                   {/if}
                 </label>
               {/if}
