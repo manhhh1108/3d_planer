@@ -1,6 +1,8 @@
 // REST client cho backend floor-manager (Express :4000)
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
-export const FILES_BASE = BASE.replace(/\/api$/, '');
+// File tĩnh đi qua chính /api — reverse proxy production chỉ forward /api,
+// nên /uploads ở root sẽ rơi vào frontend và trả 404.
+export const FILES_BASE = BASE.replace(/\/$/, '');
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {

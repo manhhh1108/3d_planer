@@ -29,7 +29,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(cookieParser());
-app.use('/uploads', express.static(path.join(import.meta.dirname, '../uploads')));
+// Static artifacts. Cũng mount dưới /api để reverse proxy chỉ cần forward /api
+// là mọi file (background.svg, mesh.glb, footprint.json) đều tới được backend.
+app.use(['/uploads', '/api/uploads'], express.static(path.join(import.meta.dirname, '../uploads')));
 
 app.use('/api/auth', authRouter);
 app.use('/api/users', requireAuth, blockPending, requireRole('ADMIN'), usersRouter);

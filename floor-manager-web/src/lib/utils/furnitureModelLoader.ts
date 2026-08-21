@@ -9,9 +9,10 @@ import { base } from '$app/paths';
 import { createFurnitureModel } from './furnitureModels3d';
 import type { FurnitureDef } from './furnitureCatalog';
 
+// Giống FILES_BASE trong services/api.ts: giữ nguyên /api để proxy forward được.
 const FILES_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
-  ? (import.meta.env.VITE_API_URL as string).replace(/\/api$/, '')
-  : 'http://localhost:4000';
+  ? (import.meta.env.VITE_API_URL as string).replace(/\/$/, '')
+  : 'http://localhost:4000/api';
 
 const loader = new GLTFLoader();
 const modelCache = new Map<string, THREE.Group>();
