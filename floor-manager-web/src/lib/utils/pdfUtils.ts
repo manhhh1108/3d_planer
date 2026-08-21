@@ -1,11 +1,14 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const FONT_URL = '/fonts/NotoSans-Regular.ttf';
-const FONT_NAME = 'NotoSans';
+import { base } from '$app/paths';
 
-async function loadFontBase64(): Promise<string> {
-  const res = await fetch(FONT_URL);
+const REGULAR_FILE = 'NotoSans-Regular.ttf';
+const BOLD_FILE = 'NotoSans-Bold.ttf';
+export const FONT_NAME = 'NotoSans';
+
+async function loadFontBase64(file: string): Promise<string> {
+  const res = await fetch(`${base}/fonts/${file}`);
   if (!res.ok) throw new Error(`Failed to load font: ${res.status}`);
   const buffer = await res.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -16,12 +19,51 @@ async function loadFontBase64(): Promise<string> {
   return btoa(binary);
 }
 
+/** TTF chỉ cần tải một lần cho cả phiên — file nặng ~1 MB. */
+const fontCache = new Map<string, Promise<string | null>>();
+
+function fetchFontCached(file: string, required: boolean): Promise<string | null> {
+  let p = fontCache.get(file);
+  if (!p) {
+    p = loadFontBase64(file).catch((err) => {
+      if (required) throw err;
+      return null;
+    });
+    fontCache.set(file, p);
+  }
+  return p;
+}
+
+/**
+ * Nạp NotoSans vào tài liệu cho cả style normal lẫn bold.
+ *
+ * Thiếu style nào thì jsPDF im lặng rơi về Times (bảng mã WinAnsi) và mọi dấu
+ * tiếng Việt trong phần đó hỏng hết — autoTable mặc định in đầu bảng và dòng
+ * tổng ở style bold nên đây là chỗ hỏng dễ thấy nhất. Chưa có file Bold thì
+ * dùng luôn file Regular cho style bold: chữ không đậm nhưng đọc được.
+ */
+export async function registerFont(doc: jsPDF): Promise<void> {
+  const [regular, bold] = await Promise.all([
+    fetchFontCached(REGULAR_FILE, true),
+    fetchFontCached(BOLD_FILE, false),
+  ]);
+
+  doc.addFileToVFS(REGULAR_FILE, regular!);
+  doc.addFont(REGULAR_FILE, FONT_NAME, 'normal');
+
+  if (bold) {
+    doc.addFileToVFS(BOLD_FILE, bold);
+    doc.addFont(BOLD_FILE, FONT_NAME, 'bold');
+  } else {
+    doc.addFont(REGULAR_FILE, FONT_NAME, 'bold');
+  }
+
+  doc.setFont(FONT_NAME, 'normal');
+}
+
 export async function createPdf(): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const fontBase64 = await loadFontBase64();
-  doc.addFileToVFS('NotoSans-Regular.ttf', fontBase64);
-  doc.addFont('NotoSans-Regular.ttf', FONT_NAME, 'normal');
-  doc.setFont(FONT_NAME, 'normal');
+  await registerFont(doc);
   return doc;
 }
 

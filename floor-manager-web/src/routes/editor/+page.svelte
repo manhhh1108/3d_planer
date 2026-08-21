@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { base } from '$app/paths';
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
   import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult, type ApiComment } from '$lib/services/api';
@@ -65,6 +66,10 @@
 
   let loadError = $state<string | null>(null);
   let backendLayoutId = $state<string | null>(null);
+  // Đích của nút quay lại trên TopBar: mặt bằng chứa layout đang mở.
+  // Chưa biết layout thuộc mặt bằng nào thì về trang chủ.
+  let backHref = $state(base || '/');
+  let backLabel = $state('Trang chủ');
 
   let comments = $state<ApiComment[]>([]);
   let showComments = $state(false);
@@ -122,6 +127,14 @@
             const layout = await api.layouts.get(layoutId);
             layoutBgFile.set(layout.backgroundFile ? `${FILES_BASE}${layout.backgroundFile}` : null);
             layoutDimsCm.set({ widthCm: layout.widthM * 100, heightCm: layout.heightM * 100 });
+            if (layout.siteId) {
+              backHref = `${base}/site/${layout.siteId}`;
+              try {
+                backLabel = (await api.sites.get(layout.siteId)).name;
+              } catch {
+                backLabel = 'Mặt bằng';
+              }
+            }
           } catch {
             // non-critical: background won't show but editor still works
           }
@@ -167,11 +180,13 @@
   });
 </script>
 
+<svelte:head><title>{$currentProject?.name ? `${$currentProject.name} — Floor Manager` : 'Editor — Floor Manager'}</title></svelte:head>
+
 <svelte:window on:keydown={(e) => { if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); printOpen = true; } if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !e.ctrlKey && !e.metaKey && (e.target as HTMLElement)?.tagName !== 'INPUT' && (e.target as HTMLElement)?.tagName !== 'TEXTAREA')) { e.preventDefault(); commandPaletteOpen = !commandPaletteOpen; } if (e.key === '?' && !e.ctrlKey && !e.metaKey) { showHelp = !showHelp; e.preventDefault(); } if (e.key === 'Escape' && showHelp) { showHelp = false; } if (e.key === 'l' && !e.ctrlKey && !e.metaKey && !e.altKey && (e.target as HTMLElement)?.tagName !== 'INPUT') { showLayers = !showLayers; } }} />
 
 {#if ready}
   <div class="h-screen flex flex-col overflow-hidden">
-    <TopBar saveLabel={backendLayoutId ? 'Lưu Snapshot' : 'Save'} />
+    <TopBar saveLabel={backendLayoutId ? 'Lưu Snapshot' : 'Save'} {backHref} {backLabel} />
     {#if backendLayoutId}
       <div class="flex border-b border-gray-200 bg-white px-4">
         <button

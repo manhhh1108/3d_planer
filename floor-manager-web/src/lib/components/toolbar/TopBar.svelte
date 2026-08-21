@@ -15,7 +15,11 @@
   import { goto } from '$app/navigation';
   import { authApi } from '$lib/services/api';
 
-  let { saveLabel = 'Save' }: { saveLabel?: string } = $props();
+  let {
+    saveLabel = 'Save',
+    backHref = base || '/',
+    backLabel = 'Trang chủ',
+  }: { saveLabel?: string; backHref?: string; backLabel?: string } = $props();
 
   let settingsOpen = $state(false);
   let showSaveModal = $state(false);
@@ -130,7 +134,7 @@
 
   function onExportPDF() {
     const p = get(currentProject);
-    if (p) exportPDF(p);
+    if (p) exportPDF(p).catch((err) => console.error('Xuất PDF thất bại:', err));
     exportOpen = false;
   }
 
@@ -222,14 +226,14 @@
 </script>
 
 <div class="h-12 bg-gradient-to-r from-slate-800 to-slate-700 flex items-center px-4 gap-3 max-md:px-2 max-md:gap-1 shrink-0 shadow-sm">
-  <!-- Back to Projects -->
+  <!-- Quay về một cấp: mặt bằng chứa layout này, hoặc trang chủ nếu không rõ -->
   <a
-    href={base || '/'}
+    href={backHref}
     class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors"
-    title="Back to Projects"
+    title={`Quay lại ${backLabel}`}
   >
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-    <span class="hidden sm:inline">Projects</span>
+    <span class="hidden sm:inline max-w-40 truncate">{backLabel}</span>
   </a>
 
   <div class="h-5 w-px bg-white/20 max-md:hidden"></div>

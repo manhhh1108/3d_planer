@@ -26,6 +26,8 @@ export interface DxfSvgResult {
 interface RenderResult {
   elements: string[];
   points: [number, number][];
+  /** Đường bao kín (polyline/polygon đóng, đường tròn) — dùng dựng footprint. */
+  rings: [number, number][][];
 }
 
 /** Ma trận affine 2D [a,b,c,d,e,f]: x' = a·x + c·y + e, y' = b·x + d·y + f */
@@ -192,12 +194,14 @@ function renderEntities(
 ): RenderResult {
   const elements: string[] = [];
   const points: [number, number][] = [];
+  const rings: [number, number][][] = [];
   const conformal = isConformal(m);
 
   const pushPolyline = (pts: [number, number][], closed: boolean) => {
     if (pts.length < 2) return;
     const tp = pts.map(([x, y]) => matApply(m, x, y));
     for (const p of tp) points.push(p);
+    if (closed && tp.length >= 3) rings.push(tp);
     const str = tp.map(([x, y]) => `${n(x)},${n(y)}`).join(' ');
     elements.push(closed ? `<polygon points="${str}"/>` : `<polyline points="${str}"/>`);
   };
@@ -229,6 +233,8 @@ function renderEntities(
         const [cx, cy] = matApply(m, ent.center?.x ?? 0, ent.center?.y ?? 0);
         const r = rawR * matScaleFactor(m);
         points.push([cx - r, cy], [cx + r, cy], [cx, cy - r], [cx, cy + r]);
+        // Vẫn ghi ring để footprint có đường bao thật thay vì 4 điểm cardinal.
+        rings.push(arcSamples(cx, cy, r, 0, 2 * Math.PI));
         elements.push(`<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}"/>`);
       } else {
         // Phóng không đều biến đường tròn thành ellipse — phải lấy mẫu.
@@ -296,12 +302,13 @@ function renderEntities(
           );
           elements.push(...child.elements);
           points.push(...child.points);
+          rings.push(...child.rings);
         }
       }
     }
   }
 
-  return { elements, points };
+  return { elements, points, rings };
 }
 
 function bboxFromPoints(points: [number, number][]): { minX: number; maxX: number; minY: number; maxY: number } | null {
@@ -410,4 +417,42 @@ export function dxfToSvg(dxfText: string, unitScale?: number): DxfSvgResult {
   }
 
   return { svg, widthM, heightM, inserts };
+}
+
+export interface DxfGeometry {
+  /** Mọi đỉnh đã đưa về mét, đã áp phép biến đổi của INSERT bao ngoài. */
+  points: [number, number][];
+  /** Các đường bao kín, cùng hệ toạ độ với `points`. */
+  closedRings: [number, number][][];
+}
+
+/**
+ * Trích hình học 2D của DXF, có mở rộng block qua INSERT.
+ *
+ * Dùng chung cho cả sinh SVG nền lẫn dựng footprint sản phẩm — hai chỗ trước
+ * đây duyệt entity riêng và cùng bỏ sót hình học nằm trong block.
+ */
+export function dxfToGeometry(dxfText: string, unitScale?: number): DxfGeometry {
+  const dxf = new DxfParser().parseSync(dxfText);
+  if (!dxf) throw new Error('DXF parse failed');
+
+  const insunits = Number(dxf.header?.['$INSUNITS'] ?? 0);
+  const scale = unitScale ?? INSUNITS_SCALE[insunits] ?? 0.001;
+  const blocks: Record<string, any> = (dxf as any).blocks ?? {};
+  const { points, rings } = renderEntities(dxf.entities ?? [], [scale, 0, 0, scale, 0, 0], blocks);
+  return { points, closedRings: rings };
+}
+
+/** Entity đặc cho khối 3D — dxf-parser không đọc được nên phải dò trên text thô. */
+const SOLID_3D_TYPES = /^[ \t]*0[ \t]*\r?\n[ \t]*(3DSOLID|BODY|REGION|MESH|SURFACE|PLANESURFACE|EXTRUDEDSURFACE|REVOLVEDSURFACE|SWEPTSURFACE|LOFTEDSURFACE|NURBSURFACE)[ \t]*\r?$/m;
+
+/**
+ * File có chứa khối 3D ACIS hay không.
+ *
+ * dxf-parser bỏ qua hoàn toàn 3DSOLID (dữ liệu ACIS nhị phân), nên nếu chỉ nhìn
+ * `dxf.entities` thì một file 3D thuần trông y hệt file rỗng — và người dùng
+ * nhận thông báo "không chứa hình học 2D" thay vì được chỉ sang STP/IFC.
+ */
+export function dxfHas3dSolid(dxfText: string): boolean {
+  return SOLID_3D_TYPES.test(dxfText);
 }

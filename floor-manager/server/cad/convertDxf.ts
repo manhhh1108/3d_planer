@@ -1,52 +1,25 @@
-import DxfParser from 'dxf-parser';
 import { convexHull, footprintArea, type Footprint, type Ring } from './geometry.js';
-
-// $INSUNITS -> mét
-const INSUNITS_SCALE: Record<number, number> = {
-  1: 0.0254, // inch
-  2: 0.3048, // feet
-  4: 0.001, // mm
-  5: 0.01, // cm
-  6: 1, // m
-};
+import { dxfToGeometry, dxfHas3dSolid } from './convertDxfSvg.js';
 
 /**
- * DXF text -> footprint. Ưu tiên các LWPOLYLINE/POLYLINE đóng;
- * nếu không có, lấy convex hull của mọi đỉnh. unitScale override $INSUNITS.
+ * DXF text -> footprint. Ưu tiên các đường bao kín; nếu không có, lấy convex
+ * hull của mọi đỉnh. unitScale override $INSUNITS.
+ *
+ * Hình học nằm trong block được mở rộng qua INSERT — bản vẽ CAD thực tế hầu
+ * như luôn dựng bằng block, modelspace chỉ chứa vài INSERT.
  */
 export function dxfToFootprint(dxfText: string, unitScale: number | undefined): Footprint {
-  const parser = new DxfParser();
-  const dxf = parser.parseSync(dxfText);
-  if (!dxf) throw new Error('DXF parse failed');
+  const { points: allPoints, closedRings } = dxfToGeometry(dxfText, unitScale);
 
-  const insunits = Number(dxf.header?.['$INSUNITS'] ?? 0);
-  const scale = unitScale ?? INSUNITS_SCALE[insunits] ?? 0.001;
-
-  const closedRings: Ring[] = [];
-  const allPoints: [number, number][] = [];
-
-  for (const e of dxf.entities ?? []) {
-    const ent = e as { type: string; vertices?: { x: number; y: number }[]; shape?: boolean; closed?: boolean };
-    if ((ent.type === 'LWPOLYLINE' || ent.type === 'POLYLINE') && ent.vertices?.length) {
-      const ring: Ring = ent.vertices.map((v) => [v.x * scale, v.y * scale]);
-      for (const p of ring) allPoints.push(p);
-      const isClosed = ent.shape === true || ent.closed === true;
-      if (isClosed && ring.length >= 3) closedRings.push(ring);
-    } else if (ent.vertices?.length) {
-      for (const v of ent.vertices) allPoints.push([v.x * scale, v.y * scale]);
+  if (allPoints.length === 0) {
+    // Dò trên text thô: dxf-parser bỏ qua 3DSOLID nên file 3D thuần trông như file rỗng.
+    if (dxfHas3dSolid(dxfText)) {
+      throw new Error('File DWG/DXF chứa mô hình 3D (3DSOLID) — không hỗ trợ. Vui lòng export sang định dạng STP hoặc IFC để upload.');
     }
+    throw new Error('DXF không chứa hình học 2D (LWPOLYLINE/POLYLINE). Kiểm tra lại file.');
   }
 
-  // Phát hiện file 3D (3DSOLID/3DFACE) — không hỗ trợ, hướng dẫn dùng STP/IFC
-  const has3D = (dxf.entities ?? []).some(
-    (e) => e.type === '3DSOLID' || e.type === '3DFACE' || e.type === 'MESH'
-  );
-  if (allPoints.length === 0 && has3D) {
-    throw new Error('File DWG/DXF chứa mô hình 3D (3DSOLID) — không hỗ trợ. Vui lòng export sang định dạng STP hoặc IFC để upload.');
-  }
-  if (allPoints.length === 0) throw new Error('DXF không chứa hình học 2D (LWPOLYLINE/POLYLINE). Kiểm tra lại file.');
-
-  const rings = closedRings.length > 0 ? closedRings : [convexHull(allPoints)];
+  const rings: Ring[] = closedRings.length > 0 ? closedRings : [convexHull(allPoints)];
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const [x, y] of allPoints) {

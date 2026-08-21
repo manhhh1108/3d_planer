@@ -126,6 +126,8 @@
   }
 </script>
 
+<svelte:head><title>Trang chủ — Floor Manager</title></svelte:head>
+
 <div class="min-h-screen bg-gray-50">
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">

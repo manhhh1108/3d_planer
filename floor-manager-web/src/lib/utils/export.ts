@@ -4,6 +4,7 @@ import type { CanvasState } from '$lib/utils/canvasInteraction';
 import { projectSettings } from '$lib/stores/settings';
 import { get } from 'svelte/store';
 import jsPDF from 'jspdf';
+import { registerFont, FONT_NAME } from '$lib/utils/pdfUtils';
 
 /** Escape text for safe SVG embedding */
 function escapeXml(s: string): string {
@@ -207,12 +208,20 @@ export function exportAs3DPNG(renderer: { domElement: HTMLCanvasElement }) {
   });
 }
 
-export function exportPDF(project: Project) {
+/**
+ * Xuất bản vẽ ra PDF.
+ *
+ * Bất đồng bộ vì phải nạp NotoSans trước khi vẽ chữ — font mặc định của jsPDF
+ * dùng bảng mã WinAnsi, không có dấu tiếng Việt nên tên dự án, tên tầng và
+ * mô tả đều hỏng chữ.
+ */
+export async function exportPDF(project: Project) {
   const floor = project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
   if (!floor) return;
 
   const settings = get(projectSettings);
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  await registerFont(pdf);
   const pw = pdf.internal.pageSize.getWidth();   // ~297
   const ph = pdf.internal.pageSize.getHeight();   // ~210
   const margin = 10;
@@ -242,10 +251,10 @@ export function exportPDF(project: Project) {
 
     // Project name
     pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(FONT_NAME, 'bold');
     pdf.text(project.name || 'Untitled Project', margin + 4, tbY + 9);
     pdf.setFontSize(8);
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(FONT_NAME, 'normal');
     pdf.text(floor.name, margin + 4, tbY + 15);
     if (project.description) {
       pdf.setFontSize(7);
@@ -260,9 +269,9 @@ export function exportPDF(project: Project) {
 
     // Branding
     pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(FONT_NAME, 'bold');
     pdf.text('openplan3d.com', col2 + 4, tbY + 9);
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(FONT_NAME, 'normal');
     pdf.setFontSize(7);
     pdf.text('Created with Open 3D Floor Planner', col2 + 4, tbY + 15);
   }
@@ -364,7 +373,7 @@ export function exportPDF(project: Project) {
         drawPageBorder();
 
         pdf.setFontSize(14);
-        pdf.setFont('helvetica', 'bold');
+        pdf.setFont(FONT_NAME, 'bold');
         pdf.setTextColor(40);
         pdf.text('3D Perspective View', margin + 6, margin + 12);
 

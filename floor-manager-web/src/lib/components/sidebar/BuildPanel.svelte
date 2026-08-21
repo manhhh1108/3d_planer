@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectedTool, placingFurnitureId, setBackgroundImage, activeFloor, draggingCatalogId } from '$lib/stores/project';
+  import { selectedTool, placingFurnitureId, setBackgroundImage, draggingCatalogId, currentProject } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
@@ -12,8 +12,11 @@
   let catalogItems = $derived($productCatalog);
   let categories = $derived([...new Set($productCatalog.map((f) => f.category))]);
 
+  // Đếm trên toàn project, không riêng tầng đang mở — `quantity` là số lượng
+  // sản phẩm thực có, không phải hạn mức của từng tầng. Phải khớp với
+  // remainingQuantity() trong stores/project để canvas và sidebar không lệch nhau.
   const placedCounts = $derived(
-    ($activeFloor?.furniture ?? []).reduce<Record<string, number>>((acc, fi) => {
+    ($currentProject?.floors ?? []).flatMap((f) => f.furniture).reduce<Record<string, number>>((acc, fi) => {
       acc[fi.catalogId] = (acc[fi.catalogId] ?? 0) + 1;
       return acc;
     }, {})
@@ -31,6 +34,12 @@
   placingFurnitureId.subscribe((id) => { currentPlacing = id; });
 
   function onFurnitureClick(item: FurnitureDef) {
+    // Bấm lại đúng sản phẩm đang đặt = huỷ lệnh, khỏi phải nhớ phím Esc.
+    if (currentPlacing === item.id) {
+      placingFurnitureId.set(null);
+      selectedTool.set('select');
+      return;
+    }
     const placed = placedCounts[item.id] ?? 0;
     const qty = item.quantity ?? 1;
     if (placed >= qty) return; // quantity limit reached
@@ -335,8 +344,8 @@
             {@const isFull = placed >= qty}
             <button
               class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors {notReady || isFull ? 'opacity-50 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
-              onclick={() => { if (!notReady && !isFull) onFurnitureClick(item); }}
-              disabled={notReady || isFull}
+              onclick={() => { if (currentPlacing === item.id || (!notReady && !isFull)) onFurnitureClick(item); }}
+              disabled={(notReady || isFull) && currentPlacing !== item.id}
               draggable="true"
               ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); draggingCatalogId.set(item.id); }}
               ondragend={() => draggingCatalogId.set(null)}

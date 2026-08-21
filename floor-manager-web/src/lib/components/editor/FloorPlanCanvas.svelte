@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode } from '$lib/stores/project';
+  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity } from '$lib/stores/project';
   import { layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
@@ -122,6 +122,32 @@
   let currentSelectedId: string | null = $state(null);
   let currentSelectedRoomId: string | null = $state(null);
   let currentPlacingId: string | null = $state(null);
+
+  /**
+   * Số bản còn được đặt của sản phẩm đang chọn.
+   * Đọc `$activeFloor` để Svelte đếm lại sau mỗi lần đặt —
+   * remainingQuantity() lấy state qua get() nên tự nó không phải nguồn reactive.
+   */
+  let placingRemaining = $derived(
+    currentPlacingId && $activeFloor ? remainingQuantity(currentPlacingId) : Infinity
+  );
+
+  // Thông báo hết số lượng — hiện tạm trên canvas rồi tự tắt.
+  let quantityLimitMsg = $state<string | null>(null);
+  let quantityLimitTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Thoát lệnh đặt và báo đã dùng hết số lượng cho phép của sản phẩm. */
+  function exitPlacingOnQuantityLimit(catalogId: string) {
+    const cat = getCatalogItem(catalogId);
+    const qty = cat?.quantity ?? 0;
+    quantityLimitMsg = `Đã đặt đủ ${qty} "${cat?.name ?? catalogId}" — hết số lượng cho phép`;
+    if (quantityLimitTimer) clearTimeout(quantityLimitTimer);
+    quantityLimitTimer = setTimeout(() => { quantityLimitMsg = null; }, 4000);
+    placingFurnitureId.set(null);
+    placingRotation.set(0);
+    selectedTool.set('select');
+    markDirty();
+  }
   let currentPlacingRotation: number = $state(0);
   let currentTool: string = $state('select');
   let currentDoorType: Door['type'] = $state('single');
@@ -1863,14 +1889,22 @@
     // Column and stair placement moved earlier (before select-mode handlers)
 
     if (tool === 'furniture' && currentPlacingId) {
-      const wallSnap = snapFurnitureToWall(wp, currentPlacingId, currentPlacingRotation);
+      const placingId = currentPlacingId;
+      if (remainingQuantity(placingId) <= 0) {
+        exitPlacingOnQuantityLimit(placingId);
+        return;
+      }
+      const wallSnap = snapFurnitureToWall(wp, placingId, currentPlacingRotation);
       const pos = wallSnap ? wallSnap.position : { x: snap(wp.x), y: snap(wp.y) };
       const rot = wallSnap ? wallSnap.rotation : currentPlacingRotation;
-      const id = addFurniture(currentPlacingId, pos);
+      const id = addFurniture(placingId, pos);
       if (rot !== 0) {
         rotateFurniture(id, rot);
       }
       selectedElementId.set(id);
+      // Đặt nốt bản cuối thì thoát lệnh ngay, không để người dùng kẹt trong
+      // chế độ đặt mà click nào cũng bị từ chối.
+      if (remainingQuantity(placingId) <= 0) exitPlacingOnQuantityLimit(placingId);
       return;
     }
 
@@ -2995,6 +3029,10 @@
     const pos = { x: snap(wp.x), y: snap(wp.y) };
 
     if (itemType === 'furniture') {
+      if (remainingQuantity(itemId) <= 0) {
+        exitPlacingOnQuantityLimit(itemId);
+        return;
+      }
       const id = addFurniture(itemId, pos);
       selectedElementId.set(id);
       selectedTool.set('select');
@@ -3571,7 +3609,12 @@
   {/if}
   {#if currentPlacingId && currentTool === 'furniture'}
     <div class="absolute top-2 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-3 py-1 rounded-full text-xs shadow">
-      Click to place · Scroll or R to rotate ({currentPlacingRotation}°) · Esc to cancel
+      Click to place{Number.isFinite(placingRemaining) ? ` · còn ${placingRemaining}` : ''} · Scroll or R to rotate ({currentPlacingRotation}°) · Esc to cancel
+    </div>
+  {/if}
+  {#if quantityLimitMsg}
+    <div class="absolute top-12 left-1/2 -translate-x-1/2 bg-red-600 text-white px-3 py-1 rounded-full text-xs shadow">
+      {quantityLimitMsg}
     </div>
   {/if}
   {#if measuring}

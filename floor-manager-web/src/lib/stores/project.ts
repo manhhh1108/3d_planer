@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Project, Floor, Wall, Door, Window as Win, FurnitureItem, Point, Stair, Column, BackgroundImage, GuideLine, ElementGroup, EntourageItem } from '$lib/models/types';
+import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 
 
 function uid(): string {
@@ -254,6 +255,36 @@ export function addWindow(wallId: string, position: number, windowType: import('
     f.windows.push({ id, wallId, position, width, height, sillHeight: 90, type: windowType });
   }, `Added ${windowType} window`);
   return id;
+}
+
+/**
+ * Số bản đã đặt của một sản phẩm, tính trên toàn bộ project.
+ *
+ * Đếm mọi tầng chứ không riêng tầng đang mở: `quantity` là số lượng sản phẩm
+ * thực có, không phải hạn mức của từng tầng.
+ */
+export function countPlaced(catalogId: string): number {
+  const p = get(currentProject);
+  if (!p) return 0;
+  let count = 0;
+  for (const floor of p.floors) {
+    for (const fi of floor.furniture) if (fi.catalogId === catalogId) count++;
+  }
+  return count;
+}
+
+/**
+ * Còn đặt thêm được bao nhiêu bản.
+ *
+ * Không tìm thấy sản phẩm trong catalog thì coi như không giới hạn — catalog
+ * nạp bất đồng bộ, chặn vì thiếu dữ liệu sẽ tệ hơn là cho đặt thừa.
+ * Sản phẩm có trong catalog nhưng thiếu `quantity` mặc định là 1, khớp với
+ * mặc định của backend và với badge số lượng ở BuildPanel.
+ */
+export function remainingQuantity(catalogId: string): number {
+  const cat = getCatalogItem(catalogId);
+  if (!cat) return Infinity;
+  return Math.max(0, (cat.quantity ?? 1) - countPlaced(catalogId));
 }
 
 export function addFurniture(catalogId: string, position: Point, rotation = 0): string {
