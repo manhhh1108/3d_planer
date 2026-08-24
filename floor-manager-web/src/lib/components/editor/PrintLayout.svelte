@@ -2,6 +2,8 @@
   import { currentProject } from '$lib/stores/project';
   import { get } from 'svelte/store';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
+  import { floorPlanBounds, planHasContent } from '$lib/utils/planRender';
+  import { drawWallsToCanvas } from '$lib/utils/planRender';
   import type { Project, Floor } from '$lib/models/types';
 
   let { open = $bindable(false) } = $props();
@@ -129,23 +131,15 @@
     }
 
     // ── Floor plan ───────────────────────────────────────────────
-    if (!floor?.furniture?.length) {
+    const planBounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
+    if (!floor || !planBounds) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = `13px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Chưa có sản phẩm nào trên mặt bằng', planAreaX + planAreaW / 2, planAreaY + planAreaH / 2);
+      ctx.fillText('Chưa có gì trên mặt bằng', planAreaX + planAreaW / 2, planAreaY + planAreaH / 2);
     } else {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const fi of floor.furniture) {
-        const cat = getCatalogItem(fi.catalogId);
-        const hw = (fi.width ?? cat?.width ?? 30) / 2;
-        const hd = (fi.depth ?? cat?.depth ?? 30) / 2;
-        minX = Math.min(minX, fi.position.x - hw);
-        minY = Math.min(minY, fi.position.y - hd);
-        maxX = Math.max(maxX, fi.position.x + hw);
-        maxY = Math.max(maxY, fi.position.y + hd);
-      }
+      const { minX, minY, maxX, maxY } = planBounds;
       const planW = maxX - minX;
       const planH = maxY - minY;
 
@@ -177,6 +171,9 @@
 
         ctx.translate(offsetX, offsetY);
         ctx.scale(fitScale, fitScale);
+
+        // Tường vẽ trước để block nằm đè lên, giống thứ tự trên màn hình
+        drawWallsToCanvas(ctx, floor.walls, { x: 0, y: 0 }, 1.2 / fitScale);
 
         for (const fi of floor.furniture) {
           const cat = getCatalogItem(fi.catalogId);

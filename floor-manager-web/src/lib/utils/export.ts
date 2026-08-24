@@ -1,5 +1,6 @@
 import type { Project, Floor } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
+import { floorPlanBounds, planHasContent, drawWallsToCanvas, wallsToSvg } from '$lib/utils/planRender';
 import type { CanvasState } from '$lib/utils/canvasInteraction';
 import { projectSettings } from '$lib/stores/settings';
 import { get } from 'svelte/store';
@@ -29,15 +30,9 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
 
   if (project) {
     const floor = project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
-    if (floor && floor.furniture.length > 0) {
-      // Compute bounds of all geometry
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const fi of floor.furniture) {
-        minX = Math.min(minX, fi.position.x - 50);
-        minY = Math.min(minY, fi.position.y - 50);
-        maxX = Math.max(maxX, fi.position.x + 50);
-        maxY = Math.max(maxY, fi.position.y + 50);
-      }
+    const bounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
+    if (floor && bounds) {
+      const { minX, minY, maxX, maxY } = bounds;
       const pad = 80;
       const w = maxX - minX + pad * 2;
       const h = maxY - minY + pad * 2;
@@ -50,6 +45,9 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
       ctx.scale(scale, scale);
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, w, h);
+
+      // Tường vẽ trước để block nằm đè lên, giống thứ tự trên màn hình
+      drawWallsToCanvas(ctx, floor.walls, { x: -minX + pad, y: -minY + pad }, 0.5);
 
       // Draw furniture
       for (const fi of floor.furniture) {
@@ -106,20 +104,16 @@ export function exportAsJSON(project: Project) {
 
 export function exportAsSVG(project: Project) {
   const floor = project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
-  if (!floor || floor.furniture.length === 0) return;
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const fi of floor.furniture) {
-    minX = Math.min(minX, fi.position.x - 50);
-    minY = Math.min(minY, fi.position.y - 50);
-    maxX = Math.max(maxX, fi.position.x + 50);
-    maxY = Math.max(maxY, fi.position.y + 50);
-  }
+  if (!planHasContent(floor)) return;
+  const bounds = floorPlanBounds(floor);
+  if (!floor || !bounds) return;
+  const { minX, minY, maxX, maxY } = bounds;
   const pad = 50;
   const vw = maxX - minX + pad * 2;
   const vh = maxY - minY + pad * 2;
 
-  let paths = '';
+  // Tường vẽ trước để block nằm đè lên
+  let paths = wallsToSvg(floor.walls, { x: -minX + pad, y: -minY + pad });
 
   // Furniture rectangles (actual dimensions from catalog)
   for (const fi of floor.furniture) {
@@ -280,15 +274,10 @@ export async function exportPDF(project: Project) {
   drawPageBorder();
 
   // Render floor plan onto an offscreen canvas then embed as image
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const fi of floor.furniture) {
-    minX = Math.min(minX, fi.position.x - 60);
-    minY = Math.min(minY, fi.position.y - 60);
-    maxX = Math.max(maxX, fi.position.x + 60);
-    maxY = Math.max(maxY, fi.position.y + 60);
-  }
+  const bounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
+  const { minX, minY, maxX, maxY } = bounds ?? { minX: Infinity, minY: 0, maxX: 0, maxY: 0 };
 
-  if (minX === Infinity) {
+  if (!bounds) {
     // No geometry to render
     drawTitleBlock();
     pdf.save(`${project.name || 'floorplan'}.pdf`);
@@ -306,6 +295,9 @@ export async function exportPDF(project: Project) {
   ctx.scale(scale, scale);
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, planW, planH);
+
+  // Tường vẽ trước để block nằm đè lên
+  drawWallsToCanvas(ctx, floor.walls, { x: -minX + pad, y: -minY + pad }, 0.5);
 
   // Furniture
   for (const fi of floor.furniture) {

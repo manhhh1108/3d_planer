@@ -12,6 +12,7 @@
   import { createFurnitureModel } from '$lib/utils/furnitureModels3d';
   import { createFurnitureModelWithGLB } from '$lib/utils/furnitureModelLoader';
   import { unorientDims } from '$lib/services/mapping';
+  import { buildWallMesh } from '$lib/utils/wall3d';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
 
   let container: HTMLDivElement;
@@ -1171,6 +1172,11 @@
 
   function buildWalls(floor: Floor) {
     clearGroup(wallGroup);
+
+    // Tường: hình học cố định của mặt bằng, dựng trước block
+    for (const w of floor.walls) {
+      wallGroup.add(buildWallMesh(w));
+    }
 
     // Furniture
     for (const fi of floor.furniture) {

@@ -129,7 +129,7 @@
     }
   }
 
-  let hasSelection = $derived(!!selectedFurniture || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage));
+  let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage));
 </script>
 
 <!-- Right sidebar on md+; slides up as a bottom sheet on phones -->

@@ -119,6 +119,69 @@ export function wallMidHandle(w: Wall): Point {
   return { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
 }
 
+/**
+ * Đường bao (polygon) của một bức tường.
+ *
+ * `project` đưa toạ độ thế giới về hệ toạ độ đích, `thickness` tính theo hệ
+ * ĐÍCH. Tách ra để canvas trên màn hình, bản in và bản xuất file cùng dùng một
+ * định nghĩa hình dạng — trước đây mỗi nơi tự vẽ nên chỗ có tường chỗ không.
+ */
+export function wallOutline(
+  w: Wall,
+  thickness: number,
+  project: (x: number, y: number) => { x: number; y: number },
+  segments = 24,
+): { x: number; y: number }[] {
+  const s = project(w.start.x, w.start.y);
+  const e = project(w.end.x, w.end.y);
+  const half = thickness / 2;
+
+  if (w.curvePoint) {
+    const cp = project(w.curvePoint.x, w.curvePoint.y);
+    const outer: { x: number; y: number }[] = [];
+    const inner: { x: number; y: number }[] = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const mt = 1 - t;
+      const px = mt * mt * s.x + 2 * mt * t * cp.x + t * t * e.x;
+      const py = mt * mt * s.y + 2 * mt * t * cp.y + t * t * e.y;
+      const tdx = 2 * mt * (cp.x - s.x) + 2 * t * (e.x - cp.x);
+      const tdy = 2 * mt * (cp.y - s.y) + 2 * t * (e.y - cp.y);
+      const tlen = Math.hypot(tdx, tdy) || 1;
+      const nx = (-tdy / tlen) * half;
+      const ny = (tdx / tlen) * half;
+      outer.push({ x: px + nx, y: py + ny });
+      inner.push({ x: px - nx, y: py - ny });
+    }
+    return [...outer, ...inner.reverse()];
+  }
+
+  const dx = e.x - s.x;
+  const dy = e.y - s.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return [];
+  const nx = (-dy / len) * half;
+  const ny = (dx / len) * half;
+  return [
+    { x: s.x + nx, y: s.y + ny },
+    { x: e.x + nx, y: e.y + ny },
+    { x: e.x - nx, y: e.y - ny },
+    { x: s.x - nx, y: s.y - ny },
+  ];
+}
+
+/** Vẽ polygon đã tính sẵn — tô rồi viền */
+export function tracePolygon(
+  ctx: CanvasRenderingContext2D,
+  pts: { x: number; y: number }[],
+): void {
+  if (pts.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+}
+
 // ── Wall drawing ─────────────────────────────────────────────────────
 
 const WALL_FILL = '#404040';
@@ -187,48 +250,11 @@ export function drawWall(
   ctx.strokeStyle = selected ? WALL_STROKE_SEL : WALL_STROKE;
   ctx.lineWidth = 1;
 
-  if (w.curvePoint) {
-    // Dải bám theo bezier bậc hai: 24 đoạn đủ mượt ở mọi mức zoom thực dụng
-    const cp = wts(cs, w.curvePoint.x, w.curvePoint.y);
-    const SEGS = 24;
-    const outer: { x: number; y: number }[] = [];
-    const inner: { x: number; y: number }[] = [];
-    for (let i = 0; i <= SEGS; i++) {
-      const t = i / SEGS;
-      const mt = 1 - t;
-      const px = mt * mt * s.x + 2 * mt * t * cp.x + t * t * e.x;
-      const py = mt * mt * s.y + 2 * mt * t * cp.y + t * t * e.y;
-      const tdx = 2 * mt * (cp.x - s.x) + 2 * t * (e.x - cp.x);
-      const tdy = 2 * mt * (cp.y - s.y) + 2 * t * (e.y - cp.y);
-      const tlen = Math.hypot(tdx, tdy) || 1;
-      const nx = (-tdy / tlen) * thickness / 2;
-      const ny = (tdx / tlen) * thickness / 2;
-      outer.push({ x: px + nx, y: py + ny });
-      inner.push({ x: px - nx, y: py - ny });
-    }
-    ctx.beginPath();
-    ctx.moveTo(outer[0].x, outer[0].y);
-    for (let i = 1; i < outer.length; i++) ctx.lineTo(outer[i].x, outer[i].y);
-    for (let i = inner.length - 1; i >= 0; i--) ctx.lineTo(inner[i].x, inner[i].y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    const dx = e.x - s.x;
-    const dy = e.y - s.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) return;
-    const nx = (-dy / len) * thickness / 2;
-    const ny = (dx / len) * thickness / 2;
-    ctx.beginPath();
-    ctx.moveTo(s.x + nx, s.y + ny);
-    ctx.lineTo(e.x + nx, e.y + ny);
-    ctx.lineTo(e.x - nx, e.y - ny);
-    ctx.lineTo(s.x - nx, s.y - ny);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
+  const outline = wallOutline(w, thickness, (x, y) => wts(cs, x, y));
+  if (outline.length === 0) return;
+  tracePolygon(ctx, outline);
+  ctx.fill();
+  ctx.stroke();
 
   const wlen = wallLength(w);
   if (showDimensions && dimSettings.showExternalDimensions && wlen >= 10) {
