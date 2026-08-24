@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
-  import { api, type ApiSite } from '$lib/services/api';
+  import { api, FILES_BASE, type ApiLayout, type ApiSite } from '$lib/services/api';
   import { isAdmin } from '$lib/stores/auth';
 
   const siteId = $page.params.id ?? '';
@@ -11,11 +11,31 @@
   let site = $state<ApiSite | null>(null);
   let loading = $state(true);
 
-  let showCreateLayout = $state(false);
+  let showLayoutForm = $state(false);
+  let editingLayoutId = $state<string | null>(null);
+  let editingLayoutSnapshots = $state(0);
+  let editingLayoutW = $state(0);
+  let editingLayoutH = $state(0);
   let newLayoutName = $state('');
   let newLayoutW = $state(100);
   let newLayoutH = $state(60);
+  let layoutSaving = $state(false);
+  let layoutError = $state<string | null>(null);
   let confirmDeleteId = $state<string | null>(null);
+
+  let showSiteForm = $state(false);
+  let siteName = $state('');
+  let siteAddress = $state('');
+  let siteActive = $state(true);
+  let siteSaving = $state(false);
+  let siteError = $state<string | null>(null);
+
+  // Thu nhỏ layout đã có snapshot thì block đã đặt có thể rơi ra ngoài biên mới
+  let shrinkWarning = $derived(
+    editingLayoutId !== null &&
+      editingLayoutSnapshots > 0 &&
+      (newLayoutW < editingLayoutW || newLayoutH < editingLayoutH)
+  );
   let uploadingBgFor = $state<string | null>(null);
   let bgError = $state<string | null>(null);
 
@@ -60,17 +80,91 @@
 
   onMount(refresh);
 
-  async function createLayout() {
-    if (!newLayoutName.trim() || newLayoutW <= 0 || newLayoutH <= 0) return;
-    const layout = await api.layouts.create({
-      siteId,
-      name: newLayoutName.trim(),
-      widthM: newLayoutW,
-      heightM: newLayoutH,
-    });
-    showCreateLayout = false;
+  function openCreateLayout() {
+    editingLayoutId = null;
+    editingLayoutSnapshots = 0;
+    editingLayoutW = 0;
+    editingLayoutH = 0;
     newLayoutName = '';
-    goto(`${base}/editor?layoutId=${layout.id}`);
+    newLayoutW = 100;
+    newLayoutH = 60;
+    layoutError = null;
+    showLayoutForm = true;
+  }
+
+  function openEditLayout(layout: ApiLayout & { _count?: { snapshots: number } }) {
+    editingLayoutId = layout.id;
+    editingLayoutSnapshots = layout._count?.snapshots ?? 0;
+    editingLayoutW = layout.widthM;
+    editingLayoutH = layout.heightM;
+    newLayoutName = layout.name;
+    newLayoutW = layout.widthM;
+    newLayoutH = layout.heightM;
+    layoutError = null;
+    showLayoutForm = true;
+  }
+
+  function closeLayoutForm() {
+    if (layoutSaving) return;
+    showLayoutForm = false;
+  }
+
+  async function submitLayout() {
+    if (!newLayoutName.trim() || newLayoutW <= 0 || newLayoutH <= 0 || layoutSaving) return;
+    layoutError = null;
+    layoutSaving = true;
+    const data = { name: newLayoutName.trim(), widthM: newLayoutW, heightM: newLayoutH };
+    try {
+      if (editingLayoutId) {
+        await api.layouts.update(editingLayoutId, data);
+      } else {
+        const layout = await api.layouts.create({ siteId, ...data });
+        showLayoutForm = false;
+        goto(`${base}/editor?layoutId=${layout.id}`);
+        return;
+      }
+    } catch (e) {
+      layoutError = e instanceof Error ? e.message : String(e);
+      return;
+    } finally {
+      layoutSaving = false;
+    }
+    showLayoutForm = false;
+    await refresh();
+  }
+
+  function openEditSite() {
+    if (!site) return;
+    siteName = site.name;
+    siteAddress = site.address ?? '';
+    siteActive = site.active;
+    siteError = null;
+    showSiteForm = true;
+  }
+
+  function closeSiteForm() {
+    if (siteSaving) return;
+    showSiteForm = false;
+  }
+
+  async function submitSite() {
+    if (!siteName.trim() || siteSaving) return;
+    siteError = null;
+    siteSaving = true;
+    try {
+      await api.sites.update(siteId, {
+        name: siteName.trim(),
+        address: siteAddress.trim(),
+        active: siteActive,
+      });
+    } catch (e) {
+      siteError = e instanceof Error ? e.message : String(e);
+      return;
+    } finally {
+      siteSaving = false;
+    }
+    showSiteForm = false;
+    await refresh();
   }
 
   async function deleteLayout(id: string) {
@@ -92,7 +186,21 @@
       </a>
       <div class="h-5 w-px bg-white/20"></div>
       <div class="flex-1 min-w-0">
-        <h1 class="text-xl font-bold text-white truncate">🏭 {site?.name ?? '...'}</h1>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xl font-bold text-white truncate">🏭 {site?.name ?? '...'}</h1>
+          {#if site && !site.active}
+            <span class="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white/60 font-medium shrink-0">Ngừng hoạt động</span>
+          {/if}
+          {#if $isAdmin && site}
+            <button
+              onclick={openEditSite}
+              class="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              title="Sửa thông tin mặt bằng" aria-label="Sửa thông tin mặt bằng"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          {/if}
+        </div>
         {#if site?.address}
           <p class="text-xs text-white/50 truncate">{site.address}</p>
         {/if}
@@ -104,7 +212,7 @@
     <div class="flex items-center justify-between mb-5">
       <h2 class="text-base font-bold text-gray-800">Layout ({site?.layouts?.length ?? 0})</h2>
       {#if $isAdmin}
-      <button onclick={() => showCreateLayout = true} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
+      <button onclick={openCreateLayout} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
         + Thêm layout
       </button>
       {/if}
@@ -121,16 +229,29 @@
     {:else}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {#each site.layouts ?? [] as layout}
+          {@const preview = layout.snapshots?.[0]?.thumbnail}
           <div class="group bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-blue-200 transition-all relative">
             <a href={`${base}/editor?layoutId=${layout.id}`} class="block">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-lg">🗺</div>
-                <div class="min-w-0">
-                  <h3 class="font-semibold text-gray-800 truncate">{layout.name}</h3>
-                  <p class="text-xs text-gray-400">{layout.widthM} × {layout.heightM} m · {layout._count?.snapshots ?? 0} snapshot</p>
-                </div>
+              <div class="aspect-[5/3] -mx-1 mb-3 rounded-lg bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center">
+                {#if preview}
+                  <img
+                    src={`${FILES_BASE}${preview}`}
+                    alt={`Mặt bằng ${layout.name}`}
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                {:else}
+                  <div class="text-center text-gray-300">
+                    <div class="text-2xl">🗺</div>
+                    <div class="text-[11px] mt-0.5">Chưa có ảnh — mở editor và lưu</div>
+                  </div>
+                {/if}
               </div>
-              <div class="mt-3 text-xs text-blue-600 font-medium">Mở editor →</div>
+              <div class="min-w-0">
+                <h3 class="font-semibold text-gray-800 truncate">{layout.name}</h3>
+                <p class="text-xs text-gray-400">{layout.widthM} × {layout.heightM} m · {layout._count?.snapshots ?? 0} snapshot</p>
+              </div>
+              <div class="mt-2 text-xs text-blue-600 font-medium">Mở editor →</div>
             </a>
             {#if $isAdmin}
             <div class="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2" onclick={(e) => e.stopPropagation()}>
@@ -172,13 +293,22 @@
                 <button onclick={() => confirmDeleteId = null} class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded hover:bg-gray-300">Không</button>
               </div>
             {:else}
-              <button
-                onclick={() => confirmDeleteId = layout.id}
-                class="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                title="Xóa layout" aria-label="Xóa layout"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              </button>
+              <div class="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onclick={() => openEditLayout(layout)}
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                  title="Sửa layout" aria-label="Sửa layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button
+                  onclick={() => confirmDeleteId = layout.id}
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  title="Xóa layout" aria-label="Xóa layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
             {/if}
             {/if}
           </div>
@@ -190,18 +320,21 @@
     {/if}
   </div>
 
-  <!-- Create layout modal -->
-  {#if showCreateLayout}
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={() => showCreateLayout = false} onkeydown={(e) => { if (e.key === 'Escape') showCreateLayout = false; }} role="dialog" tabindex="-1">
+  <!-- Layout modal (thêm / sửa) -->
+  {#if showLayoutForm}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeLayoutForm} onkeydown={(e) => { if (e.key === 'Escape') closeLayoutForm(); }} role="dialog" tabindex="-1">
       <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
-        <h2 class="text-lg font-bold text-gray-800 mb-4">Thêm layout</h2>
+        <h2 class="text-lg font-bold text-gray-800 mb-4">{editingLayoutId ? 'Sửa layout' : 'Thêm layout'}</h2>
+        {#if layoutError}
+          <div class="mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">{layoutError}</div>
+        {/if}
         <label class="block mb-3">
           <span class="text-xs font-medium text-gray-500">Tên layout *</span>
           <input type="text" bind:value={newLayoutName} placeholder="VD: Bãi A, Khu xưởng 1..."
             class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
-            onkeydown={(e) => { if (e.key === 'Enter') createLayout(); }} />
+            onkeydown={(e) => { if (e.key === 'Enter') submitLayout(); }} />
         </label>
-        <div class="grid grid-cols-2 gap-3 mb-5">
+        <div class="grid grid-cols-2 gap-3 mb-3">
           <label class="block">
             <span class="text-xs font-medium text-gray-500">Chiều rộng (m)</span>
             <input type="number" bind:value={newLayoutW} min="1" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
@@ -211,9 +344,52 @@
             <input type="number" bind:value={newLayoutH} min="1" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
           </label>
         </div>
-        <div class="flex gap-2 justify-end">
-          <button onclick={() => showCreateLayout = false} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Hủy</button>
-          <button onclick={createLayout} disabled={!newLayoutName.trim()} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">Tạo & mở editor</button>
+        {#if shrinkWarning}
+          <div class="mb-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
+            Layout này đã có {editingLayoutSnapshots} snapshot. Thu nhỏ từ {editingLayoutW} × {editingLayoutH} m
+            có thể khiến block đã đặt nằm ngoài biên mới — cần mở editor kiểm tra lại.
+          </div>
+        {/if}
+        <div class="flex gap-2 justify-end mt-5">
+          <button onclick={closeLayoutForm} disabled={layoutSaving} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">Hủy</button>
+          <button onclick={submitLayout} disabled={!newLayoutName.trim() || layoutSaving} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
+            {layoutSaving ? 'Đang lưu…' : editingLayoutId ? 'Lưu thay đổi' : 'Tạo & mở editor'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Site modal (sửa thông tin mặt bằng) -->
+  {#if showSiteForm}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeSiteForm} onkeydown={(e) => { if (e.key === 'Escape') closeSiteForm(); }} role="dialog" tabindex="-1">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Sửa mặt bằng</h2>
+        {#if siteError}
+          <div class="mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">{siteError}</div>
+        {/if}
+        <label class="block mb-3">
+          <span class="text-xs font-medium text-gray-500">Tên mặt bằng *</span>
+          <input type="text" bind:value={siteName} placeholder="VD: Nhà máy chính"
+            class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            onkeydown={(e) => { if (e.key === 'Enter') submitSite(); }} />
+        </label>
+        <label class="block mb-3">
+          <span class="text-xs font-medium text-gray-500">Địa chỉ</span>
+          <input type="text" bind:value={siteAddress} placeholder="VD: KCN Đình Vũ, Hải Phòng"
+            class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            onkeydown={(e) => { if (e.key === 'Enter') submitSite(); }} />
+        </label>
+        <label class="flex items-center gap-2 mb-1 cursor-pointer">
+          <input type="checkbox" bind:checked={siteActive} class="w-4 h-4 rounded border-gray-300 accent-blue-600" />
+          <span class="text-sm text-gray-700">Đang hoạt động</span>
+        </label>
+        <p class="text-[11px] text-gray-400 ml-6">Bỏ chọn để đánh dấu mặt bằng đã ngừng sử dụng.</p>
+        <div class="flex gap-2 justify-end mt-5">
+          <button onclick={closeSiteForm} disabled={siteSaving} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">Hủy</button>
+          <button onclick={submitSite} disabled={!siteName.trim() || siteSaving} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
+            {siteSaving ? 'Đang lưu…' : 'Lưu thay đổi'}
+          </button>
         </div>
       </div>
     </div>

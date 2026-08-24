@@ -19,11 +19,13 @@
     targetFurniture?: FurnitureItem | null;
     targetRoom?: Room | null;
     clipboard?: any;
+    /** Lý do không nhân bản được, null = nhân bản bình thường */
+    duplicateBlocked?: string | null;
     onclose: () => void;
     onaction: (action: string, data?: any) => void;
   }
 
-  let { x, y, visible, targetType, targetId, targetWall, targetFurniture, targetRoom, clipboard, onclose, onaction }: Props = $props();
+  let { x, y, visible, targetType, targetId, targetWall, targetFurniture, targetRoom, clipboard, duplicateBlocked = null, onclose, onaction }: Props = $props();
 
   let menuEl: HTMLDivElement;
 
@@ -77,8 +79,15 @@
     role="menu"
   >
     {#if targetType === 'furniture'}
-      <button class="ctx-item" role="menuitem" onclick={() => clickItem('duplicate-furniture')}>
+      <button
+        class="ctx-item"
+        role="menuitem"
+        disabled={!!duplicateBlocked}
+        title={duplicateBlocked ?? ''}
+        onclick={() => clickItem('duplicate-furniture')}
+      >
         <span class="ctx-icon">📋</span> Duplicate
+        {#if duplicateBlocked}<span class="ctx-hint">hết số lượng</span>{/if}
       </button>
       <button class="ctx-item" role="menuitem" onclick={() => clickItem('rotate-furniture-90')}>
         <span class="ctx-icon">🔄</span> Rotate 90°
@@ -187,6 +196,18 @@
   }
   .ctx-item:hover {
     background: #f3f4f6;
+  }
+  .ctx-item:disabled {
+    color: #9ca3af;
+    cursor: not-allowed;
+  }
+  .ctx-item:disabled:hover {
+    background: none;
+  }
+  .ctx-hint {
+    margin-left: auto;
+    font-size: 10px;
+    color: #ef4444;
   }
   .ctx-danger {
     color: #dc2626;

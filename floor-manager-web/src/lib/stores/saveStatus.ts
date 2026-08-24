@@ -41,8 +41,11 @@ export function markDirty() {
 
 function captureThumbnail(projectId: string) {
   try {
-    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-    if (!canvas) return;
+    // Ưu tiên canvas mặt bằng 2D: ở chế độ 3D thì canvas đầu tiên trong DOM là
+    // của Three.js, và minimap cũng là một canvas.
+    const canvas = (document.querySelector('canvas[data-plan-canvas]')
+      ?? document.querySelector('canvas')) as HTMLCanvasElement | null;
+    if (!canvas || !canvas.width || !canvas.height) return;
     const size = 300;
     const tmp = document.createElement('canvas');
     tmp.width = size;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectedTool, placingFurnitureId, setBackgroundImage, draggingCatalogId, currentProject } from '$lib/stores/project';
+  import { selectedTool, placingFurnitureId, setBackgroundImage, draggingCatalogId, currentProject, externalPlacements } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
@@ -22,6 +22,17 @@
     }, {})
   );
 
+  // Bản đang nằm ở mặt bằng khác cũng chiếm hạn mức: một khối thép không ở
+  // hai nơi cùng lúc. Đọc qua $externalPlacements để badge tự cập nhật.
+  function elsewhereCount(id: string): number {
+    return $externalPlacements.get(id)?.count ?? 0;
+  }
+  function elsewhereWhere(id: string): string | null {
+    const ext = $externalPlacements.get(id);
+    if (!ext || ext.layouts.length === 0) return null;
+    return ext.layouts.map((l) => `${l.layoutName} · ${l.siteName} (${l.count})`).join(', ');
+  }
+
   function setTool(tool: Tool) {
     selectedTool.set(tool);
     placingFurnitureId.set(null);
@@ -33,6 +44,39 @@
   let currentPlacing = $state<string | null>(null);
   placingFurnitureId.subscribe((id) => { currentPlacing = id; });
 
+  // Ảnh 404 (file bị xoá ngoài app) thì bỏ qua, đừng hiện icon ảnh vỡ
+  let brokenThumbs = $state(new Set<string>());
+  function onThumbError(id: string) {
+    brokenThumbs = new Set(brokenThumbs).add(id);
+  }
+  function thumbOf(item: FurnitureDef): string | null {
+    if (item.thumbnailUrl && !brokenThumbs.has(item.id)) return item.thumbnailUrl;
+    const file = getModelFile(item.id);
+    return file ? getThumbnail(file) : null;
+  }
+
+  /** Tổng số bản đã dùng: trên mặt bằng này + đang nằm ở mặt bằng khác */
+  function usedCount(item: FurnitureDef): number {
+    return (placedCounts[item.id] ?? 0) + elsewhereCount(item.id);
+  }
+
+  /** Còn đặt thêm được không — dùng cho cả nút bấm lẫn thao tác kéo */
+  function isExhausted(item: FurnitureDef): boolean {
+    return usedCount(item) >= (item.quantity ?? 1);
+  }
+
+  // Chặn ngay từ lúc bắt đầu kéo: để kéo được rồi mới từ chối lúc thả thì
+  // người dùng tưởng thao tác hỏng chứ không hiểu là đã hết số lượng.
+  function onItemDragStart(e: DragEvent, item: FurnitureDef) {
+    if (isExhausted(item)) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer?.setData('application/o3d-type', 'furniture');
+    e.dataTransfer?.setData('application/o3d-id', item.id);
+    draggingCatalogId.set(item.id);
+  }
+
   function onFurnitureClick(item: FurnitureDef) {
     // Bấm lại đúng sản phẩm đang đặt = huỷ lệnh, khỏi phải nhớ phím Esc.
     if (currentPlacing === item.id) {
@@ -40,9 +84,7 @@
       selectedTool.set('select');
       return;
     }
-    const placed = placedCounts[item.id] ?? 0;
-    const qty = item.quantity ?? 1;
-    if (placed >= qty) return; // quantity limit reached
+    if (isExhausted(item)) return; // hết số lượng cho phép
     selectedTool.set('furniture');
     placingFurnitureId.set(item.id);
     addToRecent(item.id);
@@ -198,6 +240,20 @@
             <div class="text-xs text-gray-400">Click to select elements</div>
           </div>
         </button>
+        <h3 class="text-xs font-semibold text-gray-400 uppercase mb-2 mt-3">Draw</h3>
+        <button
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {currentTool === 'wall' ? 'bg-blue-50 text-slate-800 ring-1 ring-blue-200' : 'hover:bg-gray-50 text-gray-700'}"
+          onclick={() => setTool('wall')}
+        >
+          <div class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center {currentTool === 'wall' ? 'bg-blue-100' : ''}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="10" y1="5" x2="10" y2="12"/><line x1="15" y1="12" x2="15" y2="19"/></svg>
+          </div>
+          <div class="text-left">
+            <div class="font-medium">Wall <span class="text-gray-400 text-xs ml-1">W</span></div>
+            <div class="text-xs text-gray-400">Draw boundary walls</div>
+          </div>
+        </button>
+
         <h3 class="text-xs font-semibold text-gray-400 uppercase mb-2 mt-3">Annotate</h3>
         <button
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {currentTool === 'text' ? 'bg-blue-50 text-slate-800 ring-1 ring-blue-200' : 'hover:bg-gray-50 text-gray-700'}"
@@ -303,8 +359,8 @@
                 <button
                   class="relative flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-colors cursor-grab active:cursor-grabbing {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
                   onclick={() => onFurnitureClick(item)}
-                  draggable="true"
-                  ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); draggingCatalogId.set(item.id); }}
+                  draggable={!isExhausted(item)}
+                  ondragstart={(e) => onItemDragStart(e, item)}
                   ondragend={() => draggingCatalogId.set(null)}
                   onmouseenter={(e) => onItemMouseEnter(e, item)}
                   onmousemove={onItemMouseMove}
@@ -319,8 +375,8 @@
                     onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); toggleFavorite(item.id); } }}
                     title={favoriteIds.includes(item.id) ? 'Remove from favorites' : 'Add to favorites'}
                   >{favoriteIds.includes(item.id) ? '♥' : '♡'}</span>
-                  {#if thumbsReady >= 0 && getModelFile(item.id) && getThumbnail(getModelFile(item.id)!)}
-                    <img src={getThumbnail(getModelFile(item.id)!)} alt={item.name} class="w-10 h-10 object-contain" />
+                  {#if thumbsReady >= 0 && thumbOf(item)}
+                    <img src={thumbOf(item)} alt={item.name} class="w-10 h-10 object-contain" onerror={() => onThumbError(item.id)} />
                   {:else}
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background-color: {item.color}20">
                       <div class="w-4 h-4 rounded-sm" style="background-color: {item.color}; opacity: 0.7"></div>
@@ -340,14 +396,15 @@
             {@const s = search.toLowerCase()}
             {@const notReady = item.assetStatus != null && item.assetStatus !== 'ready'}
             {@const placed = placedCounts[item.id] ?? 0}
+            {@const elsewhere = elsewhereCount(item.id)}
             {@const qty = item.quantity ?? 1}
-            {@const isFull = placed >= qty}
+            {@const isFull = placed + elsewhere >= qty}
             <button
               class="relative flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors {notReady || isFull ? 'opacity-50 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} {currentPlacing === item.id ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'}"
               onclick={() => { if (currentPlacing === item.id || (!notReady && !isFull)) onFurnitureClick(item); }}
               disabled={(notReady || isFull) && currentPlacing !== item.id}
-              draggable="true"
-              ondragstart={(e) => { e.dataTransfer?.setData('application/o3d-type', 'furniture'); e.dataTransfer?.setData('application/o3d-id', item.id); draggingCatalogId.set(item.id); }}
+              draggable={!isExhausted(item)}
+              ondragstart={(e) => onItemDragStart(e, item)}
               ondragend={() => draggingCatalogId.set(null)}
               onmouseenter={(e) => onItemMouseEnter(e, item)}
               onmousemove={onItemMouseMove}
@@ -362,8 +419,8 @@
                 onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); toggleFavorite(item.id); } }}
                 title={favoriteIds.includes(item.id) ? 'Remove from favorites' : 'Add to favorites'}
               >{favoriteIds.includes(item.id) ? '♥' : '♡'}</span>
-              {#if thumbsReady >= 0 && getModelFile(item.id) && getThumbnail(getModelFile(item.id)!)}
-                <img src={getThumbnail(getModelFile(item.id)!)} alt={item.name} class="w-12 h-12 object-contain" />
+              {#if thumbsReady >= 0 && thumbOf(item)}
+                <img src={thumbOf(item)} alt={item.name} class="w-12 h-12 object-contain" onerror={() => onThumbError(item.id)} />
               {:else}
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background-color: {item.color}20">
                   <div class="w-5 h-5 rounded-sm" style="background-color: {item.color}; opacity: 0.7"></div>
@@ -376,7 +433,12 @@
                 <span class="text-xs font-medium text-gray-600">{item.name}</span>
               {/if}
               <span class="text-[10px] text-gray-400">{item.width}×{item.depth}cm</span>
-              <span class="text-[10px] {isFull ? 'text-red-400 font-medium' : 'text-gray-400'}">{placed}/{qty}</span>
+              <span class="text-[10px] {isFull ? 'text-red-400 font-medium' : 'text-gray-400'}">{placed + elsewhere}/{qty}</span>
+              {#if elsewhere > 0}
+                <span class="text-[10px] text-amber-600" title={elsewhereWhere(item.id) ?? ''}>
+                  {elsewhere} ở mặt bằng khác
+                </span>
+              {/if}
               {#if item.assetStatus === 'failed'}
                 <span class="text-[10px] text-red-500">CAD lỗi</span>
               {:else if notReady}
@@ -400,8 +462,8 @@
   >
     <div class="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden" style="width: 220px;">
       <div class="w-full h-[120px] bg-gray-50 flex items-center justify-center p-3">
-        {#if thumbsReady >= 0 && getModelFile(item.id) && getThumbnail(getModelFile(item.id)!)}
-          <img src={getThumbnail(getModelFile(item.id)!)} alt={item.name} class="max-w-full max-h-full object-contain" style="image-rendering: auto;" />
+        {#if thumbsReady >= 0 && thumbOf(item)}
+          <img src={thumbOf(item)} alt={item.name} class="max-w-full max-h-full object-contain" style="image-rendering: auto;" onerror={() => onThumbError(item.id)} />
         {:else}
           <div class="w-16 h-16 rounded-xl flex items-center justify-center" style="background-color: {item.color}20">
             <div class="w-10 h-10 rounded-md" style="background-color: {item.color}; opacity: 0.7"></div>
@@ -419,6 +481,11 @@
         <div class="text-xs text-gray-500">
           {item.width} × {item.depth} × {item.height} cm
         </div>
+        {#if elsewhereWhere(item.id)}
+          <div class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            Đang bố trí ở: {elsewhereWhere(item.id)}
+          </div>
+        {/if}
       </div>
     </div>
   </div>

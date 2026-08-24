@@ -77,11 +77,15 @@ export async function runConversion(assetId: string): Promise<void> {
     const products = await prisma.product.findMany({ where: { assetId } });
     for (const prod of products) {
       const meta = (prod.metadata as Record<string, unknown> | null) ?? {};
+      // Ảnh do người dùng tự tải lên là lựa chọn cố ý — convert tự động không
+      // được đè. Chỉ ghi khi chưa có ảnh, hoặc ảnh hiện tại cũng do CAD sinh.
+      const keepThumb =
+        prod.thumbnail != null && !prod.thumbnail.startsWith('/uploads/assets/');
       await prisma.product.update({
         where: { id: prod.id },
         data: {
           areaM2: footprint.areaM2,
-          thumbnail: p.thumbUrl,
+          ...(keepThumb ? {} : { thumbnail: p.thumbUrl }),
           file3dUrl: glb ? p.meshUrl : prod.file3dUrl,
           metadata: {
             ...meta,

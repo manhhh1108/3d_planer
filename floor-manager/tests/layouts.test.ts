@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import app from '../server/app.js';
-import { adminToken } from './setup.js';
+import { adminToken, planningToken, viewerToken } from './setup.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -116,6 +116,127 @@ describe('layout background', () => {
       .post('/api/layouts/nonexistent-id/background')
       .set('Cookie', `access_token=${adminToken()}`)
       .attach('file', Buffer.from('x'), 'plan.dxf');
+    expect(res.status).toBe(404);
+  });
+});
+
+
+// Tường là hình học cố định của mặt bằng (ranh giới xưởng), không đổi theo ngày
+// như vị trí block — nên nằm trên layout chứ không nằm trong snapshot.
+describe('layout walls', () => {
+  const WALL = {
+    id: 'w1',
+    start: { x: 0, y: 0 },
+    end: { x: 10, y: 0 },
+    thickness: 0.15,
+    height: 2.8,
+    color: '#444444',
+  };
+
+  it('layout mới chưa có tường thì trả về mảng rỗng', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .get(`/api/layouts/${layout.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.walls).toEqual([]);
+  });
+
+  it('PLANNING lưu được tường và GET đọc lại đúng', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${planningToken()}`)
+      .send({ walls: [WALL] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.walls).toEqual([WALL]);
+
+    const got = await request(app)
+      .get(`/api/layouts/${layout.id}`)
+      .set('Cookie', `access_token=${planningToken()}`);
+    expect(got.body.walls).toEqual([WALL]);
+  });
+
+  it('giữ nguyên curvePoint của tường cong', async () => {
+    const layout = await makeLayout();
+    const curved = { ...WALL, id: 'w2', curvePoint: { x: 5, y: 2 } };
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [curved] });
+    expect(res.status).toBe(200);
+    expect(res.body.walls[0].curvePoint).toEqual({ x: 5, y: 2 });
+  });
+
+  it('bỏ qua field lạ, chỉ giữ đúng hình dạng tường', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [{ ...WALL, texture: 'brick', evil: { deep: true } }] });
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.walls[0]).sort()).toEqual(
+      ['color', 'end', 'height', 'id', 'start', 'thickness'],
+    );
+  });
+
+  it('gửi mảng rỗng thì xoá hết tường', async () => {
+    const layout = await makeLayout();
+    await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [WALL] });
+
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.walls).toEqual([]);
+  });
+
+  it('VIEWER không lưu được tường', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${viewerToken()}`)
+      .send({ walls: [WALL] });
+    expect(res.status).toBe(403);
+  });
+
+  it('từ chối body không phải mảng', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: 'nope' });
+    expect(res.status).toBe(400);
+  });
+
+  it('từ chối tường thiếu toạ độ', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [{ id: 'w', start: { x: 0 }, end: { x: 1, y: 1 }, thickness: 1, height: 1, color: '#000' }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('từ chối toạ độ không hữu hạn', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/walls`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [{ ...WALL, end: { x: 'NaN', y: 0 } }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('404 khi layout không tồn tại', async () => {
+    const res = await request(app)
+      .put('/api/layouts/nonexistent-id/walls')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ walls: [] });
     expect(res.status).toBe(404);
   });
 });

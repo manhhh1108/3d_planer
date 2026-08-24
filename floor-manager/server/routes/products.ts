@@ -47,6 +47,78 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /usage?excludeLayoutId=xxx
+ *
+ * Mỗi sản phẩm đang được bố trí ở những mặt bằng nào và bao nhiêu bản.
+ * `quantity` của sản phẩm là số lượng vật lý thực có, nên một bản đã nằm ở mặt
+ * bằng khác thì không còn để xếp ở mặt bằng này nữa. Tính trên toàn bộ mặt
+ * bằng của mọi công trường — một khối thép không thể ở hai nơi cùng lúc.
+ *
+ * Bố cục hiện hành của một mặt bằng là snapshot mới nhất của nó; snapshot cũ
+ * là lịch sử, không chiếm chỗ.
+ */
+router.get('/usage', async (req: Request, res: Response) => {
+  try {
+    const excludeLayoutId = req.query.excludeLayoutId
+      ? String(req.query.excludeLayoutId)
+      : null;
+
+    const latest = await prisma.snapshot.groupBy({
+      by: ['layoutId'],
+      _max: { date: true },
+      ...(excludeLayoutId ? { where: { layoutId: { not: excludeLayoutId } } } : {}),
+    });
+    const pairs = latest
+      .filter((l) => l._max.date !== null)
+      .map((l) => ({ layoutId: l.layoutId, date: l._max.date as Date }));
+    if (pairs.length === 0) return res.json([]);
+
+    const snapshots = await prisma.snapshot.findMany({
+      where: { OR: pairs },
+      select: {
+        layoutId: true,
+        layout: { select: { name: true, site: { select: { name: true } } } },
+        positions: { select: { productId: true } },
+      },
+    });
+
+    type Where = { layoutId: string; layoutName: string; siteName: string; count: number };
+    const byProduct = new Map<string, Map<string, Where>>();
+
+    for (const snap of snapshots) {
+      for (const pos of snap.positions) {
+        let places = byProduct.get(pos.productId);
+        if (!places) {
+          places = new Map();
+          byProduct.set(pos.productId, places);
+        }
+        const entry = places.get(snap.layoutId) ?? {
+          layoutId: snap.layoutId,
+          layoutName: snap.layout.name,
+          siteName: snap.layout.site.name,
+          count: 0,
+        };
+        entry.count++;
+        places.set(snap.layoutId, entry);
+      }
+    }
+
+    res.json(
+      [...byProduct.entries()].map(([productId, places]) => {
+        const layouts = [...places.values()];
+        return {
+          productId,
+          count: layouts.reduce((n, l) => n + l.count, 0),
+          layouts,
+        };
+      }),
+    );
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // GET /:id — single product
 router.get('/:id', async (req: Request, res: Response) => {
   try {
@@ -66,12 +138,14 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const {
       projectId, name, code, weightKg, areaM2, processStage,
-      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId
+      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId,
+      thumbnail
     } = req.body as {
       projectId: string; name: string; code: string;
       weightKg?: number; areaM2?: number; processStage?: string;
       category?: string; color?: string; file2dUrl?: string; file3dUrl?: string;
       sharepointLink?: string; metadata?: object; quantity?: number; assetId?: string;
+      thumbnail?: string | null;
     };
     const product = await prisma.product.create({
       data: {
@@ -87,6 +161,7 @@ router.post('/', async (req: Request, res: Response) => {
         ...(metadata !== undefined ? { metadata } : {}),
         quantity: quantity ?? 1,
         ...(assetId !== undefined ? { assetId } : {}),
+        ...(thumbnail !== undefined ? { thumbnail } : {}),
       },
       include: { asset: true },
     });
@@ -101,12 +176,14 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const {
       name, code, weightKg, areaM2, processStage,
-      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId
+      category, color, file2dUrl, file3dUrl, sharepointLink, metadata, quantity, assetId,
+      thumbnail
     } = req.body as {
       name?: string; code?: string; weightKg?: number; areaM2?: number;
       processStage?: string; category?: string; color?: string;
       file2dUrl?: string; file3dUrl?: string; sharepointLink?: string;
       metadata?: object; quantity?: number; assetId?: string;
+      thumbnail?: string | null;
     };
     const product = await prisma.product.update({
       where: { id: String(req.params.id) },
@@ -124,6 +201,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         ...(metadata !== undefined ? { metadata } : {}),
         ...(quantity !== undefined ? { quantity } : {}),
         ...(assetId !== undefined ? { assetId } : {}),
+        ...(thumbnail !== undefined ? { thumbnail } : {}),
       },
       include: { asset: true },
     });

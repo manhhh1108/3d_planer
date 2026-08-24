@@ -11,7 +11,8 @@
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { createFurnitureModel } from '$lib/utils/furnitureModels3d';
   import { createFurnitureModelWithGLB } from '$lib/utils/furnitureModelLoader';
-  import { addFurniture, moveFurniture } from '$lib/stores/project';
+  import { unorientDims } from '$lib/services/mapping';
+  import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
 
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer;
@@ -509,6 +510,17 @@
   });
 
   // 3D Furniture Placement
+  let quantityLimitMsg = $state<string | null>(null);
+  let quantityLimitTimer: ReturnType<typeof setTimeout> | null = null;
+  quantityLimitHit.subscribe((hit) => {
+    if (!hit) return;
+    quantityLimitMsg = hit.elsewhere
+      ? `Hết ${hit.quantity} bản "${hit.name}" — đang bố trí ở ${hit.elsewhere}`
+      : `Đã đặt đủ ${hit.quantity} "${hit.name}" — hết số lượng cho phép`;
+    if (quantityLimitTimer) clearTimeout(quantityLimitTimer);
+    quantityLimitTimer = setTimeout(() => { quantityLimitMsg = null; }, 4000);
+  });
+
   let furniturePlacementMode = $state(false);
   let furniturePickerOpen = $state(false);
   let selectedCatalogId = $state<string | null>(null);
@@ -820,7 +832,14 @@
         if (raycaster.ray.intersectPlane(floorPlane, hit)) {
           // Convert 3D (x, z) to 2D (x, y)
           const pos2D = { x: hit.x, y: hit.z };
-          addFurniture(selectedCatalogId, pos2D);
+          const placedId = addFurniture(selectedCatalogId, pos2D);
+          // Đặt nốt bản cuối (hoặc bị từ chối) thì thoát lệnh, không để người
+          // dùng kẹt trong chế độ đặt mà click nào cũng trượt — giống 2D.
+          if (!placedId || remainingQuantity(selectedCatalogId) <= 0) {
+            furniturePlacementMode = false;
+            selectedCatalogId = null;
+            if (ghostGroup) { ghostGroup.visible = false; markSceneDirty(); }
+          }
           // Scene will rebuild via store subscription
         }
         return;
@@ -893,6 +912,12 @@
       e.dataTransfer.dropEffect = 'copy';
       const catalogId = get(draggingCatalogId);
       if (!catalogId) return;
+      // Hết hạn mức thì báo ngay ở con trỏ, đừng để kéo tới tận lúc thả mới trượt
+      if (remainingQuantity(catalogId) <= 0) {
+        e.dataTransfer.dropEffect = 'none';
+        if (ghostGroup) { ghostGroup.visible = false; markSceneDirty(); }
+        return;
+      }
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1115,6 +1140,35 @@
     img.src = bgUrl;
   }
 
+  /**
+   * Đặt block lên đúng mặt tiếp sàn.
+   *
+   * Mesh được dựng theo kích thước GỐC (lúc nằm đáy) rồi xoay 90°, chứ không
+   * kéo giãn theo kích thước đã hoán vị — kéo giãn làm khối CAD dài 4m bị bóp
+   * méo thành khối cao 4m thay vì được dựng đứng lên.
+   *
+   * Quy ước trục: width=X, height=Y, depth=Z.
+   *  - side (mặt bên chạm sàn): depth gốc thành chiều cao -> xoay quanh X
+   *  - end  (mặt đầu chạm sàn): width gốc thành chiều cao -> xoay quanh Z
+   */
+  function applyOrientation(model: THREE.Object3D, o: string | undefined) {
+    model.position.set(0, 0, 0);
+    model.rotation.set(0, 0, 0);
+    if (o === 'side') model.rotation.x = Math.PI / 2;
+    else if (o === 'end') model.rotation.z = Math.PI / 2;
+
+    // Xoay quanh gốc làm block lệch khỏi tâm và chìm dưới sàn — kéo lại cho
+    // footprint đúng tâm và đáy chạm y=0.
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    if (box.isEmpty()) return;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    model.position.y -= box.min.y;
+  }
+
   function buildWalls(floor: Floor) {
     clearGroup(wallGroup);
 
@@ -1124,29 +1178,39 @@
       if (!cat) continue;
       // Skip 2D-only architectural symbols
       if (cat.symbol) continue;
-      // Create modified catalog definition with overrides
-      const furnitureDef = {
-        ...cat,
-        color: fi.color ?? cat.color,
-        width: fi.width ?? cat.width,
-        depth: fi.depth ?? cat.depth,
-        height: fi.height ?? cat.height,
-      };
+      // fi.width/depth/height là kích thước ĐÃ lật; mesh phải dựng theo số gốc
+      const orientation = fi.orientation ?? 'bottom';
+      const base = unorientDims(
+        {
+          width: fi.width ?? cat.width,
+          depth: fi.depth ?? cat.depth,
+          height: fi.height ?? cat.height,
+        },
+        orientation,
+      );
+      const furnitureDef = { ...cat, color: fi.color ?? cat.color, ...base };
+
       const model = createFurnitureModelWithGLB(fi.catalogId, furnitureDef, () => {
-        // Re-render when GLB model finishes loading
+        // GLB thay chỗ mesh tạm -> hình khác, phải đặt lại mặt tiếp sàn
+        applyOrientation(model, orientation);
         if (renderer && scene && camera) renderer.render(scene, camera);
       });
-      model.position.set(fi.position.x, 1.5, fi.position.y);
-      model.rotation.y = -(fi.rotation * Math.PI) / 180;
+      applyOrientation(model, orientation);
+
+      // Yaw đặt trên group bọc ngoài để không trộn với phép lật ở trên
+      const holder = new THREE.Group();
+      holder.add(model);
+      holder.rotation.y = -(fi.rotation * Math.PI) / 180;
+      holder.position.set(fi.position.x, 1.5 + (fi.elevation ?? 0), fi.position.y);
       // Note: fi.scale is 2D editor scale — don't override 3D model scaling from scaleToFit
       if (fi.scale && (fi.scale.x !== 1 || fi.scale.y !== 1)) {
-        model.scale.x *= fi.scale.x;
-        model.scale.z *= fi.scale.y;
+        holder.scale.x *= fi.scale.x;
+        holder.scale.z *= fi.scale.y;
       }
       // Tag for drag-and-drop raycasting
-      model.userData.furnitureId = fi.id;
-      model.traverse((child) => { child.userData.furnitureId = fi.id; });
-      wallGroup.add(model);
+      holder.userData.furnitureId = fi.id;
+      holder.traverse((child) => { child.userData.furnitureId = fi.id; });
+      wallGroup.add(holder);
     }
 
     autoCenterCamera(floor);
@@ -1502,6 +1566,12 @@
     {/if}
     </button>
   </div><!-- end 3D toolbar row -->
+
+  {#if quantityLimitMsg}
+    <div class="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-4 py-2 rounded-lg text-sm shadow backdrop-blur-sm">
+      {quantityLimitMsg}
+    </div>
+  {/if}
 
   {#if cameraPlacementMode && !cameraPlaced}
     <div class="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-sm backdrop-blur-sm">

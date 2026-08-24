@@ -70,12 +70,30 @@ export interface ApiProduct {
 	asset?: ApiAsset | null;
 }
 
+/** Sản phẩm đang được bố trí ở mặt bằng nào, bao nhiêu bản */
+export interface ApiProductUsage {
+	productId: string;
+	count: number;
+	layouts: { layoutId: string; layoutName: string; siteName: string; count: number }[];
+}
+
 export interface DxfInsertData {
 	blockName: string;
 	xCm: number;
 	yCm: number;
 	rotationDeg: number;
 	svgPreview: string;
+}
+
+/** Tường của mặt bằng như backend lưu — toạ độ và kích thước theo mét */
+export interface ApiWall {
+	id: string;
+	start: { x: number; y: number };
+	end: { x: number; y: number };
+	thickness: number;
+	height: number;
+	color: string;
+	curvePoint?: { x: number; y: number };
 }
 
 export interface ApiLayout {
@@ -86,6 +104,8 @@ export interface ApiLayout {
 	heightM: number;
 	backgroundFile: string | null;
 	gridSize: number;
+	/** Chỉ có trong GET /layouts/:id — danh sách layout không kèm tường */
+	walls?: ApiWall[];
 	snapshots?: ApiSnapshot[];
 }
 
@@ -98,6 +118,8 @@ export interface ApiPosition {
 	rotation: number;
 	scale: number;
 	orientation: string;
+	/** Cao độ đáy block so với sàn, mét */
+	elevationM?: number;
 	product?: ApiProduct;
 }
 
@@ -106,6 +128,8 @@ export interface ApiSnapshot {
 	layoutId: string;
 	date: string;
 	note: string | null;
+	/** Ảnh xem trước mặt bằng, đường dẫn tương đối backend */
+	thumbnail?: string | null;
 	positions?: ApiPosition[];
 }
 
@@ -129,9 +153,34 @@ export const api = {
 			http<ApiSite>(`/sites/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/sites/${id}`, { method: 'DELETE' }),
 	},
+	files: {
+		/** Upload ảnh/tệp lẻ, trả về đường dẫn tương đối kiểu /uploads/<tên> */
+		upload: async (file: File): Promise<{ path: string }> => {
+			const fd = new FormData();
+			fd.append('file', file);
+			const res = await fetch(`${BASE}/files/upload`, {
+				method: 'POST',
+				body: fd,
+				credentials: 'include',
+			});
+			if (!res.ok) {
+				const detail = await res
+					.json()
+					.then((b) => (b && typeof b.error === 'string' ? b.error : null))
+					.catch(() => null);
+				throw new Error(detail ?? `API POST /files/upload: ${res.status}`);
+			}
+			return res.json();
+		},
+	},
 	products: {
 		list: (projectId?: string) =>
 			http<ApiProduct[]>(projectId ? `/products?projectId=${projectId}` : '/products'),
+		/** Số bản đang nằm ở các mặt bằng khác (bỏ qua mặt bằng đang mở) */
+		usage: (excludeLayoutId?: string) =>
+			http<ApiProductUsage[]>(
+				excludeLayoutId ? `/products/usage?excludeLayoutId=${excludeLayoutId}` : '/products/usage'
+			),
 		create: (data: Partial<ApiProduct> & { projectId: string; name: string; code: string }) =>
 			http<ApiProduct>('/products', { method: 'POST', body: JSON.stringify(data) }),
 		update: (id: string, data: Partial<ApiProduct>) =>
@@ -152,6 +201,11 @@ export const api = {
 		update: (id: string, data: Partial<Omit<ApiLayout, 'id' | 'siteId' | 'snapshots'>>) =>
 			http<ApiLayout>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/layouts/${id}`, { method: 'DELETE' }),
+		saveWalls: (id: string, walls: ApiWall[]) =>
+			http<ApiLayout>(`/layouts/${id}/walls`, {
+				method: 'PUT',
+				body: JSON.stringify({ walls }),
+			}),
 		uploadBackground: async (id: string, file: File): Promise<ApiLayout> => {
 			const fd = new FormData();
 			fd.append('file', file);
@@ -230,7 +284,14 @@ export const api = {
 			if (productId) fd.append('productId', productId);
 			if (unitScale) fd.append('unitScale', String(unitScale));
 			const res = await fetch(`${BASE}/assets`, { method: 'POST', body: fd, credentials: 'include' });
-			if (!res.ok) throw new Error(`API POST /assets: ${res.status}`);
+			if (!res.ok) {
+				// Server trả { error } — giữ lại message thật thay vì chỉ mã HTTP
+				const detail = await res
+					.json()
+					.then((b) => (b && typeof b.error === 'string' ? b.error : null))
+					.catch(() => null);
+				throw new Error(detail ?? `API POST /assets: ${res.status}`);
+			}
 			return res.json();
 		},
 	},
@@ -248,8 +309,20 @@ export const api = {
 				rotation?: number;
 				scale?: number;
 				orientation?: string;
+				elevationM?: number;
 			}[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
+		uploadThumbnail: async (id: string, image: Blob): Promise<ApiSnapshot> => {
+			const fd = new FormData();
+			fd.append('file', image, 'thumb.jpg');
+			const res = await fetch(`${BASE}/snapshots/${id}/thumbnail`, {
+				method: 'PUT',
+				body: fd,
+				credentials: 'include',
+			});
+			if (!res.ok) throw new Error(`API PUT /snapshots/${id}/thumbnail: ${res.status}`);
+			return res.json();
+		},
 	},
 	dashboard: {
 		get: (date?: string) =>

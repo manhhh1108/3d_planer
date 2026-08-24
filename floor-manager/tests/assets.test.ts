@@ -133,6 +133,74 @@ describe('end-to-end conversion (dxf)', () => {
     expect(meta.depthM).toBeCloseTo(2, 2);
   });
 
+  it('đặt được thumbnail ngay khi tạo sản phẩm', async () => {
+    const proj = (await request(app)
+      .post('/api/projects')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ name: 'P' })).body;
+    const res = await request(app)
+      .post('/api/products')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ projectId: proj.id, name: 'B', code: 'B1', thumbnail: '/uploads/anh.png' });
+    expect(res.status).toBe(201);
+    expect(res.body.thumbnail).toBe('/uploads/anh.png');
+  });
+
+  it('ảnh người dùng tự tải lên không bị CAD convert ghi đè', async () => {
+    const prod = await makeProduct();
+
+    // Người dùng tự đặt ảnh trước
+    const withThumb = await request(app)
+      .put(`/api/products/${prod.id}`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ thumbnail: '/uploads/anh-tu-chup-123.png' });
+    expect(withThumb.status).toBe(200);
+    expect(withThumb.body.thumbnail).toBe('/uploads/anh-tu-chup-123.png');
+
+    // Rồi mới import CAD
+    const dxf = fs.readFileSync(FIXTURE_DXF);
+    await request(app)
+      .post('/api/assets')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .field('productId', prod.id)
+      .attach('file', dxf, 'block.dxf');
+    await convertQueue.idle();
+
+    const updated = await prisma.product.findUnique({ where: { id: prod.id } });
+    expect(updated!.thumbnail).toBe('/uploads/anh-tu-chup-123.png');
+    // Các số liệu khác từ CAD vẫn phải được cập nhật bình thường
+    expect(updated!.areaM2).toBeCloseTo(8, 1);
+  });
+
+  it('thumbnail do CAD sinh thì lần convert sau vẫn được cập nhật', async () => {
+    const prod = await makeProduct();
+    const dxf = fs.readFileSync(FIXTURE_DXF);
+
+    const first = (
+      await request(app)
+        .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
+        .field('productId', prod.id)
+        .attach('file', dxf, 'block.dxf')
+    ).body;
+    await convertQueue.idle();
+    expect((await prisma.product.findUnique({ where: { id: prod.id } }))!.thumbnail)
+      .toBe(`/uploads/assets/${first.id}/thumb.svg`);
+
+    // Thay file CAD -> asset mới -> thumbnail phải trỏ sang asset mới
+    const second = (
+      await request(app)
+        .post('/api/assets')
+        .set('Cookie', `access_token=${adminToken()}`)
+        .field('productId', prod.id)
+        .attach('file', dxf, 'block.dxf')
+    ).body;
+    await convertQueue.idle();
+
+    const updated = await prisma.product.findUnique({ where: { id: prod.id } });
+    expect(updated!.thumbnail).toBe(`/uploads/assets/${second.id}/thumb.svg`);
+  });
+
   it('marks asset failed with error message on broken file', async () => {
     const created = (
       await request(app)

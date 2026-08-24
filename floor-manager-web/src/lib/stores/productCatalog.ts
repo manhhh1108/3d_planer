@@ -21,6 +21,9 @@ export function productToDef(p: ApiProduct): FurnitureDef {
 		height: Math.max(10, Math.round(hM * 100)),
 		assetStatus: p.asset?.status,
 		file3dUrl: p.file3dUrl ?? undefined,
+		// Backend đã gán thumbnail (ảnh tự tải lên, hoặc thumb.svg sinh từ CAD)
+		thumbnailUrl: p.thumbnail ? `${FILES_BASE}${p.thumbnail}` : undefined,
+		processStage: p.processStage,
 		quantity: p.quantity,
 	};
 }

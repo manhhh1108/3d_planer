@@ -1,9 +1,17 @@
 <script lang="ts">
-  import { activeFloor, selectedElementId, updateFurniture, updateBackgroundImage, setBackgroundImage, calibrationMode, calibrationPoints, updateTextAnnotation, toggleFurnitureLock, updateEntourageItem, removeElement } from '$lib/stores/project';
+  import { activeFloor, selectedElementId, updateFurniture, updateWall, updateBackgroundImage, setBackgroundImage, calibrationMode, calibrationPoints, updateTextAnnotation, toggleFurnitureLock, updateEntourageItem, removeElement } from '$lib/stores/project';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { projectSettings } from '$lib/stores/settings';
   import type { BlockOrientation, Floor, FurnitureItem, TextAnnotation } from '$lib/models/types';
   import { orientedDims } from '$lib/services/mapping';
+  import { api } from '$lib/services/api';
+  import { loadProductCatalog } from '$lib/stores/productCatalog';
+
+  /** Khớp danh sách công đoạn ở trang quản lý sản phẩm */
+  const STAGES = ['Hàn', 'Sơn', 'Lắp ráp', 'Cắt', 'Khác'];
+  let stageSaving = $state(false);
+  let stageError = $state<string | null>(null);
+  import { wallLength } from '$lib/utils/canvasRenderer';
 
   let floor = $state<Floor | null>(null);
   let selId: string | null = $state(null);
@@ -26,9 +34,26 @@
 
   let { is3D = false }: { is3D?: boolean } = $props();
   let selectedFurniture = $derived(floor?.furniture?.find(f => f.id === selId) ?? null);
+  let selectedWall = $derived(floor?.walls?.find(w => w.id === selId) ?? null);
   let selectedTextAnnotation = $derived(floor?.textAnnotations?.find(t => t.id === selId) ?? null);
   let selectedEntourage = $derived(floor?.entourage?.find(en => en.id === selId) ?? null);
   let hasBgImage = $derived(!!floor?.backgroundImage);
+
+  // Wall handlers
+  function onWallThickness(e: Event) {
+    if (!selectedWall) return;
+    const v = Math.max(1, inputToCm(Number((e.target as HTMLInputElement).value)) || 1);
+    updateWall(selectedWall.id, { thickness: v });
+  }
+  function onWallHeight(e: Event) {
+    if (!selectedWall) return;
+    const v = Math.max(1, inputToCm(Number((e.target as HTMLInputElement).value)) || 1);
+    updateWall(selectedWall.id, { height: v });
+  }
+  function onWallColor(e: Event) {
+    if (!selectedWall) return;
+    updateWall(selectedWall.id, { color: (e.target as HTMLInputElement).value });
+  }
 
   // Furniture handlers
   function onFurnitureColor(color: string) {
@@ -58,9 +83,37 @@
     if (!selectedFurniture) return;
     updateFurniture(selectedFurniture.id, { rotation: Number((e.target as HTMLInputElement).value) });
   }
+  function onFurnitureElevation(e: Event) {
+    if (!selectedFurniture) return;
+    const raw = Number((e.target as HTMLInputElement).value);
+    updateFurniture(selectedFurniture.id, {
+      elevation: Math.max(0, inputToCm(Number.isFinite(raw) ? raw : 0)),
+    });
+  }
+
+  /**
+   * Công đoạn là thuộc tính của SẢN PHẨM, không của riêng block này — đổi ở
+   * đây là đổi ở mọi mặt bằng đang dùng sản phẩm đó.
+   */
+  async function onProcessStage(e: Event) {
+    if (!selectedFurniture) return;
+    const stage = (e.target as HTMLSelectElement).value;
+    const productId = selectedFurniture.catalogId;
+    stageError = null;
+    stageSaving = true;
+    try {
+      await api.products.update(productId, { processStage: stage });
+      await loadProductCatalog(); // nạp lại để panel và sidebar hiện giá trị mới
+    } catch (err) {
+      stageError = err instanceof Error ? err.message : String(err);
+    } finally {
+      stageSaving = false;
+    }
+  }
+
   function resetFurnitureDefaults() {
     if (!selectedFurniture) return;
-    updateFurniture(selectedFurniture.id, { color: undefined, width: undefined, depth: undefined, height: undefined, material: undefined, orientation: 'bottom' });
+    updateFurniture(selectedFurniture.id, { color: undefined, width: undefined, depth: undefined, height: undefined, material: undefined, orientation: 'bottom', elevation: 0 });
   }
 
   /** Lật block: đổi mặt tiếp sàn -> ghi override kích thước theo hoán vị W/D/H của catalog */
@@ -184,6 +237,19 @@
         />
       </label>
 
+      <label class="block">
+        <span class="text-xs text-gray-500">Cao độ đáy block ({unitLabel()})</span>
+        <input
+          type="number"
+          min="0"
+          step="10"
+          value={displayValue(Math.round(selectedFurniture.elevation ?? 0))}
+          oninput={onFurnitureElevation}
+          class="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+        />
+        <span class="text-[11px] text-gray-400">0 = đặt trực tiếp xuống sàn. Chỉ thấy ở chế độ 3D.</span>
+      </label>
+
       <!-- Mặt tiếp sàn (lật block) -->
       <div class="block">
         <span class="text-xs text-gray-500">Mặt tiếp sàn (lật block)</span>
@@ -202,30 +268,38 @@
         </div>
       </div>
 
-      <!-- Rotate / Flip controls -->
+      <!-- Công đoạn sản xuất (thuộc tính của sản phẩm) -->
+      <label class="block">
+        <span class="text-xs text-gray-500">Công đoạn sản xuất</span>
+        <select
+          value={getCatalogItem(selectedFurniture.catalogId)?.processStage ?? 'Khác'}
+          disabled={stageSaving}
+          onchange={onProcessStage}
+          class="w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white disabled:opacity-50"
+        >
+          {#each STAGES as st}<option value={st}>{st}</option>{/each}
+        </select>
+        <span class="text-[11px] text-gray-400">
+          Áp dụng cho cả sản phẩm — mọi mặt bằng đang dùng đều đổi theo.
+        </span>
+        {#if stageError}
+          <span class="block text-[11px] text-red-600 mt-0.5">{stageError}</span>
+        {/if}
+      </label>
+
+      <!-- Rotate controls. Flip H/V đã bỏ: soi gương một khối thép không có
+           nghĩa vật lý, và với block hộp đối xứng thì bấm xong không đổi gì. -->
       <div class="flex gap-1">
         <button
           onclick={() => { if (selectedFurniture) updateFurniture(selectedFurniture.id, { rotation: selectedFurniture.rotation - 90 }); }}
           class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm hover:bg-gray-50 transition-colors"
-          title="Rotate 90° left"
+          title="Xoay 90° ngược chiều kim đồng hồ"
         >↺ 90°</button>
         <button
           onclick={() => { if (selectedFurniture) updateFurniture(selectedFurniture.id, { rotation: selectedFurniture.rotation + 90 }); }}
           class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm hover:bg-gray-50 transition-colors"
-          title="Rotate 90° right"
+          title="Xoay 90° thuận chiều kim đồng hồ"
         >↻ 90°</button>
-      </div>
-      <div class="flex gap-1">
-        <button
-          onclick={() => { if (selectedFurniture) { const s = selectedFurniture.scale; updateFurniture(selectedFurniture.id, { scale: { x: s.x * -1, y: s.y, z: s.z } }); } }}
-          class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm hover:bg-gray-50 transition-colors"
-          title="Flip horizontally"
-        >↔ Flip H</button>
-        <button
-          onclick={() => { if (selectedFurniture) { const s = selectedFurniture.scale; updateFurniture(selectedFurniture.id, { scale: { x: s.x, y: s.y * -1, z: s.z } }); } }}
-          class="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm hover:bg-gray-50 transition-colors"
-          title="Flip vertically"
-        >↕ Flip V</button>
       </div>
       
       <!-- Reset button -->
@@ -259,6 +333,37 @@
         <button onclick={() => { if (selectedEntourage) updateEntourageItem(selectedEntourage.id, { locked: !selectedEntourage.locked }); }} class="flex-1 px-2 py-1.5 border rounded text-sm transition-colors {selectedEntourage.locked ? 'bg-amber-50 border-amber-300 text-amber-700' : 'border-gray-200 hover:bg-gray-50'}">{selectedEntourage.locked ? '🔒 Locked' : '🔓 Unlocked'}</button>
         <button onclick={() => { if (selectedEntourage) { removeElement(selectedEntourage.id); selectedElementId.set(null); } }} class="flex-1 px-2 py-1.5 border border-red-200 text-red-600 rounded text-sm hover:bg-red-50 transition-colors">Delete</button>
       </div>
+    </div>
+
+  {:else if selectedWall}
+    <div class="space-y-3">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <span class="w-6 h-6 bg-slate-200 rounded flex items-center justify-center text-xs">🧱</span>
+        Tường
+      </h3>
+      <div class="text-xs text-gray-400">
+        Dài {displayValue(Math.round(wallLength(selectedWall)))} {unitLabel()}
+        {#if selectedWall.curvePoint}<span class="ml-1">(cong)</span>{/if}
+      </div>
+      <label class="block">
+        <span class="text-xs text-gray-500">Độ dày ({unitLabel()})</span>
+        <input type="number" min="1" value={displayValue(selectedWall.thickness)} oninput={onWallThickness} class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+      </label>
+      <label class="block">
+        <span class="text-xs text-gray-500">Chiều cao ({unitLabel()})</span>
+        <input type="number" min="1" value={displayValue(selectedWall.height)} oninput={onWallHeight} class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+      </label>
+      <label class="block">
+        <span class="text-xs text-gray-500">Màu</span>
+        <div class="flex items-center gap-2">
+          <input type="color" value={selectedWall.color} oninput={onWallColor} class="w-8 h-6 rounded border border-gray-200 cursor-pointer" />
+          <span class="text-xs text-gray-400">{selectedWall.color}</span>
+        </div>
+      </label>
+      <button
+        onclick={() => { if (selectedWall) { removeElement(selectedWall.id); selectedElementId.set(null); } }}
+        class="w-full px-2 py-1.5 border border-red-200 text-red-600 rounded text-sm hover:bg-red-50 transition-colors"
+      >Xoá tường</button>
     </div>
 
   {:else if selectedTextAnnotation}

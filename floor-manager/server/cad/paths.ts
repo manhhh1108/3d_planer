@@ -19,6 +19,20 @@ export function assetPaths(assetId: string, fileType?: string) {
   };
 }
 
+/**
+ * Ảnh xem trước của một snapshot. Đặt dưới thư mục layout để xoá layout là dọn
+ * luôn, và tên file cố định theo snapshot nên lưu lại chỉ ghi đè, không sinh
+ * file mới mỗi lần autosave.
+ */
+export function snapshotThumbPaths(layoutId: string, snapshotId: string) {
+  const dir = path.resolve(UPLOAD_DIR, 'layouts', layoutId, 'snapshots');
+  return {
+    dir,
+    file: path.join(dir, `${snapshotId}.jpg`),
+    url: `/uploads/layouts/${layoutId}/snapshots/${snapshotId}.jpg`,
+  };
+}
+
 export function layoutBgPaths(layoutId: string) {
   const sourceDir = path.resolve(STORAGE_DIR, 'sources', 'layouts', layoutId);
   const artifactDir = path.resolve(UPLOAD_DIR, 'layouts', layoutId);

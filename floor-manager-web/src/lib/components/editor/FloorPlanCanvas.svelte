@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity } from '$lib/stores/project';
+  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
   import { layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
@@ -11,7 +11,7 @@
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
   import type { CanvasState } from '$lib/utils/canvasInteraction';
-  import { drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
+  import { drawWall as _drawWall, wallLength, wallPointAt, wallTangentAt, wallThicknessScreen as _wallThicknessScreen, drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
 
   let canvas: HTMLCanvasElement;
@@ -134,15 +134,38 @@
 
   // Thông báo hết số lượng — hiện tạm trên canvas rồi tự tắt.
   let quantityLimitMsg = $state<string | null>(null);
+  // duplicateBlockedReason đọc store qua get() nên không tự reactive — nhắc tới
+  // $activeFloor/$externalPlacements để tính lại khi bố cục hoặc hạn mức đổi.
+  let duplicateBlocked = $derived.by(() => {
+    void $activeFloor;
+    void $externalPlacements;
+    return duplicateBlockedReason(currentSelectedId);
+  });
+  let ctxMenuDuplicateBlocked = $derived.by(() => {
+    void $activeFloor;
+    void $externalPlacements;
+    return duplicateBlockedReason(ctxMenuTargetId);
+  });
   let quantityLimitTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Thoát lệnh đặt và báo đã dùng hết số lượng cho phép của sản phẩm. */
-  function exitPlacingOnQuantityLimit(catalogId: string) {
-    const cat = getCatalogItem(catalogId);
-    const qty = cat?.quantity ?? 0;
-    quantityLimitMsg = `Đã đặt đủ ${qty} "${cat?.name ?? catalogId}" — hết số lượng cho phép`;
+  function showQuantityLimitMsg(name: string, qty: number, elsewhere: string | null = null) {
+    quantityLimitMsg = elsewhere
+      ? `Hết ${qty} bản "${name}" — đang bố trí ở ${elsewhere}`
+      : `Đã đặt đủ ${qty} "${name}" — hết số lượng cho phép`;
     if (quantityLimitTimer) clearTimeout(quantityLimitTimer);
     quantityLimitTimer = setTimeout(() => { quantityLimitMsg = null; }, 4000);
+    markDirty();
+  }
+
+  // Store từ chối ở bất cứ đường nào (nhân bản, dán, nhập DXF) đều báo về đây
+  quantityLimitHit.subscribe((hit) => {
+    if (hit) showQuantityLimitMsg(hit.name, hit.quantity, hit.elsewhere);
+  });
+
+  function exitPlacingOnQuantityLimit(catalogId: string) {
+    const cat = getCatalogItem(catalogId);
+    showQuantityLimitMsg(cat?.name ?? catalogId, cat?.quantity ?? 0);
     placingFurnitureId.set(null);
     placingRotation.set(0);
     selectedTool.set('select');
@@ -449,57 +472,10 @@
     }
   }
 
-  function wallLength(w: Wall): number {
-    if (w.curvePoint) {
-      // Approximate quadratic bezier length with 20 segments
-      let len = 0;
-      const N = 20;
-      let px = w.start.x, py = w.start.y;
-      for (let i = 1; i <= N; i++) {
-        const t = i / N;
-        const mt = 1 - t;
-        const nx = mt * mt * w.start.x + 2 * mt * t * w.curvePoint.x + t * t * w.end.x;
-        const ny = mt * mt * w.start.y + 2 * mt * t * w.curvePoint.y + t * t * w.end.y;
-        len += Math.hypot(nx - px, ny - py);
-        px = nx; py = ny;
-      }
-      return len;
-    }
-    return Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
-  }
-
-  /** Get point on wall at parameter t (0-1), handling curves */
-  function wallPointAt(w: Wall, t: number): Point {
-    if (w.curvePoint) {
-      const mt = 1 - t;
-      return {
-        x: mt * mt * w.start.x + 2 * mt * t * w.curvePoint.x + t * t * w.end.x,
-        y: mt * mt * w.start.y + 2 * mt * t * w.curvePoint.y + t * t * w.end.y,
-      };
-    }
-    return {
-      x: w.start.x + (w.end.x - w.start.x) * t,
-      y: w.start.y + (w.end.y - w.start.y) * t,
-    };
-  }
-
-  /** Get tangent direction at parameter t on wall */
-  function wallTangentAt(w: Wall, t: number): Point {
-    if (w.curvePoint) {
-      const mt = 1 - t;
-      const dx = 2 * mt * (w.curvePoint.x - w.start.x) + 2 * t * (w.end.x - w.curvePoint.x);
-      const dy = 2 * mt * (w.curvePoint.y - w.start.y) + 2 * t * (w.end.y - w.curvePoint.y);
-      const len = Math.hypot(dx, dy) || 1;
-      return { x: dx / len, y: dy / len };
-    }
-    const dx = w.end.x - w.start.x;
-    const dy = w.end.y - w.start.y;
-    const len = Math.hypot(dx, dy) || 1;
-    return { x: dx / len, y: dy / len };
-  }
-
+  // wallLength / wallPointAt / wallTangentAt sống ở canvasRenderer để phần vẽ
+  // và hit-test không bao giờ tính ra hai hình khác nhau.
   function wallThicknessScreen(w: Wall): number {
-    return Math.max(w.thickness * zoom, 4);
+    return _wallThicknessScreen(w, zoom);
   }
 
 
@@ -507,6 +483,10 @@
 
   function drawFurniture(item: FurnitureItem, selected: boolean) {
     drawFurnitureItem(getCS(), item, selected);
+  }
+
+  function drawWall(w: Wall, selected: boolean) {
+    _drawWall(getCS(), w, selected, showDimensions, dimSettings);
   }
 
   // Track wall snap during placement preview
@@ -1067,6 +1047,11 @@
     const multiIds = currentSelectedIds;
     function isSelected(id: string) { return id === selId || multiIds.has(id); }
 
+    // Tường vẽ trước để block sản phẩm nằm đè lên
+    if (layerVis.walls) {
+      for (const w of floor.walls) drawWall(w, isSelected(w.id));
+    }
+
     // Furniture
     if (showFurniture) {
       for (const fi of floor.furniture) {
@@ -1419,6 +1404,8 @@
       currentTool = t;
       textAnnotationMode = t === 'text';
       if (t !== 'text') { editingTextAnnotationId = null; }
+      // Bỏ tool wall mà còn wallStart thì draw() giữ cờ dirty và redraw mãi
+      if (t !== 'wall') cancelWallDrawing();
       markDirty();
     });
     const unsub8 = placingDoorType.subscribe((t) => { currentDoorType = t; markDirty(); });
@@ -1898,6 +1885,7 @@
       const pos = wallSnap ? wallSnap.position : { x: snap(wp.x), y: snap(wp.y) };
       const rot = wallSnap ? wallSnap.rotation : currentPlacingRotation;
       const id = addFurniture(placingId, pos);
+      if (!id) { exitPlacingOnQuantityLimit(placingId); return; }
       if (rot !== 0) {
         rotateFurniture(id, rot);
       }
@@ -2744,6 +2732,16 @@
     return { x: wallStart.x + (dx / d) * lenCm, y: wallStart.y + (dy / d) * lenCm };
   }
 
+  /** Bỏ đoạn tường đang vẽ dở. Trả về true nếu thực sự có gì để bỏ. */
+  function cancelWallDrawing(): boolean {
+    if (!wallStart && !wallSequenceFirst && !typedWallLength) return false;
+    wallStart = null;
+    wallSequenceFirst = null;
+    typedWallLength = '';
+    markDirty();
+    return true;
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     shiftDown = e.shiftKey;
     if (e.code === 'Space') { spaceDown = true; e.preventDefault(); return; }
@@ -2753,6 +2751,13 @@
     const keyTargetTag = (e.target as HTMLElement)?.tagName;
     const inFormField = keyTargetTag === 'INPUT' || keyTargetTag === 'TEXTAREA' || keyTargetTag === 'SELECT';
     if (currentTool === 'wall' && wallStart && !editingTextAnnotationId && !inFormField && !e.metaKey && !e.ctrlKey) {
+      // Esc nhát đầu chỉ bỏ đoạn đang vẽ; nhát thứ hai rơi xuống shortcut
+      // global và thoát hẳn về tool select.
+      if (e.key === 'Escape') {
+        cancelWallDrawing();
+        e.preventDefault();
+        return;
+      }
       if (/^[0-9.]$/.test(e.key)) {
         typedWallLength += e.key;
         markDirty();
@@ -3034,6 +3039,7 @@
         return;
       }
       const id = addFurniture(itemId, pos);
+      if (!id) { exitPlacingOnQuantityLimit(itemId); return; }
       selectedElementId.set(id);
       selectedTool.set('select');
       placingFurnitureId.set(null);
@@ -3089,6 +3095,13 @@
 
   function onContextMenu(e: MouseEvent) {
     e.preventDefault();
+
+    // Trong tool wall, chuột phải là nút huỷ như mọi phần mềm CAD:
+    // đang vẽ dở thì bỏ đoạn, không vẽ dở thì thoát hẳn về select.
+    if (currentTool === 'wall') {
+      if (!cancelWallDrawing()) selectedTool.set('select');
+      return;
+    }
 
     // If in measurement mode, use old behaviour
     if (measuring) {
@@ -3328,6 +3341,7 @@
 
 <div class="w-full h-full relative overflow-hidden" role="application">
   <canvas
+    data-plan-canvas
     bind:this={canvas}
     class="block w-full h-full touch-none"
     tabindex="0"
@@ -3422,6 +3436,20 @@
       }}
       autofocus
     />
+  {/if}
+  <!-- Wall tool hint — tool vẽ tường không có gì trên canvas báo hiệu, và
+       trước đây người dùng bị kẹt vì không biết cách thoát -->
+  {#if currentTool === 'wall'}
+    <div class="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+      <div class="flex items-center gap-2 bg-slate-800/90 text-white text-xs rounded-full pl-3 pr-1 py-1 shadow-lg">
+        <span class="font-medium">🧱 Vẽ tường</span>
+        <span class="text-white/60">Click đặt điểm · C khép vòng · Esc / chuột phải huỷ</span>
+        <button
+          class="pointer-events-auto px-2 py-0.5 rounded-full bg-white/15 hover:bg-white/25 font-medium transition-colors"
+          onclick={() => selectedTool.set('select')}
+        >Xong</button>
+      </div>
+    </div>
   {/if}
   <!-- Empty state hint -->
   {#if currentFloor && currentFloor.walls.length === 0 && currentFloor.furniture.length === 0 && currentFloor.doors.length === 0}
@@ -3539,9 +3567,10 @@
         style="left: {el.pos.x}px; top: {el.pos.y - 44}px; transform: translateX(-50%);"
       >
         <button
-          class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-          title="Duplicate"
+          class="w-7 h-7 flex items-center justify-center rounded {duplicateBlocked ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}"
+          title={duplicateBlocked ?? 'Duplicate'}
           aria-label="Duplicate"
+          disabled={!!duplicateBlocked}
           onclick={() => {
             if (!currentSelectedId || !currentFloor) return;
             let newId: string | null = null;
@@ -3684,6 +3713,7 @@
     targetFurniture={ctxMenuFurniture}
     targetRoom={ctxMenuRoom}
     clipboard={clipboard}
+    duplicateBlocked={ctxMenuDuplicateBlocked}
     onclose={() => { ctxMenuVisible = false; }}
     onaction={handleContextMenuAction}
   />

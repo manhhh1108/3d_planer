@@ -26,6 +26,9 @@
     return Array.from(map.entries()).map(([name, v]) => ({ name, count: v.count, preview: v.preview }));
   });
 
+  let skippedMsg = $state<string | null>(null);
+  let placedCount = $state(0);
+
   let importCount = $derived(
     inserts.filter(ins => !!mapping[ins.blockName]).length
   );
@@ -42,13 +45,29 @@
 
   function doImport() {
     importing = true;
+    // File DXF có thể chứa nhiều bản hơn số lượng sản phẩm cho phép. Đặt tới
+    // hạn mức rồi dừng, và nói rõ đã bỏ qua bao nhiêu thay vì âm thầm nuốt.
+    let placed = 0;
+    const skipped = new Map<string, number>();
+
     for (const ins of inserts) {
       const catalogId = mapping[ins.blockName];
       if (!catalogId) continue;
-      addFurniture(catalogId, { x: ins.xCm, y: ins.yCm }, ins.rotationDeg);
+      if (addFurniture(catalogId, { x: ins.xCm, y: ins.yCm }, ins.rotationDeg)) {
+        placed++;
+      } else {
+        skipped.set(ins.blockName, (skipped.get(ins.blockName) ?? 0) + 1);
+      }
     }
     importing = false;
+    placedCount = placed;
     done = true;
+    if (skipped.size > 0) {
+      const total = [...skipped.values()].reduce((a, b) => a + b, 0);
+      const detail = [...skipped.entries()].map(([name, n]) => `${name} (${n})`).join(', ');
+      skippedMsg = `Đã nhập ${placed} block. Bỏ qua ${total} vì vượt số lượng cho phép: ${detail}`;
+      return; // giữ panel mở để người dùng đọc được
+    }
     setTimeout(onClose, 800);
   }
 </script>
@@ -90,7 +109,12 @@
     {:else if inserts.length === 0}
       <p class="text-sm text-slate-500 text-center py-8">Không tìm thấy block sản phẩm nào trong file DXF.</p>
     {:else if done}
-      <p class="text-sm text-green-600 text-center py-8 font-medium">Đã nhập {importCount} sản phẩm!</p>
+      <p class="text-sm text-green-600 text-center pt-8 font-medium">Đã nhập {placedCount} sản phẩm!</p>
+      {#if skippedMsg}
+        <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 mb-8">{skippedMsg}</p>
+      {:else}
+        <div class="pb-8"></div>
+      {/if}
     {:else}
       <p class="text-xs text-slate-500 mb-3">
         Chọn sản phẩm tương ứng trong catalog cho mỗi loại block. Block không được map sẽ bị bỏ qua.

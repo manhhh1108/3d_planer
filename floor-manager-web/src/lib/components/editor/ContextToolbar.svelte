@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeFloor, selectedElementId, removeElement, updateDoor, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, selectedTool } from '$lib/stores/project';
+  import { activeFloor, selectedElementId, removeElement, updateDoor, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, selectedTool, duplicateBlockedReason, currentProject, externalPlacements } from '$lib/stores/project';
   import type { Floor, Door } from '$lib/models/types';
 
   let { canvasRect = { x: 0, y: 0 }, worldToScreen = (x: number, y: number) => ({ x: 0, y: 0 }) }: {
@@ -12,6 +12,14 @@
 
   activeFloor.subscribe((f) => { floor = f; });
   selectedElementId.subscribe((id) => { selId = id; });
+
+  // duplicateBlockedReason đọc store qua get() nên tự nó không reactive —
+  // nhắc tới $currentProject/$externalPlacements để tính lại khi chúng đổi.
+  let blockedReason = $derived.by(() => {
+    void $currentProject;
+    void $externalPlacements;
+    return duplicateBlockedReason(selId);
+  });
 
   let elementInfo = $derived.by(() => {
     if (!floor || !selId) return null;
@@ -83,9 +91,10 @@
     style="left: {screenPos.x + canvasRect.x}px; top: {screenPos.y + canvasRect.y - 48}px; transform: translateX(-50%); pointer-events: auto;"
   >
     <button
-      class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-600 hover:text-gray-800 transition-colors"
-      title="Duplicate"
+      class="w-7 h-7 flex items-center justify-center rounded transition-colors {blockedReason ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-600 hover:text-gray-800'}"
+      title={blockedReason ?? 'Duplicate'}
       aria-label="Duplicate"
+      disabled={!!blockedReason}
       onclick={onDuplicate}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>

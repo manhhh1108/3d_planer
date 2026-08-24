@@ -2,8 +2,10 @@
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
-  import { api, type ApiProduct } from '$lib/services/api';
+  import { api, FILES_BASE, type ApiAsset, type ApiProduct } from '$lib/services/api';
+  import { shrinkImage, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXT } from '$lib/utils/imageThumb';
   import { canEdit } from '$lib/stores/auth';
+  import CadDropzone from '$lib/components/products/CadDropzone.svelte';
 
   const projectId = $page.params.projectId ?? '';
 
@@ -34,6 +36,13 @@
   let fDepthM = $state<number | null>(null);
   let fHeightM = $state<number | null>(null);
   let fQuantity = $state<number>(1);
+  let fPendingFile = $state<File | null>(null);
+  let fThumbnail = $state<string | null>(null);
+  let fThumbPreview = $state<string | null>(null);
+  let fPendingThumb = $state<File | null>(null);
+  let fExistingAsset = $state<ApiAsset | null>(null);
+  let formUploading = $state(false);
+  let formError = $state<string | null>(null);
   let confirmDeleteId = $state<string | null>(null);
 
   let uploadingFor = $state<string | null>(null);
@@ -113,6 +122,10 @@
     fStage = 'Hàn'; fCategory = 'san_pham'; fColor = '#3b82f6';
     fWidthM = null; fDepthM = null; fHeightM = null;
     fQuantity = 1;
+    fPendingFile = null;
+    fExistingAsset = null;
+    resetThumbState(null);
+    formError = null;
     showForm = true;
   }
 
@@ -125,11 +138,60 @@
     fDepthM = p.metadata?.depthM ?? null;
     fHeightM = p.metadata?.heightM ?? null;
     fQuantity = p.quantity ?? 1;
+    fPendingFile = null;
+    fExistingAsset = p.asset ?? null;
+    resetThumbState(p.thumbnail);
+    formError = null;
     showForm = true;
   }
 
+  function resetThumbState(thumbnail: string | null) {
+    if (fThumbPreview) URL.revokeObjectURL(fThumbPreview);
+    fThumbPreview = null;
+    fPendingThumb = null;
+    fThumbnail = thumbnail;
+  }
+
+  /** Ảnh đang hiện trong dialog: bản vừa chọn nếu có, không thì bản đã lưu */
+  let thumbSrc = $derived(
+    fThumbPreview ?? (fThumbnail ? `${FILES_BASE}${fThumbnail}` : null)
+  );
+
+  async function onThumbFileChange(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      formError = 'Ảnh phải là PNG hoặc JPG';
+      return;
+    }
+    formError = null;
+    try {
+      const shrunk = await shrinkImage(file);
+      if (fThumbPreview) URL.revokeObjectURL(fThumbPreview);
+      fPendingThumb = shrunk;
+      fThumbPreview = URL.createObjectURL(shrunk);
+    } catch (e) {
+      formError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function clearThumb() {
+    if (fThumbPreview) URL.revokeObjectURL(fThumbPreview);
+    fThumbPreview = null;
+    fPendingThumb = null;
+    fThumbnail = null;
+  }
+
+  function closeForm() {
+    if (formUploading) return;
+    showForm = false;
+  }
+
   async function submit() {
-    if (!fName.trim() || !fCode.trim()) return;
+    if (!fName.trim() || !fCode.trim() || formUploading) return;
+    formError = null;
     const metadata: Record<string, number> = {};
     if (fWidthM) metadata.widthM = fWidthM;
     if (fDepthM) metadata.depthM = fDepthM;
@@ -145,13 +207,43 @@
       metadata: Object.keys(metadata).length ? metadata : null,
       quantity: fQuantity,
     };
-    if (editingId) {
-      await api.products.update(editingId, data);
-    } else {
-      await api.products.create({ projectId, ...data });
+    formUploading = true;
+    try {
+      // Ảnh phải lên trước để biết đường dẫn mà lưu cùng sản phẩm
+      let thumbnail = fThumbnail;
+      if (fPendingThumb) {
+        thumbnail = (await api.files.upload(fPendingThumb)).path;
+      }
+
+      if (editingId) {
+        await api.products.update(editingId, { ...data, thumbnail });
+      } else {
+        const created = await api.products.create({ projectId, ...data, thumbnail });
+        // Giữ id để nếu upload lỗi, bấm Lưu lại đi nhánh update chứ không tạo trùng
+        editingId = created.id;
+      }
+
+      if (fPendingFile) {
+        if (fExistingAsset) {
+          try { await api.assets.remove(fExistingAsset.id); } catch { /* asset có thể đã mất */ }
+          fExistingAsset = null;
+        }
+        await api.assets.upload(fPendingFile, editingId!);
+        fPendingFile = null;
+      }
+      resetThumbState(thumbnail);
+    } catch (e) {
+      // Product có thể đã lưu xong dù upload lỗi — đồng bộ lại bảng, giữ dialog để thử lại
+      formError = e instanceof Error ? e.message : String(e);
+      await refresh();
+      return;
+    } finally {
+      formUploading = false;
     }
+
     showForm = false;
     await refresh();
+    ensurePolling();
   }
 
   async function deleteProduct(id: string) {
@@ -243,9 +335,17 @@
             {#each filtered as p}
               <tr class="border-b border-gray-100 last:border-0 hover:bg-blue-50/50 transition-colors">
                 <td class="px-4 py-3">
-                  <div class="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold" style="background-color: {p.color}20; color: {p.color}">
-                    {p.code.slice(-2)}
-                  </div>
+                  {#if p.thumbnail}
+                    <img
+                      src={`${FILES_BASE}${p.thumbnail}`}
+                      alt={p.name}
+                      class="w-9 h-9 rounded-lg object-contain bg-gray-50 border border-gray-100"
+                    />
+                  {:else}
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold" style="background-color: {p.color}20; color: {p.color}">
+                      {p.code.slice(-2)}
+                    </div>
+                  {/if}
                 </td>
                 <td class="px-4 py-3 font-medium text-gray-800">{p.name}</td>
                 <td class="px-4 py-3 text-gray-500">{p.code}</td>
@@ -318,9 +418,12 @@
 
   <!-- Form modal -->
   {#if showForm}
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={() => showForm = false} onkeydown={(e) => { if (e.key === 'Escape') showForm = false; }} role="dialog" tabindex="-1">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeForm} onkeydown={(e) => { if (e.key === 'Escape') closeForm(); }} role="dialog" tabindex="-1">
       <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
         <h2 class="text-lg font-bold text-gray-800 mb-4">{editingId ? 'Sửa sản phẩm' : 'Thêm sản phẩm'}</h2>
+        {#if formError}
+          <div class="mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">{formError}</div>
+        {/if}
         <div class="grid grid-cols-2 gap-3">
           <label class="block col-span-2">
             <span class="text-xs font-medium text-gray-500">Tên sản phẩm *</span>
@@ -373,11 +476,49 @@
               class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400"
             />
           </label>
+          <div class="col-span-2">
+            <span class="text-xs font-medium text-gray-500">Ảnh sản phẩm</span>
+            <div class="mt-1 flex items-center gap-3">
+              <div class="w-16 h-16 shrink-0 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                {#if thumbSrc}
+                  <img src={thumbSrc} alt="Ảnh sản phẩm" class="w-full h-full object-contain" />
+                {:else}
+                  <div class="w-7 h-7 rounded-md" style="background-color: {fColor}; opacity: 0.7"></div>
+                {/if}
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <label class="px-2.5 py-1 text-xs rounded-lg font-medium cursor-pointer bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors {formUploading ? 'opacity-50 pointer-events-none' : ''}">
+                    <input type="file" accept={ACCEPTED_IMAGE_EXT} class="hidden" disabled={formUploading} onchange={onThumbFileChange} />
+                    {thumbSrc ? 'Thay ảnh' : 'Chọn ảnh'}
+                  </label>
+                  {#if thumbSrc}
+                    <button type="button" onclick={clearThumb} disabled={formUploading} class="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50">Xoá ảnh</button>
+                  {/if}
+                </div>
+                <p class="text-[11px] text-gray-400 mt-1">
+                  PNG hoặc JPG, tự thu nhỏ về 256px.
+                  {#if !thumbSrc}Bỏ trống thì dùng ảnh sinh từ file CAD.{/if}
+                </p>
+              </div>
+            </div>
+          </div>
+          <CadDropzone
+            asset={fExistingAsset}
+            pendingFile={fPendingFile}
+            disabled={formUploading}
+            onselect={(f) => { fPendingFile = f; formError = null; }}
+            onclear={() => fPendingFile = null}
+          />
         </div>
         <div class="flex gap-2 justify-end mt-5">
-          <button onclick={() => showForm = false} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Hủy</button>
-          <button onclick={submit} disabled={!fName.trim() || !fCode.trim()} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
-            {editingId ? 'Lưu thay đổi' : 'Thêm sản phẩm'}
+          <button onclick={closeForm} disabled={formUploading} class="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">Hủy</button>
+          <button onclick={submit} disabled={!fName.trim() || !fCode.trim() || formUploading} class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
+            {#if formUploading}
+              {fPendingFile ? 'Đang tải file…' : 'Đang lưu…'}
+            {:else}
+              {editingId ? 'Lưu thay đổi' : 'Thêm sản phẩm'}
+            {/if}
           </button>
         </div>
       </div>

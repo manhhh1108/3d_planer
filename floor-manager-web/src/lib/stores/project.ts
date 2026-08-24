@@ -258,6 +258,51 @@ export function addWindow(wallId: string, position: number, windowType: import('
 }
 
 /**
+ * Lý do không nhân bản được phần tử này, hoặc null nếu nhân bản được.
+ *
+ * Dùng chung cho mọi nút Copy (toolbar nổi, toolbar trong canvas, menu chuột
+ * phải) để nút tự tắt đúng lúc store sẽ từ chối — nút bấm được mà không có gì
+ * xảy ra thì người dùng tưởng app hỏng.
+ */
+export function duplicateBlockedReason(elementId: string | null): string | null {
+  if (!elementId) return null;
+  const p = get(currentProject);
+  const floor = p?.floors.find((f) => f.id === p.activeFloorId);
+  const fi = floor?.furniture.find((x) => x.id === elementId);
+  if (!fi) return null; // không phải block sản phẩm (tường/cửa...) — không giới hạn
+  if (remainingQuantity(fi.catalogId) > 0) return null;
+
+  const cat = getCatalogItem(fi.catalogId);
+  const qty = cat?.quantity ?? 1;
+  const ext = get(externalPlacements).get(fi.catalogId);
+  if (ext && ext.count > 0) {
+    const where = ext.layouts.map((l) => `${l.layoutName} · ${l.siteName} (${l.count})`).join(', ');
+    return `Hết ${qty} bản "${cat?.name ?? fi.catalogId}" — đang bố trí ở ${where}`;
+  }
+  return `Đã dùng hết ${qty} bản "${cat?.name ?? fi.catalogId}"`;
+}
+
+/** Nơi một sản phẩm đang bị chiếm ở mặt bằng khác */
+export interface ExternalPlacement {
+  count: number;
+  layouts: { layoutId: string; layoutName: string; siteName: string; count: number }[];
+}
+
+/**
+ * Sản phẩm đang bị chiếm ở các mặt bằng KHÁC mặt bằng đang mở.
+ *
+ * `quantity` là số khối vật lý thực có, mà một khối thép không thể nằm ở hai
+ * mặt bằng cùng lúc — nên bản đã xếp ở nơi khác phải trừ vào hạn mức ở đây.
+ * Nạp một lần lúc mở layout (xem backendStore.load).
+ */
+export const externalPlacements = writable<Map<string, ExternalPlacement>>(new Map());
+
+/** Số bản của sản phẩm đang nằm ở mặt bằng khác */
+export function countPlacedElsewhere(catalogId: string): number {
+  return get(externalPlacements).get(catalogId)?.count ?? 0;
+}
+
+/**
  * Số bản đã đặt của một sản phẩm, tính trên toàn bộ project.
  *
  * Đếm mọi tầng chứ không riêng tầng đang mở: `quantity` là số lượng sản phẩm
@@ -284,10 +329,46 @@ export function countPlaced(catalogId: string): number {
 export function remainingQuantity(catalogId: string): number {
   const cat = getCatalogItem(catalogId);
   if (!cat) return Infinity;
-  return Math.max(0, (cat.quantity ?? 1) - countPlaced(catalogId));
+  const used = countPlaced(catalogId) + countPlacedElsewhere(catalogId);
+  return Math.max(0, (cat.quantity ?? 1) - used);
 }
 
-export function addFurniture(catalogId: string, position: Point, rotation = 0): string {
+/**
+ * Lần từ chối gần nhất vì hết hạn mức. UI (canvas 2D, viewer 3D) đọc để hiện
+ * thông báo. `at` để hai lần từ chối liên tiếp cùng sản phẩm vẫn kích hoạt lại.
+ */
+export const quantityLimitHit = writable<
+  { catalogId: string; name: string; quantity: number; elsewhere: string | null; at: number } | null
+>(null);
+
+function reportQuantityLimit(catalogId: string) {
+  const cat = getCatalogItem(catalogId);
+  const ext = get(externalPlacements).get(catalogId);
+  quantityLimitHit.set({
+    catalogId,
+    name: cat?.name ?? catalogId,
+    quantity: cat?.quantity ?? 0,
+    // Hết vì bản đang nằm ở mặt bằng khác thì phải nói ra, không người dùng
+    // nhìn "0 đã đặt mà vẫn không xếp được" sẽ tưởng app hỏng.
+    elsewhere: ext
+      ? ext.layouts.map((l) => `${l.layoutName} · ${l.siteName} (${l.count})`).join(', ')
+      : null,
+    at: Date.now(),
+  });
+}
+
+/**
+ * Đặt thêm một bản của sản phẩm. Trả về null khi đã hết số lượng cho phép.
+ *
+ * Ràng buộc số lượng nằm ở đây chứ không ở nơi gọi: trước đây mỗi chỗ gọi tự
+ * kiểm tra, nên canvas 2D thì chặn còn 3D lại đặt vượt thoải mái. Chặn tại
+ * nguồn thì mọi đường vào — 2D, 3D, nhập DXF, nhân bản — đều được phủ.
+ */
+export function addFurniture(catalogId: string, position: Point, rotation = 0): string | null {
+  if (remainingQuantity(catalogId) <= 0) {
+    reportQuantityLimit(catalogId);
+    return null;
+  }
   const id = uid();
   mutate((f) => {
     f.furniture.push({ id, catalogId, position, rotation, scale: { x: 1, y: 1, z: 1 } });
@@ -714,6 +795,11 @@ export function duplicateFurniture(id: string): string | null {
   if (!floor) return null;
   const fi = floor.furniture.find(fi => fi.id === id);
   if (!fi) return null;
+  // Nhân bản cũng là đặt thêm một bản — phải tính vào hạn mức
+  if (remainingQuantity(fi.catalogId) <= 0) {
+    reportQuantityLimit(fi.catalogId);
+    return null;
+  }
   const newId = uid();
   mutate(f => {
     f.furniture.push({ ...fi, id: newId, position: { x: fi.position.x + 30, y: fi.position.y + 30 } });

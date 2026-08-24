@@ -3,7 +3,7 @@
  * All functions are pure — they take canvas context + data and render.
  * Extracted from FloorPlanCanvas.svelte.
  */
-import type { Point, FurnitureItem, Floor, Annotation } from '$lib/models/types';
+import type { Point, FurnitureItem, Floor, Annotation, Wall } from '$lib/models/types';
 import type { CanvasState } from '$lib/utils/canvasInteraction';
 import type { ProjectSettings } from '$lib/stores/settings';
 import { formatLength } from '$lib/stores/settings';
@@ -55,6 +55,201 @@ export function drawGrid(
     }
   }
 }
+// ── Wall geometry helpers ────────────────────────────────────────────
+// Dùng chung giữa renderer và FloorPlanCanvas — hit-test và phần vẽ phải
+// tính ra cùng một hình, nếu không tay nắm sẽ lệch khỏi chỗ bấm được.
+
+/** Chiều dài tường; tường cong xấp xỉ bằng 20 đoạn thẳng */
+export function wallLength(w: Wall): number {
+  if (w.curvePoint) {
+    let len = 0;
+    const N = 20;
+    let px = w.start.x, py = w.start.y;
+    for (let i = 1; i <= N; i++) {
+      const t = i / N;
+      const mt = 1 - t;
+      const nx = mt * mt * w.start.x + 2 * mt * t * w.curvePoint.x + t * t * w.end.x;
+      const ny = mt * mt * w.start.y + 2 * mt * t * w.curvePoint.y + t * t * w.end.y;
+      len += Math.hypot(nx - px, ny - py);
+      px = nx; py = ny;
+    }
+    return len;
+  }
+  return Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
+}
+
+/** Điểm trên tường tại tham số t (0-1), có xử lý tường cong */
+export function wallPointAt(w: Wall, t: number): Point {
+  if (w.curvePoint) {
+    const mt = 1 - t;
+    return {
+      x: mt * mt * w.start.x + 2 * mt * t * w.curvePoint.x + t * t * w.end.x,
+      y: mt * mt * w.start.y + 2 * mt * t * w.curvePoint.y + t * t * w.end.y,
+    };
+  }
+  return {
+    x: w.start.x + (w.end.x - w.start.x) * t,
+    y: w.start.y + (w.end.y - w.start.y) * t,
+  };
+}
+
+/** Vector tiếp tuyến đơn vị tại tham số t trên tường */
+export function wallTangentAt(w: Wall, t: number): Point {
+  if (w.curvePoint) {
+    const mt = 1 - t;
+    const dx = 2 * mt * (w.curvePoint.x - w.start.x) + 2 * t * (w.end.x - w.curvePoint.x);
+    const dy = 2 * mt * (w.curvePoint.y - w.start.y) + 2 * t * (w.end.y - w.curvePoint.y);
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+  const dx = w.end.x - w.start.x;
+  const dy = w.end.y - w.start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}
+
+/** Bề dày tường quy ra pixel màn hình, không mỏng hơn 4px để còn nhìn thấy */
+export function wallThicknessScreen(w: Wall, zoom: number): number {
+  return Math.max(w.thickness * zoom, 4);
+}
+
+/** Tâm tay nắm giữa tường — điểm cong nếu có, không thì trung điểm */
+export function wallMidHandle(w: Wall): Point {
+  if (w.curvePoint) return { ...w.curvePoint };
+  return { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+}
+
+// ── Wall drawing ─────────────────────────────────────────────────────
+
+const WALL_FILL = '#404040';
+const WALL_STROKE = '#333333';
+const WALL_FILL_SEL = '#93c5fd';
+const WALL_STROKE_SEL = '#3b82f6';
+
+/** Tay nắm khi tường được chọn — bán kính phải khớp ngưỡng hit-test 15/zoom */
+function drawWallHandles(cs: CanvasState, w: Wall): void {
+  const { ctx } = cs;
+  for (const pt of [w.start, w.end]) {
+    const sp = wts(cs, pt.x, pt.y);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = WALL_STROKE_SEL;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Tay nắm giữa: kéo = dời song song, Alt+kéo = bẻ cong
+  const mid = wallMidHandle(w);
+  const mp = wts(cs, mid.x, mid.y);
+  ctx.fillStyle = '#fbbf24';
+  ctx.strokeStyle = '#d97706';
+  ctx.lineWidth = 1.5;
+  const sz = 6;
+  ctx.beginPath();
+  ctx.moveTo(mp.x, mp.y - sz);
+  ctx.lineTo(mp.x + sz, mp.y);
+  ctx.lineTo(mp.x, mp.y + sz);
+  ctx.lineTo(mp.x - sz, mp.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  if (w.curvePoint) {
+    const s = wts(cs, w.start.x, w.start.y);
+    const e = wts(cs, w.end.x, w.end.y);
+    ctx.strokeStyle = '#d9770680';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(mp.x, mp.y);
+    ctx.lineTo(e.x, e.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+export function drawWall(
+  cs: CanvasState,
+  w: Wall,
+  selected: boolean,
+  showDimensions: boolean,
+  dimSettings: ProjectSettings,
+): void {
+  const { ctx, zoom } = cs;
+  const s = wts(cs, w.start.x, w.start.y);
+  const e = wts(cs, w.end.x, w.end.y);
+  const thickness = wallThicknessScreen(w, zoom);
+
+  ctx.fillStyle = selected ? WALL_FILL_SEL : (w.color || WALL_FILL);
+  ctx.strokeStyle = selected ? WALL_STROKE_SEL : WALL_STROKE;
+  ctx.lineWidth = 1;
+
+  if (w.curvePoint) {
+    // Dải bám theo bezier bậc hai: 24 đoạn đủ mượt ở mọi mức zoom thực dụng
+    const cp = wts(cs, w.curvePoint.x, w.curvePoint.y);
+    const SEGS = 24;
+    const outer: { x: number; y: number }[] = [];
+    const inner: { x: number; y: number }[] = [];
+    for (let i = 0; i <= SEGS; i++) {
+      const t = i / SEGS;
+      const mt = 1 - t;
+      const px = mt * mt * s.x + 2 * mt * t * cp.x + t * t * e.x;
+      const py = mt * mt * s.y + 2 * mt * t * cp.y + t * t * e.y;
+      const tdx = 2 * mt * (cp.x - s.x) + 2 * t * (e.x - cp.x);
+      const tdy = 2 * mt * (cp.y - s.y) + 2 * t * (e.y - cp.y);
+      const tlen = Math.hypot(tdx, tdy) || 1;
+      const nx = (-tdy / tlen) * thickness / 2;
+      const ny = (tdx / tlen) * thickness / 2;
+      outer.push({ x: px + nx, y: py + ny });
+      inner.push({ x: px - nx, y: py - ny });
+    }
+    ctx.beginPath();
+    ctx.moveTo(outer[0].x, outer[0].y);
+    for (let i = 1; i < outer.length; i++) ctx.lineTo(outer[i].x, outer[i].y);
+    for (let i = inner.length - 1; i >= 0; i--) ctx.lineTo(inner[i].x, inner[i].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    const dx = e.x - s.x;
+    const dy = e.y - s.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const nx = (-dy / len) * thickness / 2;
+    const ny = (dx / len) * thickness / 2;
+    ctx.beginPath();
+    ctx.moveTo(s.x + nx, s.y + ny);
+    ctx.lineTo(e.x + nx, e.y + ny);
+    ctx.lineTo(e.x - nx, e.y - ny);
+    ctx.lineTo(s.x - nx, s.y - ny);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  const wlen = wallLength(w);
+  if (showDimensions && dimSettings.showExternalDimensions && wlen >= 10) {
+    const mid = wallPointAt(w, 0.5);
+    const ms = wts(cs, mid.x, mid.y);
+    const tan = wallTangentAt(w, 0.5);
+    const offset = thickness / 2 + 14;
+    ctx.fillStyle = dimSettings.dimensionLineColor;
+    ctx.font = `${Math.max(10, 11 * zoom)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      formatLength(wlen, dimSettings.units),
+      ms.x - tan.y * offset,
+      ms.y + tan.x * offset,
+    );
+  }
+
+  if (selected) drawWallHandles(cs, w);
+}
+
 // ── Furniture drawing ────────────────────────────────────────────────
 
 export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected: boolean): void {

@@ -63,6 +63,8 @@ export interface FurnitureItem {
   rotation: number;
   scale: { x: number; y: number; z: number };
   orientation?: BlockOrientation;
+  /** Cao độ đáy block so với sàn, cm. 0 = đặt trực tiếp xuống sàn. */
+  elevation?: number;
   // Per-item overrides (optional — falls back to catalog defaults)
   color?: string;
   width?: number;   // cm

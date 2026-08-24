@@ -15,10 +15,71 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 
 const upload = multer({ dest: TMP_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 
+const WALLS_PATH = /^\/[^/]+\/walls\/?$/;
+
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  // Tường là nội dung mặt bằng chứ không phải cấu hình layout, nên người lập
+  // kế hoạch sửa được — phần còn lại vẫn chỉ ADMIN.
+  if (req.method === 'PUT' && WALLS_PATH.test(req.path)) {
+    return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+  }
   return requireRole('ADMIN')(req, _res, next);
 });
+
+/** Số tường tối đa cho một layout — chặn client gửi blob khổng lồ */
+const MAX_WALLS = 5000;
+
+type StoredWall = {
+  id: string;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  thickness: number;
+  height: number;
+  color: string;
+  curvePoint?: { x: number; y: number };
+};
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function point(v: unknown): { x: number; y: number } | null {
+  if (!v || typeof v !== 'object') return null;
+  const x = num((v as Record<string, unknown>).x);
+  const y = num((v as Record<string, unknown>).y);
+  return x === null || y === null ? null : { x, y };
+}
+
+/**
+ * Chuẩn hoá tường từ client. Trả về null nếu sai hình dạng — chỉ giữ đúng các
+ * field đã biết để field lạ không lọt vào cột JSON.
+ */
+function normalizeWall(v: unknown): StoredWall | null {
+  if (!v || typeof v !== 'object') return null;
+  const w = v as Record<string, unknown>;
+  const start = point(w.start);
+  const end = point(w.end);
+  const thickness = num(w.thickness);
+  const height = num(w.height);
+  if (!start || !end || thickness === null || height === null) return null;
+  if (thickness <= 0 || height <= 0) return null;
+  if (typeof w.id !== 'string' || !w.id) return null;
+  if (typeof w.color !== 'string') return null;
+
+  const out: StoredWall = { id: w.id, start, end, thickness, height, color: w.color };
+  const curve = w.curvePoint === undefined || w.curvePoint === null ? null : point(w.curvePoint);
+  if (w.curvePoint !== undefined && w.curvePoint !== null) {
+    if (!curve) return null;
+    out.curvePoint = curve;
+  }
+  return out;
+}
+
+/** Cột walls null (layout tạo trước khi có tính năng) hiện ra là mảng rỗng */
+function withWalls<T extends { walls?: unknown }>(layout: T) {
+  return { ...layout, walls: Array.isArray(layout.walls) ? layout.walls : [] };
+}
 
 // GET /?siteId=xxx — list layouts with snapshot count
 router.get('/', async (req: Request, res: Response) => {
@@ -50,7 +111,40 @@ router.get('/:id', async (req: Request, res: Response) => {
       },
     });
     if (!layout) return res.status(404).json({ error: 'Not found' });
-    res.json(layout);
+    res.json(withWalls(layout));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// PUT /:id/walls — thay toàn bộ tường của layout (mét)
+router.put('/:id/walls', async (req: Request, res: Response) => {
+  try {
+    const raw = (req.body as Record<string, unknown> | undefined)?.walls;
+    if (!Array.isArray(raw)) {
+      return res.status(400).json({ error: 'walls must be an array' });
+    }
+    if (raw.length > MAX_WALLS) {
+      return res.status(400).json({ error: `Too many walls (max ${MAX_WALLS})` });
+    }
+    const walls: StoredWall[] = [];
+    for (const [i, item] of raw.entries()) {
+      const w = normalizeWall(item);
+      if (!w) return res.status(400).json({ error: `Invalid wall at index ${i}` });
+      walls.push(w);
+    }
+
+    const exists = await prisma.layout.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true },
+    });
+    if (!exists) return res.status(404).json({ error: 'Not found' });
+
+    const layout = await prisma.layout.update({
+      where: { id: String(req.params.id) },
+      data: { walls },
+    });
+    res.json(withWalls(layout));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -82,7 +176,13 @@ router.put('/:id', async (req: Request, res: Response) => {
 // DELETE /:id — delete layout
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.layout.delete({ where: { id: String(req.params.id) } });
+    const id = String(req.params.id);
+    await prisma.layout.delete({ where: { id } });
+    // Nền DXF và ảnh snapshot đều nằm dưới thư mục của layout — xoá cả cụm,
+    // không thì mỗi layout bị xoá lại để lại một đống file mồ côi.
+    const p = layoutBgPaths(id);
+    fs.rmSync(p.artifactDir, { recursive: true, force: true });
+    fs.rmSync(p.sourceDir, { recursive: true, force: true });
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });

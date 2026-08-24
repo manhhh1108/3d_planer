@@ -72,6 +72,9 @@ model Layout {
   heightM        Float      @map("height_m")
   backgroundFile String?    @map("background_file")
   gridSize       Float      @default(1.0) @map("grid_size")
+  // Ranh giới/tường của mặt bằng (mét). Hình học cố định của layout, không đổi
+  // theo ngày như vị trí block nên không nằm trong snapshot.
+  walls          Json?
   createdAt      DateTime   @default(now()) @map("created_at")
   site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]
@@ -115,6 +118,8 @@ model Snapshot {
   createdAt DateTime   @default(now()) @map("created_at")
   createdBy String?    @map("created_by")
   version   Int        @default(1)
+  // Ảnh xem trước mặt bằng (chụp từ canvas editor khi autosave)
+  thumbnail String?
   layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
   positions Position[]
   comments  Comment[]
@@ -132,6 +137,8 @@ model Position {
   rotation    Float    @default(0)
   scale       Float    @default(1.0)
   orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
+  // Cao do dat block so voi san, tinh bang met (0 = dat truc tiep xuong san)
+  elevationM  Float    @default(0) @map("elevation_m")
   snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 

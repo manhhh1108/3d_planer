@@ -30,7 +30,15 @@ router.get('/:id', async (req: Request, res: Response) => {
       include: {
         layouts: {
           orderBy: { createdAt: 'desc' },
-          include: { _count: { select: { snapshots: true } } },
+          include: {
+            _count: { select: { snapshots: true } },
+            // Thẻ layout hiện ảnh xem trước của lần lưu gần nhất
+            snapshots: {
+              orderBy: { date: 'desc' },
+              take: 1,
+              select: { id: true, date: true, thumbnail: true },
+            },
+          },
         },
       },
     });

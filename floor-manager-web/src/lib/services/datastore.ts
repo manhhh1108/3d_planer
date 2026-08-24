@@ -1,7 +1,8 @@
 import type { Project } from '$lib/models/types';
 import { api } from './api';
-import { layoutToProject, projectToPositions, todayStr } from './mapping';
+import { layoutToProject, projectToPositions, projectToWalls, todayStr } from './mapping';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
+import { externalPlacements } from '$lib/stores/project';
 
 export interface DataStore {
   save(project: Project, date?: string): Promise<void>;
@@ -115,13 +116,44 @@ export const localStore: DataStore = {
  * Backend store: Project của editor = 1 Layout của backend (project.id == layoutId).
  * save() upsert snapshot của NGÀY HÔM NAY qua POST /api/snapshots.
  */
+// Tường đổi hiếm hơn vị trí block rất nhiều. Nhớ payload đã gửi để autosave
+// (chạy sau mỗi thay đổi, debounce 2s) không PUT lại y hệt mỗi lần kéo block.
+let lastWallsSent: { layoutId: string; json: string } | null = null;
+
+// Snapshot vừa lưu — ảnh xem trước gắn vào đúng nó. saveThumbnail() chỉ nhận
+// layoutId nên phải nhớ lại từ lần save gần nhất.
+let lastSnapshotId: string | null = null;
+
+/** data URL -> Blob, để gửi ảnh dạng nhị phân thay vì base64 phình 33% */
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return null;
+  const mime = /data:([^;,]+)/.exec(dataUrl)?.[1] ?? 'image/jpeg';
+  try {
+    const bin = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
 export const backendStore: DataStore = {
   async save(project, date?) {
-    await api.snapshots.save({
+    const snapshot = await api.snapshots.save({
       layoutId: project.id,
       date: date ?? todayStr(),
       positions: projectToPositions(project),
     });
+    lastSnapshotId = snapshot.id;
+
+    const walls = projectToWalls(project);
+    const json = JSON.stringify(walls);
+    if (lastWallsSent?.layoutId !== project.id || lastWallsSent.json !== json) {
+      await api.layouts.saveWalls(project.id, walls);
+      lastWallsSent = { layoutId: project.id, json };
+    }
   },
 
   async load(layoutId) {
@@ -131,7 +163,20 @@ export const backendStore: DataStore = {
     await loadProductCatalog();
     const snapshots = await api.snapshots.list(layoutId);
     const latest = snapshots[0] ? await api.snapshots.get(snapshots[0].id) : null;
-    return layoutToProject(layout, latest);
+    // Bản đang bị chiếm ở mặt bằng khác — nạp trước khi canvas render, để badge
+    // số lượng không nhấp nháy từ "còn" sang "hết".
+    try {
+      const usage = await api.products.usage(layoutId);
+      externalPlacements.set(new Map(usage.map((u) => [u.productId, { count: u.count, layouts: u.layouts }])));
+    } catch {
+      externalPlacements.set(new Map()); // thiếu dữ liệu thì đừng chặn oan
+    }
+
+    const project = layoutToProject(layout, latest);
+    // Mồi bộ nhớ đệm bằng đúng thứ backend đang giữ, để lần save đầu tiên sau
+    // khi mở layout không gửi lại nguyên si những gì vừa tải về.
+    lastWallsSent = { layoutId, json: JSON.stringify(projectToWalls(project)) };
+    return project;
   },
 
   async list() {
@@ -146,12 +191,17 @@ export const backendStore: DataStore = {
     return null; // chưa hỗ trợ nhân bản layout từ editor
   },
 
-  saveThumbnail(id: string, dataUrl: string) {
-    try { localStorage.setItem(`floorplan_thumb_${id}`, dataUrl); } catch {}
+  saveThumbnail(_id: string, dataUrl: string) {
+    if (!lastSnapshotId) return; // chưa lưu lần nào thì chưa có snapshot để gắn
+    const blob = dataUrlToBlob(dataUrl);
+    if (!blob) return;
+    // Ảnh xem trước chỉ là trang trí — hỏng thì im lặng, tuyệt đối không được
+    // làm hỏng luồng lưu dữ liệu thật.
+    api.snapshots.uploadThumbnail(lastSnapshotId, blob).catch(() => {});
   },
 
-  getThumbnail(id: string): string | null {
-    try { return localStorage.getItem(`floorplan_thumb_${id}`); } catch { return null; }
+  getThumbnail(): string | null {
+    return null; // ảnh nằm ở backend, trang mặt bằng đọc trực tiếp từ snapshot
   },
 };
 

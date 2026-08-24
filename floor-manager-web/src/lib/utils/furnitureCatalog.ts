@@ -16,6 +16,10 @@ export interface FurnitureDef {
   assetStatus?: 'pending' | 'processing' | 'ready' | 'failed';
   /** URL mesh.glb (đường dẫn tương đối backend) cho viewer 3D */
   file3dUrl?: string;
+  /** Ảnh thu nhỏ đầy đủ URL — ảnh người dùng tải lên, hoặc thumb.svg từ CAD */
+  thumbnailUrl?: string;
+  /** Công đoạn sản xuất của sản phẩm (thuộc tính của Product, không của block) */
+  processStage?: string | null;
   /** Maximum number of instances allowed on the floor plan */
   quantity?: number;
 }

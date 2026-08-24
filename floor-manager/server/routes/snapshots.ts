@@ -1,12 +1,50 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { snapshotThumbPaths } from '../cad/paths.js';
 
 const router = Router();
+
+// Ảnh chụp canvas 300px — 2MB đã là rất rộng rãi
+const thumbUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+});
+
+// PUT /:id/thumbnail — ảnh xem trước mặt bằng, ghi đè tại chỗ
+router.put('/:id/thumbnail', thumbUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file is required' });
+    if (!['image/jpeg', 'image/png'].includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Thumbnail must be JPEG or PNG' });
+    }
+
+    const snapshot = await prisma.snapshot.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true, layoutId: true },
+    });
+    if (!snapshot) return res.status(404).json({ error: 'Not found' });
+
+    const p = snapshotThumbPaths(snapshot.layoutId, snapshot.id);
+    fs.mkdirSync(p.dir, { recursive: true });
+    fs.writeFileSync(p.file, req.file.buffer);
+
+    const updated = await prisma.snapshot.update({
+      where: { id: snapshot.id },
+      data: { thumbnail: p.url },
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // GET /?layoutId=xxx — list snapshots ordered by date desc
@@ -56,6 +94,7 @@ router.post('/', async (req: Request, res: Response) => {
         rotation?: number;
         scale?: number;
         orientation?: string;
+        elevationM?: number;
       }>;
     };
 
@@ -90,6 +129,7 @@ router.post('/', async (req: Request, res: Response) => {
             rotation: p.rotation ?? 0,
             scale: p.scale ?? 1.0,
             orientation: p.orientation ?? 'bottom',
+            elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
           })),
         },
       },
@@ -106,6 +146,7 @@ router.post('/', async (req: Request, res: Response) => {
             rotation: p.rotation ?? 0,
             scale: p.scale ?? 1.0,
             orientation: p.orientation ?? 'bottom',
+            elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
           })),
         },
       },
