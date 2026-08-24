@@ -2,19 +2,29 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
-  import { api, authApi, type ApiLayout, type ApiSnapshot } from '$lib/services/api';
+  import { api, authApi, type ApiLayout, type ApiSite, type ApiSnapshot } from '$lib/services/api';
   import StageBarChart from '$lib/components/reports/StageBarChart.svelte';
   import { createPdf, addTitleBlock, drawFloorPlan, addBlockTable } from '$lib/utils/pdfUtils';
   import autoTable from 'jspdf-autotable';
+  import { layoutsOfSite, pickDefaultSiteId } from '$lib/utils/reportScope';
 
-  const projectId = $page.params.projectId ?? '';
+  // Route chỉ quyết định dự án mở đầu. Trang chủ có nút Báo cáo không gắn với
+  // dự án nào, nên phải đổi được dự án ngay tại đây.
+  const routeProjectId = $page.params.projectId ?? '';
+  let projectId = $state(routeProjectId);
 
   type Tab = 'summary' | 'process' | 'occupation';
   let tab = $state<Tab>('summary');
 
   let projectName = $state('');
+  let projects = $state<{ id: string; name: string }[]>([]);
+  let sites = $state<ApiSite[]>([]);
+  let selectedSiteId = $state('');
   let layouts = $state<ApiLayout[]>([]);
   let selectedLayoutId = $state('');
+
+  /** Layout của mặt bằng đang chọn — dropdown layout chỉ hiện những cái này */
+  let siteLayouts = $derived(layoutsOfSite(layouts, selectedSiteId));
   let snapshots = $state<ApiSnapshot[]>([]);
   let selectedDate = $state('');
   let loading = $state(true);
@@ -52,36 +62,51 @@
 
   onMount(async () => {
     try {
-      const [proj, allLayouts, me] = await Promise.all([
-        api.projects.get(projectId),
+      const [allProjects, allSites, allLayouts, me] = await Promise.all([
+        api.projects.list(),
+        api.sites.list(),
         api.layouts.list(),
         authApi.me(),
       ]);
-      projectName = proj.name;
+      projects = allProjects.map((pr) => ({ id: pr.id, name: pr.name }));
+      // Route trỏ tới dự án không còn tồn tại thì rơi về dự án đầu tiên,
+      // đừng để trang trắng không hiểu vì sao.
+      if (!projects.some((pr) => pr.id === projectId)) projectId = projects[0]?.id ?? '';
+      projectName = projects.find((pr) => pr.id === projectId)?.name ?? '';
+      sites = allSites;
       layouts = allLayouts;
       currentUserEmail = me.email;
-      if (layouts.length > 0) {
-        selectedLayoutId = layouts[0].id;
-        await onLayoutChange();
-      }
+      selectedSiteId = pickDefaultSiteId(sites, layouts);
+      await onSiteChange();
       occupation = await api.reports.occupation({ projectId });
     } finally {
       loading = false;
     }
   });
 
-  async function onLayoutChange() {
-    const layout = layouts.find((l) => l.id === selectedLayoutId);
-    if (layout?.siteId) {
-      try {
-        const site = await api.sites.get(layout.siteId);
-        siteName = site.name;
-      } catch {
-        siteName = '';
-      }
-    } else {
-      siteName = '';
+  async function onProjectChange() {
+    projectName = projects.find((pr) => pr.id === projectId)?.name ?? '';
+    await loadOccupation();
+  }
+
+  async function onSiteChange() {
+    siteName = sites.find((st) => st.id === selectedSiteId)?.name ?? '';
+    selectedLayoutId = layoutsOfSite(layouts, selectedSiteId)[0]?.id ?? '';
+    if (!selectedLayoutId) {
+      // Mặt bằng chưa có layout nào — dọn sạch chứ đừng để số liệu cũ nằm lại
+      snapshots = [];
+      selectedDate = '';
+      summary = null;
+      byProcess = [];
+      chartData = [];
+      return;
     }
+    await onLayoutChange();
+  }
+
+  async function onLayoutChange() {
+    // Tên mặt bằng lấy thẳng từ ô chọn, không phải gọi API theo từng layout
+    siteName = sites.find((st) => st.id === selectedSiteId)?.name ?? '';
     snapshots = await api.snapshots.list(selectedLayoutId);
     if (snapshots.length > 0) {
       selectedDate = snapshots[0].date.slice(0, 10);
@@ -254,9 +279,12 @@
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-      <a href={`${base}/products/${projectId}`} class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors">
+      <a
+        href={projectId ? `${base}/products/${projectId}` : base || '/'}
+        class="flex items-center gap-1 text-white/70 hover:text-white text-sm transition-colors"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        Sản phẩm
+        {projectId ? 'Sản phẩm' : 'Trang chủ'}
       </a>
       <div class="h-5 w-px bg-white/20"></div>
       <h1 class="text-xl font-bold text-white flex-1">Báo cáo</h1>
@@ -277,9 +305,31 @@
           <button class="px-4 py-1.5 rounded-lg text-sm transition-colors {tab === 'process' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500 hover:text-gray-700'}" onclick={() => tab = 'process'}>Theo công đoạn</button>
           <button class="px-4 py-1.5 rounded-lg text-sm transition-colors {tab === 'occupation' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500 hover:text-gray-700'}" onclick={() => tab = 'occupation'}>Thời gian chiếm dụng</button>
         </div>
+        <select
+          bind:value={projectId}
+          onchange={onProjectChange}
+          title="Chọn dự án"
+          class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400"
+        >
+          {#each projects as pr}<option value={pr.id}>📁 {pr.name}</option>{/each}
+          {#if projects.length === 0}<option value="">Chưa có dự án</option>{/if}
+        </select>
         {#if tab !== 'occupation'}
-          <select bind:value={selectedLayoutId} onchange={onLayoutChange} class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400">
-            {#each layouts as l}<option value={l.id}>{l.name}</option>{/each}
+          <select
+            bind:value={selectedSiteId}
+            onchange={onSiteChange}
+            title="Chọn mặt bằng"
+            class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400"
+          >
+            {#each sites as st}
+              {@const n = layouts.filter((l) => l.siteId === st.id).length}
+              <option value={st.id}>🏭 {st.name}{n === 0 ? ' (chưa có layout)' : ''}</option>
+            {/each}
+            {#if sites.length === 0}<option value="">Chưa có mặt bằng</option>{/if}
+          </select>
+          <select bind:value={selectedLayoutId} onchange={onLayoutChange} disabled={siteLayouts.length === 0} class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 disabled:opacity-50">
+            {#each siteLayouts as l}<option value={l.id}>{l.name}</option>{/each}
+            {#if siteLayouts.length === 0}<option value="">Chưa có layout</option>{/if}
           </select>
           <select bind:value={selectedDate} onchange={loadReports} class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400">
             {#each snapshots as s}<option value={s.date.slice(0, 10)}>{fmt(s.date.slice(0, 10))}</option>{/each}

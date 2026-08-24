@@ -13,6 +13,7 @@
   import { createFurnitureModelWithGLB } from '$lib/utils/furnitureModelLoader';
   import { unorientDims } from '$lib/services/mapping';
   import { buildWallMesh } from '$lib/utils/wall3d';
+  import { decideCameraFit, initialCameraFitState, type CameraFitState } from '$lib/utils/cameraFit';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
 
   let container: HTMLDivElement;
@@ -767,6 +768,10 @@
         if (_isDraggingBlock && _dragMesh) {
           const pos = _dragMesh.position;
           moveFurniture(_dragFurnitureId, { x: pos.x, y: pos.z });
+        } else {
+          // Bấm mà không kéo = chọn block, để panel thuộc tính mở ra (đó là
+          // chỗ duy nhất chỉnh được cao độ).
+          selectedElementId.set(_dragFurnitureId);
         }
         _dragFurnitureId = null;
         _dragMesh = null;
@@ -846,7 +851,11 @@
         return;
       }
 
-      selectedElementId.set(null);
+      // Bấm ra chỗ trống mới bỏ chọn; bấm trúng block thì giữ nguyên lựa chọn
+      // vừa đặt ở pointerup (sự kiện click chạy sau pointerup).
+      if (raycaster.intersectObjects(wallGroup.children, true).length === 0) {
+        selectedElementId.set(null);
+      }
     });
 
     // Hover highlight in edit mode
@@ -1049,6 +1058,11 @@
     }
   }
 
+  // Cảnh 3D dựng lại sau MỌI thay đổi dữ liệu. Trước đây mỗi lần dựng lại đều
+  // canh khung camera, nên đặt thêm một block là view bị thu nhỏ về mặc định
+  // và người dùng phải zoom lại từ đầu. Chỉ canh khi thật sự cần.
+  let cameraFitState: CameraFitState = initialCameraFitState;
+
   function autoCenterCamera(_floor: Floor) {
     // Center on scene objects (furniture) if any exist, else default position
     const box = new THREE.Box3().setFromObject(wallGroup);
@@ -1219,7 +1233,14 @@
       wallGroup.add(holder);
     }
 
-    autoCenterCamera(floor);
+  }
+
+  /** Canh khung theo yêu cầu — nút trên thanh công cụ 3D */
+  function fitViewToScene() {
+    if (!currentFloor) return;
+    if (showAllFloors) autoCenterCameraAllFloors(get(currentProject)?.floors.length ?? 1);
+    else autoCenterCamera(currentFloor);
+    markSceneDirty();
   }
 
   /** Build all floors stacked vertically in 3D */
@@ -1228,7 +1249,6 @@
     if (!project || project.floors.length === 0) return;
     const activeF = project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
     buildWalls(activeF);
-    autoCenterCameraAllFloors(project.floors.length);
   }
   
   /** Build a single floor's furniture into a group at a Y offset with optional transparency */
@@ -1246,11 +1266,35 @@
     controls.update();
   }
   
-  function rebuildScene() {
+  /**
+   * Dựng lại cảnh. `forceFit` dành cho thao tác chủ ý của người dùng (đổi chế
+   * độ xem, bấm nút canh khung) — còn dựng lại vì dữ liệu đổi thì giữ nguyên
+   * góc nhìn, xem quy tắc ở decideCameraFit.
+   *
+   * Quyết định nằm ở đây chứ không trong buildWalls: chế độ xếp chồng đi qua
+   * buildAllFloorsStacked, trước đây nhánh đó tự canh khung vô điều kiện nên
+   * bật xếp chồng lên là lỗi zoom quay lại y như cũ.
+   */
+  function rebuildScene(forceFit = false) {
+    const floorCount = get(currentProject)?.floors.length ?? 1;
     if (showAllFloors) {
       buildAllFloorsStacked();
     } else if (currentFloor) {
       buildWalls(currentFloor);
+    }
+
+    if (currentFloor) {
+      const decision = decideCameraFit(
+        cameraFitState,
+        currentFloor.id,
+        wallGroup.children.length > 0,
+      );
+      cameraFitState = decision.next;
+      if (forceFit || decision.fit) {
+        if (showAllFloors) autoCenterCameraAllFloors(floorCount);
+        else autoCenterCamera(currentFloor);
+        cameraFitState = { ...cameraFitState, floorId: currentFloor.id };
+      }
     }
     markSceneDirty();
   }
@@ -1455,7 +1499,7 @@
   <div class="absolute top-4 right-4 z-50 flex gap-1.5">
     <!-- Multi-Floor Stacking Toggle -->
     <button
-      onclick={() => { showAllFloors = !showAllFloors; rebuildScene(); }}
+      onclick={() => { showAllFloors = !showAllFloors; rebuildScene(true); }}
       class="p-2 rounded-lg transition-colors {showAllFloors ? 'bg-purple-600 text-white ring-2 ring-purple-300' : 'bg-black/70 text-white hover:bg-black/80'}"
       title={showAllFloors ? 'Active Floor Only' : 'Show All Floors Stacked'}
       aria-label={showAllFloors ? 'Active Floor Only' : 'Show All Floors Stacked'}
@@ -1464,6 +1508,21 @@
         <rect x="4" y="14" width="16" height="4" rx="1"/>
         <rect x="4" y="8" width="16" height="4" rx="1" opacity="0.6"/>
         <rect x="4" y="2" width="16" height="4" rx="1" opacity="0.3"/>
+      </svg>
+    </button>
+
+    <!-- Fit View Button -->
+    <button
+      onclick={fitViewToScene}
+      class="p-2 rounded-lg bg-black/70 text-white hover:bg-black/80 transition-colors"
+      title="Canh khung vừa mặt bằng"
+      aria-label="Canh khung vừa mặt bằng"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 8V5a2 2 0 0 1 2-2h3"/>
+        <path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+        <path d="M21 16v3a2 2 0 0 1-2 2h-3"/>
+        <path d="M8 21H5a2 2 0 0 1-2-2v-3"/>
       </svg>
     </button>
 

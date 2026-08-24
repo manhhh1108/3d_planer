@@ -10,6 +10,45 @@ export type SaveState = 'saved' | 'unsaved' | 'saving';
 export const saveState = writable<SaveState>('saved');
 export const lastSavedAt = writable<Date | null>(null);
 
+/**
+ * Ngày mà editor đang soạn bố cục cho, null = hôm nay.
+ *
+ * Trước đây autosave luôn ghi vào hôm nay vì không có khái niệm này: bố trí
+ * cho ngày mai xong thì snapshot hôm nay bị đè bằng bố cục ngày mai. Sau khi
+ * "Lưu Snapshot" vào ngày X thì X trở thành ngày đích của cả autosave.
+ */
+export const workingDate = writable<string | null>(null);
+
+/** Ngày mà lần lưu tiếp theo sẽ ghi vào */
+export function saveTargetDate(): string {
+  return get(workingDate) ?? todayStr();
+}
+
+const AUTOSAVE_KEY = 'fm_autosave_enabled';
+
+function readAutoSavePref(): boolean {
+  try {
+    return localStorage.getItem(AUTOSAVE_KEY) !== '0';
+  } catch {
+    return true; // không đọc được localStorage thì cứ tự lưu, an toàn hơn là mất việc
+  }
+}
+
+/** Tự lưu sau mỗi thay đổi. Tắt được để soạn nhiều ngày mà không ghi lung tung. */
+export const autoSaveEnabled = writable<boolean>(readAutoSavePref());
+
+autoSaveEnabled.subscribe((on) => {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, on ? '1' : '0');
+  } catch {
+    /* chế độ ẩn danh — không nhớ được thì thôi */
+  }
+  if (!on && debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+});
+
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
 let skipNext = false;
@@ -34,6 +73,7 @@ export function markDirty() {
   if (isTimelineReadonly()) return; // đang xem snapshot cũ — không auto-save
   saveState.set('unsaved');
   if (debounceTimer) clearTimeout(debounceTimer);
+  if (!get(autoSaveEnabled)) return; // tắt tự lưu: vẫn báo "chưa lưu", chỉ không tự ghi
   debounceTimer = setTimeout(() => {
     autoSave();
   }, 5000);
@@ -60,11 +100,13 @@ function captureThumbnail(projectId: string) {
 
 async function autoSave() {
   if (isTimelineReadonly()) return;
+  if (!get(autoSaveEnabled)) return;
   const p = get(currentProject);
   if (!p) return;
   saveState.set('saving');
   try {
-    await getActiveStore().save(p);
+    // Ghi vào ngày đang soạn, không mặc định hôm nay
+    await getActiveStore().save(p, saveTargetDate());
     captureThumbnail(p.id);
     saveState.set('saved');
     lastSavedAt.set(new Date());
@@ -80,11 +122,14 @@ export async function manualSave(date?: string) {
   if (debounceTimer) clearTimeout(debounceTimer);
   const p = get(currentProject);
   if (!p) return;
+  const target = date ?? saveTargetDate();
   saveState.set('saving');
   try {
-    await getActiveStore().save(p, date ?? todayStr());
+    await getActiveStore().save(p, target);
     captureThumbnail(p.id);
     saveSnapshot(p, 'Manual save');
+    // Lưu sang ngày khác = từ giờ đang soạn cho ngày đó
+    workingDate.set(target === todayStr() ? null : target);
     saveState.set('saved');
     lastSavedAt.set(new Date());
   } catch (e) {
@@ -95,6 +140,11 @@ export async function manualSave(date?: string) {
 }
 
 /** Mark as saved without triggering dirty (e.g. after loadProject) */
+/** Về lại chế độ soạn cho hôm nay */
+export function resetWorkingDate() {
+  workingDate.set(null);
+}
+
 export function markClean() {
   if (debounceTimer) clearTimeout(debounceTimer);
   saveState.set('saved');

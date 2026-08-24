@@ -11,7 +11,7 @@
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
   import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
   import PlanProductSidebar from '$lib/components/editor/PlanProductSidebar.svelte';
-  import { markClean } from '$lib/stores/saveStatus';
+  import { markClean, resetWorkingDate } from '$lib/stores/saveStatus';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
   import PropertiesPanel from '$lib/components/sidebar/PropertiesPanel.svelte';
@@ -138,6 +138,8 @@
           } catch {
             // non-critical: background won't show but editor still works
           }
+          // Mở layout mới thì soạn cho hôm nay, không mang theo ngày của layout trước
+          resetWorkingDate();
           markClean();
         } catch (e: any) {
           loadError = e?.message ?? 'Không tải được layout từ server';

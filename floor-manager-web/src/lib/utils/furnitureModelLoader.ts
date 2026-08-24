@@ -210,6 +210,43 @@ function loadGLBModel(catalogId: string): Promise<THREE.Group | null> {
 }
 
 /**
+ * Tô mesh CAD theo màu sản phẩm — cùng màu đang thấy ở 2D.
+ *
+ * GLB do backend sinh từ CAD không gắn vật liệu nào (xem server/cad/glb.ts).
+ * Theo chuẩn glTF, primitive thiếu material dùng material mặc định với
+ * metallicFactor = 1.0; trong three.js kim loại hoàn toàn mà không có
+ * environment map thì render ra đen kịt — đó là lý do block CAD toàn màu đen.
+ *
+ * Cũng vá luôn hai chuyện hay gặp ở mesh CAD: thiếu pháp tuyến (không có thì
+ * mất hoàn toàn khối) và mặt bị lật ngược (nên vẽ cả hai mặt).
+ */
+export function applyCadMaterial(model: THREE.Object3D, color: string): void {
+  const material = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: 0.75,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+
+  model.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+
+    // Vật liệu cũ của GLB không còn ai dùng — giải phóng trước khi thay
+    const old = mesh.material;
+    if (Array.isArray(old)) old.forEach((m) => m.dispose());
+    else old?.dispose();
+
+    if (mesh.geometry && !mesh.geometry.getAttribute('normal')) {
+      mesh.geometry.computeVertexNormals();
+    }
+    mesh.material = material;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+  });
+}
+
+/**
  * Scale a GLB model to match our catalog dimensions.
  * Kenney models are unit-scale (~1m tall). We need to match our cm dimensions.
  */
@@ -307,6 +344,9 @@ export function createFurnitureModelWithGLB(
           if (cadUrl) {
             // CAD mesh is in meters, scale to cm to match our coordinate system
             scaleToFit(glbModel, def, { file: 'cad', scale: 100 });
+            // Chỉ tô cho mesh CAD. Model Kenney có vật liệu/texture riêng, tô
+            // đè lên sẽ làm chúng bệt màu.
+            applyCadMaterial(glbModel, def.color);
           } else if (mapping) {
             scaleToFit(glbModel, def, mapping);
           }

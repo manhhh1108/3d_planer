@@ -139,6 +139,10 @@
       </div>
       {#if user}
         <div class="flex items-center gap-2">
+          {#if projects.length > 0}
+            <!-- Vào báo cáo của dự án đầu tiên; đổi dự án ngay trong trang đó -->
+            <a href="{base}/reports/{projects[0].id}" class="px-3 py-1.5 text-xs font-medium text-white bg-white/15 rounded-lg hover:bg-white/25 transition-colors">📊 Báo cáo</a>
+          {/if}
           {#if user.role === 'ADMIN'}
             <a href="{base}/admin/users" class="px-3 py-1.5 text-xs font-medium text-white/80 bg-white/10 rounded-lg hover:bg-white/20 transition-colors">Quản lý người dùng</a>
           {/if}

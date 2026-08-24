@@ -4,7 +4,7 @@
   import { positionToItem, todayStr } from '$lib/services/mapping';
   import { currentProject } from '$lib/stores/project';
   import { timelineDate } from '$lib/stores/timeline';
-  import { markClean, lastSavedAt } from '$lib/stores/saveStatus';
+  import { markClean, lastSavedAt, resetWorkingDate } from '$lib/stores/saveStatus';
   import { backendStore } from '$lib/services/datastore';
 
   let { layoutId }: { layoutId: string } = $props();
@@ -62,6 +62,7 @@
     loading = true;
     try {
       timelineDate.set(null);
+      resetWorkingDate();
       const project = await backendStore.load(layoutId);
       if (project) {
         currentProject.set(project);

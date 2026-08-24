@@ -8,7 +8,7 @@
   import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
   import SettingsDialog from './SettingsDialog.svelte';
   import SaveModal from '$lib/components/editor/SaveModal.svelte';
-  import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
+  import { saveState, lastSavedAt, manualSave, initAutoSave, autoSaveEnabled, workingDate, resetWorkingDate, markDirty } from '$lib/stores/saveStatus';
   import { timelineReadonly } from '$lib/stores/timeline';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
   import { currentUser } from '$lib/stores/auth';
@@ -69,6 +69,20 @@
 
   function openSaveModal() {
     showSaveModal = true;
+  }
+
+  function toggleAutoSave() {
+    const turningOn = !$autoSaveEnabled;
+    autoSaveEnabled.set(turningOn);
+    // Bật lại giữa chừng mà đang có thay đổi chưa lưu thì hẹn giờ lưu ngay,
+    // không bắt người dùng phải chạm vào bản vẽ mới kích hoạt.
+    if (turningOn && $saveState === 'unsaved') markDirty();
+  }
+
+  /** dd/MM cho nhãn ngày đang soạn */
+  function fmtDay(iso: string): string {
+    const [y, m, d] = iso.split('-');
+    return y && m && d ? `${d}/${m}` : iso;
   }
 
   async function confirmSave(date: string) {
@@ -453,16 +467,42 @@
     </div>
   {/if}
 
+  {#if $workingDate}
+    <div class="flex items-center gap-1 max-md:hidden">
+      <span
+        class="text-[11px] font-semibold text-amber-300 bg-amber-400/15 border border-amber-300/30 rounded-full px-2 py-0.5 whitespace-nowrap"
+        title="Mọi lần lưu — kể cả tự lưu — đang ghi vào ngày này, không phải hôm nay"
+      >📅 Đang soạn cho {fmtDay($workingDate)}</span>
+      <button
+        onclick={resetWorkingDate}
+        class="text-[11px] text-white/60 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10 whitespace-nowrap"
+        title="Quay lại soạn cho hôm nay"
+      >↩ Hôm nay</button>
+    </div>
+  {/if}
+
+  <button
+    onclick={toggleAutoSave}
+    class="text-[11px] font-medium px-1.5 py-0.5 rounded transition-colors max-md:hidden {$autoSaveEnabled ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-amber-300 bg-amber-400/15 hover:bg-amber-400/25'}"
+    title={$autoSaveEnabled
+      ? 'Tự lưu đang BẬT — mỗi thay đổi tự ghi sau 5 giây. Bấm để tắt.'
+      : 'Tự lưu đang TẮT — phải bấm nút lưu thì mới ghi. Bấm để bật lại.'}
+  >
+    {$autoSaveEnabled ? '⏱ Tự lưu' : '⏸ Tự lưu: TẮT'}
+  </button>
+
   <span
-    class="text-[11px] font-medium transition-all duration-300 max-md:hidden {$saveState === 'saved' ? 'text-emerald-400' : $saveState === 'saving' ? 'text-amber-300 animate-pulse' : 'text-white/50'}"
-    title={lastSavedText || 'Not saved yet'}
+    class="text-[11px] font-medium transition-all duration-300 max-md:hidden {$saveState === 'saved' ? 'text-emerald-400' : $saveState === 'saving' ? 'text-amber-300 animate-pulse' : $autoSaveEnabled ? 'text-white/50' : 'text-amber-300 font-semibold'}"
+    title={lastSavedText || 'Chưa lưu lần nào'}
   >
     {#if $saveState === 'saving'}
       Saving…
     {:else if $saveState === 'saved'}
       Saved ✓
-    {:else}
+    {:else if $autoSaveEnabled}
       Unsaved •
+    {:else}
+      Chưa lưu — bấm {saveLabel}
     {/if}
   </span>
   <button
