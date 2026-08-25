@@ -3346,13 +3346,14 @@
     class="block w-full h-full touch-none"
     tabindex="0"
     aria-label="Floor plan editor canvas"
-    style="cursor: {cursorStyle}"
+    style="cursor: {cursorStyle}; -webkit-user-drag: none;"
     onmousedown={onMouseDown}
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
     ondblclick={onDblClick}
     onwheel={onWheel}
     oncontextmenu={onContextMenu}
+    ondragstart={(e) => e.preventDefault()}
     ondragover={onDragOver}
     ondragleave={onDragLeave}
     ondrop={onDrop}
@@ -3468,7 +3469,8 @@
       width="180"
       height="120"
       class="absolute bottom-10 right-2 rounded-lg shadow-lg border border-gray-300 cursor-crosshair bg-white max-md:hidden"
-      style="z-index: 15;"
+      style="z-index: 15; -webkit-user-drag: none;"
+      ondragstart={(e) => e.preventDefault()}
       onclick={onMinimapClick}
     ></canvas>
   {/if}
@@ -3527,109 +3529,6 @@
         <span>Dimensions</span>
       </label>
     </div>
-  {/if}
-
-  <!-- Contextual Toolbar (hidden while the integrated elevation view covers the canvas) -->
-  {#if (currentSelectedId || currentSelectedIds.size > 0) && currentFloor && currentTool === 'select' && !elevationOpen}
-    {@const el = (() => {
-      const f = currentFloor;
-      const wall = f.walls.find(w => w.id === currentSelectedId);
-      if (wall) {
-        const s = worldToScreen((wall.start.x + wall.end.x) / 2, (wall.start.y + wall.end.y) / 2);
-        return { type: 'wall', pos: s };
-      }
-      const door = f.doors.find(d => d.id === currentSelectedId);
-      if (door) {
-        const w = f.walls.find(w => w.id === door.wallId);
-        if (w) {
-          const s = worldToScreen(w.start.x + (w.end.x - w.start.x) * door.position, w.start.y + (w.end.y - w.start.y) * door.position);
-          return { type: 'door', pos: s, door };
-        }
-      }
-      const win = f.windows.find(w => w.id === currentSelectedId);
-      if (win) {
-        const w = f.walls.find(w => w.id === win.wallId);
-        if (w) {
-          const s = worldToScreen(w.start.x + (w.end.x - w.start.x) * win.position, w.start.y + (w.end.y - w.start.y) * win.position);
-          return { type: 'window', pos: s };
-        }
-      }
-      const furn = f.furniture.find(fi => fi.id === currentSelectedId);
-      if (furn) {
-        const s = worldToScreen(furn.position.x, furn.position.y);
-        return { type: 'furniture', pos: s };
-      }
-      return null;
-    })()}
-    {#if el}
-      <div
-        class="absolute z-40 flex items-center gap-0.5 bg-white rounded-lg shadow-lg border border-gray-200 px-1 py-0.5"
-        style="left: {el.pos.x}px; top: {el.pos.y - 44}px; transform: translateX(-50%);"
-      >
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded {duplicateBlocked ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'}"
-          title={duplicateBlocked ?? 'Duplicate'}
-          aria-label="Duplicate"
-          disabled={!!duplicateBlocked}
-          onclick={() => {
-            if (!currentSelectedId || !currentFloor) return;
-            let newId: string | null = null;
-            if (el.type === 'door') newId = duplicateDoor(currentSelectedId);
-            else if (el.type === 'window') newId = duplicateWindow(currentSelectedId);
-            else if (el.type === 'furniture') newId = duplicateFurniture(currentSelectedId);
-            else if (el.type === 'wall') newId = duplicateWall(currentSelectedId);
-            if (newId) selectedElementId.set(newId);
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-        </button>
-        {#if el.type === 'door' && el.door}
-          <button
-            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-            title="Flip swing"
-            aria-label="Flip swing"
-            onclick={() => { if (el.door) updateDoor(el.door.id, { swingDirection: el.door.swingDirection === 'left' ? 'right' : 'left' }); }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
-          </button>
-        {/if}
-        {#if el.type === 'wall' && currentSelectedId && currentSelectedIds.size === 0}
-          <button
-            class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-            title="Split wall at midpoint"
-            aria-label="Split wall at midpoint"
-            onclick={() => {
-              if (currentSelectedId) {
-                const newId = splitWall(currentSelectedId, 0.5);
-                if (newId) selectedElementId.set(null);
-              }
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M4 12h4M16 12h4"/></svg>
-          </button>
-        {/if}
-        <div class="w-px h-5 bg-gray-200 mx-0.5"></div>
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
-          title="Delete"
-          aria-label="Delete"
-          onclick={() => {
-            if (currentSelectedIds.size > 0) {
-              beginUndoGroup();
-              for (const id of currentSelectedIds) removeElement(id);
-              endUndoGroup();
-              selectedElementIds.set(new Set());
-              selectedElementId.set(null);
-            } else if (currentSelectedId) {
-              removeElement(currentSelectedId);
-              selectedElementId.set(null);
-            }
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14"/></svg>
-        </button>
-      </div>
-    {/if}
   {/if}
   {#if currentTool === 'wall' && wallStart}
     <div class="absolute top-2 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1 rounded-full text-xs shadow">
