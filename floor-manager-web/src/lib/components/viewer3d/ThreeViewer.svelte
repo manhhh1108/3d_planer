@@ -13,7 +13,8 @@
   import { createFurnitureModelWithGLB } from '$lib/utils/furnitureModelLoader';
   import { unorientDims } from '$lib/services/mapping';
   import { buildWallMesh } from '$lib/utils/wall3d';
-  import { decideCameraFit, initialCameraFitState, type CameraFitState } from '$lib/utils/cameraFit';
+  import { applyOrientation } from '$lib/utils/blockOrientation';
+  import { decideCameraFit, initialCameraFitState, computeFitBox, type CameraFitState } from '$lib/utils/cameraFit';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
 
   let container: HTMLDivElement;
@@ -1065,8 +1066,7 @@
 
   function autoCenterCamera(_floor: Floor) {
     // Center on scene objects (furniture) if any exist, else default position
-    const box = new THREE.Box3().setFromObject(wallGroup);
-    if (bgPlane) box.expandByObject(bgPlane);
+    const box = computeFitBox(wallGroup, bgPlane);
     if (!box.isEmpty()) {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
@@ -1149,39 +1149,14 @@
       plane.renderOrder = -1;
       bgPlane = plane;
       scene.add(plane);
+      // Nền nạp bất đồng bộ. Nếu lúc canh khung chưa có nền VÀ mặt bằng chưa
+      // đặt gì thì camera đang ở vị trí mặc định — canh lại để thấy cái sân,
+      // thay vì nhìn vào khoảng không.
+      if (wallGroup.children.length === 0 && currentFloor) autoCenterCamera(currentFloor);
       markSceneDirty();
     };
     img.onerror = () => { /* nền lỗi -> bỏ qua, vẫn hiện furniture */ };
     img.src = bgUrl;
-  }
-
-  /**
-   * Đặt block lên đúng mặt tiếp sàn.
-   *
-   * Mesh được dựng theo kích thước GỐC (lúc nằm đáy) rồi xoay 90°, chứ không
-   * kéo giãn theo kích thước đã hoán vị — kéo giãn làm khối CAD dài 4m bị bóp
-   * méo thành khối cao 4m thay vì được dựng đứng lên.
-   *
-   * Quy ước trục: width=X, height=Y, depth=Z.
-   *  - side (mặt bên chạm sàn): depth gốc thành chiều cao -> xoay quanh X
-   *  - end  (mặt đầu chạm sàn): width gốc thành chiều cao -> xoay quanh Z
-   */
-  function applyOrientation(model: THREE.Object3D, o: string | undefined) {
-    model.position.set(0, 0, 0);
-    model.rotation.set(0, 0, 0);
-    if (o === 'side') model.rotation.x = Math.PI / 2;
-    else if (o === 'end') model.rotation.z = Math.PI / 2;
-
-    // Xoay quanh gốc làm block lệch khỏi tâm và chìm dưới sàn — kéo lại cho
-    // footprint đúng tâm và đáy chạm y=0.
-    model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model);
-    if (box.isEmpty()) return;
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    model.position.x -= center.x;
-    model.position.z -= center.z;
-    model.position.y -= box.min.y;
   }
 
   function buildWalls(floor: Floor) {

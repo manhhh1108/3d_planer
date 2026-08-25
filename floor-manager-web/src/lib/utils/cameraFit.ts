@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 /**
  * Khi nào thì canh lại khung camera 3D.
  *
@@ -43,4 +45,21 @@ export function decideCameraFit(
 			hadContent: hasContent,
 		},
 	};
+}
+
+/**
+ * Khối bao dùng để canh khung camera.
+ *
+ * Lấy theo BLOCK và TƯỜNG, KHÔNG lấy theo nền mặt bằng: một bãi 100×60m mà chỉ
+ * có vài block xếp ở một góc thì bao cả nền vào khung sẽ làm block bé như hạt
+ * gạo, dồn hết về góc. Chỉ khi chưa đặt gì mới lùi về nền, để mặt bằng trống
+ * vẫn có cái để nhìn.
+ */
+export function computeFitBox(
+	items: THREE.Object3D,
+	background: THREE.Object3D | null,
+): THREE.Box3 {
+	const fromItems = new THREE.Box3().setFromObject(items);
+	if (!fromItems.isEmpty()) return fromItems;
+	return background ? new THREE.Box3().setFromObject(background) : fromItems;
 }
