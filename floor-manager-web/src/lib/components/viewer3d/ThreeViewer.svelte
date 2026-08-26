@@ -1087,8 +1087,12 @@
       child.traverse((obj: any) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
-          if (Array.isArray(obj.material)) obj.material.forEach((m: any) => m.dispose());
-          else obj.material.dispose();
+          const disposeMaterial = (m: any) => {
+            if (m.map) m.map.dispose();
+            m.dispose();
+          };
+          if (Array.isArray(obj.material)) obj.material.forEach(disposeMaterial);
+          else disposeMaterial(obj.material);
         }
       });
       group.remove(child);
@@ -1103,6 +1107,53 @@
     if (mat.map) mat.map.dispose();
     mat.dispose();
     bgPlane = null;
+  }
+
+  function createBlockNameLabel(text: string): THREE.Sprite {
+    const fontSize = 30;
+    const paddingX = 18;
+    const paddingY = 10;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const measureCanvas = document.createElement('canvas');
+    const measureCx = measureCanvas.getContext('2d')!;
+    measureCx.font = `600 ${fontSize}px Arial, sans-serif`;
+    const textWidth = Math.ceil(measureCx.measureText(text).width);
+    const width = textWidth + paddingX * 2;
+    const height = fontSize + paddingY * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(width * dpr);
+    canvas.height = Math.ceil(height * dpr);
+    const cx = canvas.getContext('2d')!;
+    cx.scale(dpr, dpr);
+    cx.font = `600 ${fontSize}px Arial, sans-serif`;
+    cx.textAlign = 'center';
+    cx.textBaseline = 'middle';
+    cx.fillStyle = 'rgba(17, 24, 39, 0.86)';
+    const radius = 8;
+    cx.beginPath();
+    cx.roundRect(0, 0, width, height, radius);
+    cx.fill();
+    cx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    cx.lineWidth = 2;
+    cx.stroke();
+    cx.fillStyle = '#ffffff';
+    cx.fillText(text, width / 2, height / 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.name = 'block_name_label';
+    sprite.renderOrder = 999;
+    sprite.scale.set(width * 0.9, height * 0.9, 1);
+    sprite.raycast = () => {};
+    return sprite;
   }
 
   /** Dựng mặt phẳng sàn từ nền DXF (SVG) của layout, khớp toạ độ với canvas 2D:
@@ -1205,6 +1256,11 @@
       // Tag for drag-and-drop raycasting
       holder.userData.furnitureId = fi.id;
       holder.traverse((child) => { child.userData.furnitureId = fi.id; });
+      const label = createBlockNameLabel(cat.name);
+      const box = new THREE.Box3().setFromObject(holder);
+      const size = box.getSize(new THREE.Vector3());
+      label.position.set(0, size.y + 45, 0);
+      holder.add(label);
       wallGroup.add(holder);
     }
 
