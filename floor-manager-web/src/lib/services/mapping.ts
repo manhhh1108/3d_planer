@@ -26,6 +26,8 @@ export function orientedDims(
 			return { width: def.width, depth: def.height, height: def.depth };
 		case 'end':
 			return { width: def.height, depth: def.depth, height: def.width };
+		// Lật úp chỉ quay block 180°, ba chiều giữ nguyên như khi nằm đáy
+		case 'top':
 		default:
 			return { width: def.width, depth: def.depth, height: def.height };
 	}
@@ -49,6 +51,7 @@ export function unorientDims(
 		case 'end':
 			// end: {h, d, w} <- gốc {w, d, h}
 			return { width: shown.height, depth: shown.depth, height: shown.width };
+		case 'top':
 		default:
 			return { ...shown };
 	}

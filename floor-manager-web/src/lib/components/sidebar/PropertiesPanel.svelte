@@ -124,17 +124,25 @@
     updateFurniture(selectedFurniture.id, { color: undefined, width: undefined, depth: undefined, height: undefined, material: undefined, orientation: 'bottom', elevation: 0 });
   }
 
-  /** Lật block: đổi mặt tiếp sàn -> ghi override kích thước theo hoán vị W/D/H của catalog */
+  /**
+   * Đổi mặt tiếp sàn.
+   *
+   * Tư thế nào làm hoán vị W/D/H thì ghi đè kích thước; tư thế giữ nguyên ba
+   * chiều (nằm đáy, lật úp) thì xoá override để block bám theo catalog — có
+   * override thừa thì sửa kích thước sản phẩm sau này sẽ không ăn.
+   */
   function setBlockOrientation(o: BlockOrientation) {
     if (!selectedFurniture) return;
     const def = getCatalogItem(selectedFurniture.catalogId);
     if (!def) return;
-    if (o === 'bottom') {
-      updateFurniture(selectedFurniture.id, { orientation: 'bottom', width: undefined, depth: undefined, height: undefined });
-    } else {
-      const d = orientedDims(def, o);
-      updateFurniture(selectedFurniture.id, { orientation: o, width: d.width, depth: d.depth, height: d.height });
-    }
+    const d = orientedDims(def, o);
+    const sameAsCatalog = d.width === def.width && d.depth === def.depth && d.height === def.height;
+    updateFurniture(
+      selectedFurniture.id,
+      sameAsCatalog
+        ? { orientation: o, width: undefined, depth: undefined, height: undefined }
+        : { orientation: o, width: d.width, depth: d.depth, height: d.height },
+    );
   }
 
   let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage));
@@ -270,15 +278,16 @@
       <!-- Mặt tiếp sàn (lật block) -->
       <div class="block">
         <span class="text-xs text-gray-500">Mặt tiếp sàn (lật block)</span>
-        <div class="flex gap-1 mt-1">
+        <div class="grid grid-cols-2 gap-1 mt-1">
           {#each [
             { o: 'bottom', label: '⬓ Đáy', hint: 'Đặt đáy xuống sàn (mặc định)' },
+            { o: 'top', label: '⬒ Úp', hint: 'Lật úp — mặt trên chạm sàn' },
             { o: 'side', label: '◨ Nghiêng', hint: 'Lật nằm nghiêng — mặt bên chạm sàn' },
             { o: 'end', label: '▯ Dựng', hint: 'Dựng đứng — mặt đầu chạm sàn' },
           ] as opt}
             <button
               onclick={() => setBlockOrientation(opt.o as BlockOrientation)}
-              class="flex-1 px-1 py-1.5 border rounded text-xs transition-colors {(selectedFurniture.orientation ?? 'bottom') === opt.o ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}"
+              class="px-1 py-1.5 border rounded text-xs transition-colors {(selectedFurniture.orientation ?? 'bottom') === opt.o ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}"
               title={opt.hint}
             >{opt.label}</button>
           {/each}

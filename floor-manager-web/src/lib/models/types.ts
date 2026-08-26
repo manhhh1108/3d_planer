@@ -54,7 +54,14 @@ export interface Window {
 }
 
 /** Mặt tiếp sàn của block: bottom = đáy (mặc định), side = nằm nghiêng (mặt bên), end = dựng đứng (mặt đầu) */
-export type BlockOrientation = 'bottom' | 'side' | 'end';
+/**
+ * Mặt của block đang tiếp sàn.
+ *  bottom — đáy chạm sàn (mặc định)
+ *  top    — lật úp, mặt trên chạm sàn (dựng ngược lại cho an toàn khi cẩu/kê)
+ *  side   — nằm nghiêng, mặt bên chạm sàn
+ *  end    — dựng đứng, mặt đầu chạm sàn
+ */
+export type BlockOrientation = 'bottom' | 'top' | 'side' | 'end';
 
 export interface FurnitureItem {
   id: string;

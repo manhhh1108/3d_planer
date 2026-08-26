@@ -6,6 +6,7 @@
  * thành khối cao 4m thay vì được dựng đứng lên.
  *
  * Quy ước trục: width=X, height=Y, depth=Z.
+ *  - top  (lật úp): quay 180° quanh X, ba chiều giữ nguyên
  *  - side (mặt bên chạm sàn): depth gốc thành chiều cao -> xoay quanh X
  *  - end  (mặt đầu chạm sàn): width gốc thành chiều cao -> xoay quanh Z
  */
@@ -18,7 +19,8 @@ import * as THREE from 'three';
 export function applyOrientation(model: THREE.Object3D, orientation: string | undefined): void {
 	model.position.set(0, 0, 0);
 	model.rotation.set(0, 0, 0);
-	if (orientation === 'side') model.rotation.x = Math.PI / 2;
+	if (orientation === 'top') model.rotation.x = Math.PI;
+	else if (orientation === 'side') model.rotation.x = Math.PI / 2;
 	else if (orientation === 'end') model.rotation.z = Math.PI / 2;
 
 	// Box3.setFromObject đo trong TOẠ ĐỘ THẾ GIỚI. Hàm này còn được gọi lại lúc
