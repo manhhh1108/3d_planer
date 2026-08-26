@@ -783,8 +783,7 @@
         controls.enabled = true;
         return;
       }
-      // Only select in edit mode, and only if mouse didn't move much (not a drag/orbit)
-      if (!editMode) return;
+      // Kéo chuột để xoay góc nhìn thì không tính là một cú click
       const dx = e.clientX - pointerDownPos.x;
       const dy = e.clientY - pointerDownPos.y;
       if (Math.hypot(dx, dy) > 5) return;
@@ -794,6 +793,17 @@
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
+
+      // Bấm ra chỗ trống thì bỏ chọn. Phải chạy cả khi KHÔNG ở Edit Mode, vì
+      // chọn block cũng chạy ngoài Edit Mode (nhánh _dragFurnitureId phía trên).
+      // Cổng `if (!editMode) return` trước đây chặn mất khúc này: chọn được mà
+      // bỏ chọn không được, nên panel thuộc tính đóng không nổi.
+      if (raycaster.intersectObjects(wallGroup.children, true).length === 0) {
+        selectedElementId.set(null);
+      }
+
+      // Đặt camera / đặt block là chức năng riêng của Edit Mode
+      if (!editMode) return;
 
       // Camera placement mode: first click = position, second click = look-at target
       if (cameraPlacementMode) {
@@ -852,11 +862,6 @@
         return;
       }
 
-      // Bấm ra chỗ trống mới bỏ chọn; bấm trúng block thì giữ nguyên lựa chọn
-      // vừa đặt ở pointerup (sự kiện click chạy sau pointerup).
-      if (raycaster.intersectObjects(wallGroup.children, true).length === 0) {
-        selectedElementId.set(null);
-      }
     });
 
     // Hover highlight in edit mode

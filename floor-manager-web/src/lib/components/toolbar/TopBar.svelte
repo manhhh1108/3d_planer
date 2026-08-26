@@ -67,6 +67,15 @@
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
   }
 
+  /**
+   * Các điều khiển chỉ có tác dụng trên bản vẽ 2D (chọn/kéo, phóng to).
+   *
+   * Chúng vẫn được RENDER ở mọi chế độ, chỉ mờ đi và không bấm được. Trước đây
+   * gỡ hẳn khỏi DOM nên đổi 2D/3D là cả thanh công cụ dồn ngang, nút vừa bấm
+   * nhảy đi chỗ khác và rất dễ bấm nhầm.
+   */
+  let planControlsActive = $derived(mode === '2d' && !$elevationWallId);
+
   function openSaveModal() {
     showSaveModal = true;
   }
@@ -294,9 +303,13 @@
   </button>
 
   <!-- Select / Pan toggle (mobile pans with two fingers; toggle lives in overflow menu) -->
-  {#if mode === '2d'}
-  <div class="flex bg-white/15 rounded-full p-0.5 max-md:hidden">
+  <div
+    class="flex bg-white/15 rounded-full p-0.5 max-md:hidden transition-opacity {planControlsActive ? '' : 'opacity-40 pointer-events-none'}"
+    aria-hidden={!planControlsActive}
+    title={planControlsActive ? '' : 'Chỉ dùng được ở chế độ 2D'}
+  >
     <button
+      disabled={!planControlsActive}
       onclick={() => panMode.set(false)}
       class="px-2 py-1 text-xs font-semibold rounded-full transition-colors {!$panMode ? 'bg-white text-slate-800' : 'text-white/80 hover:text-white'}"
       title="Select mode (V)"
@@ -305,6 +318,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
     </button>
     <button
+      disabled={!planControlsActive}
       onclick={() => panMode.set(true)}
       class="px-2 py-1 text-xs font-semibold rounded-full transition-colors {$panMode ? 'bg-white text-slate-800' : 'text-white/80 hover:text-white'}"
       title="Pan mode (H)"
@@ -313,7 +327,6 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v1"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
     </button>
   </div>
-  {/if}
 
   <!-- Furniture visibility toggle -->
   <button
@@ -342,27 +355,32 @@
   </div>
 
   <!-- Zoom controls (2D plan only; mobile uses pinch + overflow menu) -->
-  {#if mode === '2d' && !$elevationWallId}
-    <div class="flex items-center gap-1 bg-white/15 rounded-full p-0.5 max-md:hidden">
+  <div
+    class="flex items-center gap-1 bg-white/15 rounded-full p-0.5 max-md:hidden transition-opacity {planControlsActive ? '' : 'opacity-40 pointer-events-none'}"
+    aria-hidden={!planControlsActive}
+    title={planControlsActive ? '' : 'Ở chế độ 3D dùng con lăn chuột để phóng to'}
+  >
       <button
+        disabled={!planControlsActive}
         onclick={() => canvasZoom.update(z => Math.max(0.1, z / 1.25))}
         class="w-7 h-7 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors text-sm font-bold"
         title="Zoom Out (−)"
         aria-label="Zoom Out"
       >−</button>
       <button
+        disabled={!planControlsActive}
         onclick={() => canvasZoom.set(1)}
         class="px-2 py-1 text-xs font-medium text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors min-w-[3rem] text-center"
         title="Reset Zoom (100%)"
       >{Math.round($canvasZoom * 100)}%</button>
       <button
+        disabled={!planControlsActive}
         onclick={() => canvasZoom.update(z => Math.min(10, z * 1.25))}
         class="w-7 h-7 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors text-sm font-bold"
         title="Zoom In (+)"
         aria-label="Zoom In"
       >+</button>
-    </div>
-  {/if}
+  </div>
 
   <!-- Settings button -->
   <button
