@@ -80,6 +80,7 @@ model Layout {
   snapshots      Snapshot[]
   plans      Plan[]
   comments   Comment[]
+  locks      LayoutLock[]
 
   @@map("layouts")
 }
@@ -139,6 +140,10 @@ model Position {
   orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
   // Cao do dat block so voi san, tinh bang met (0 = dat truc tiep xuong san)
   elevationM  Float    @default(0) @map("elevation_m")
+  // Email nguoi cuoi cung dat/di chuyen block nay. Server tu suy ra bang cach
+  // so sanh voi ban luu truoc, khong tin gia tri client gui len.
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @default(now()) @map("updated_at")
   snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -172,6 +177,26 @@ model PlanItem {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("plan_items")
+}
+
+/**
+ * Khoa mem cho mot (layout, ngay): bao cho nguoi vao sau biet ai dang sua.
+ * Khong chan xem, khong chan chinh sua tai cho — chi chan LUU.
+ * Co han (expiresAt) + heartbeat de khong bi ket khoa khi ai do dong tab.
+ */
+model LayoutLock {
+  id        String   @id @default(cuid())
+  layoutId  String   @map("layout_id")
+  date      DateTime @db.Date
+  userId    String   @map("user_id")
+  userEmail String   @map("user_email")
+  userName  String   @map("user_name")
+  acquiredAt DateTime @default(now()) @map("acquired_at")
+  expiresAt DateTime @map("expires_at")
+  layout    Layout   @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+
+  @@unique([layoutId, date])
+  @@map("layout_locks")
 }
 
 model Comment {

@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { snapshotThumbPaths } from '../cad/paths.js';
+import { activeLock } from './layouts.js';
 
 const router = Router();
 
@@ -79,6 +80,36 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+type IncomingPosition = {
+  productId: string;
+  x: number;
+  y: number;
+  rotation?: number;
+  scale?: number;
+  orientation?: string;
+  elevationM?: number;
+};
+
+/**
+ * Khoá nhận dạng một block theo hình học, làm tròn tới mm.
+ *
+ * Mỗi lần lưu là xoá sạch positions rồi ghi lại, nên không có id bền để đối
+ * chiếu. Nhưng hai block khác nhau không thể cùng sản phẩm VÀ cùng toạ độ, nên
+ * hình học là khoá đủ tin cậy: khớp = block không bị đụng tới, giữ nguyên
+ * người thao tác cũ; không khớp = vừa bị đặt hoặc di chuyển, ghi người hiện tại.
+ */
+function positionKey(p: {
+  productId: string; x: number; y: number;
+  rotation?: number | null; scale?: number | null;
+  orientation?: string | null; elevationM?: number | null;
+}): string {
+  const r = (n: number | null | undefined, d = 0) => Math.round(((n ?? d) as number) * 1000);
+  return [
+    p.productId, r(p.x), r(p.y), r(p.rotation), r(p.scale, 1),
+    p.orientation ?? 'bottom', r(p.elevationM),
+  ].join('|');
+}
+
 // POST / — upsert snapshot by layoutId+date, manage positions
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -99,19 +130,48 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     const parsedDate = new Date(date);
+    const me = req.user!;
+
+    // Khoá mềm: người khác đang mở đúng (layout, ngày) này thì không cho lưu.
+    // Họ vẫn xem và chỉnh sửa tại chỗ được — chỉ lưu là bị chặn.
+    const lock = await activeLock(layoutId, parsedDate);
+    if (lock && lock.userId !== me.id) {
+      return res.status(423).json({
+        error: `Đang được ${lock.userName} chỉnh sửa — chưa lưu được`,
+        holder: { name: lock.userName, email: lock.userEmail, expiresAt: lock.expiresAt },
+      });
+    }
+
+    const existing = await prisma.snapshot.findUnique({
+      where: { layoutId_date: { layoutId, date: parsedDate } },
+      include: { positions: true },
+    });
 
     // If version is provided, check against existing snapshot for optimistic locking
-    if (version !== undefined) {
-      const existing = await prisma.snapshot.findUnique({
-        where: { layoutId_date: { layoutId, date: parsedDate } },
+    if (version !== undefined && existing && existing.version !== version) {
+      return res.status(409).json({
+        error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
+        currentVersion: existing.version,
       });
-      if (existing && existing.version !== version) {
-        return res.status(409).json({
-          error: 'Dữ liệu đã được cập nhật bởi người khác. Vui lòng tải lại.',
-          currentVersion: existing.version,
-        });
-      }
     }
+
+    // Block nào không đụng tới thì giữ nguyên người thao tác cũ
+    const previous = new Map(existing?.positions.map((p) => [positionKey(p), p]) ?? []);
+    const now = new Date();
+    const withAuthor = ((positions ?? []) as IncomingPosition[]).map((p) => {
+      const before = previous.get(positionKey(p));
+      return {
+        productId: p.productId,
+        x: p.x,
+        y: p.y,
+        rotation: p.rotation ?? 0,
+        scale: p.scale ?? 1.0,
+        orientation: p.orientation ?? 'bottom',
+        elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
+        updatedBy: before?.updatedBy ?? me.email,
+        updatedAt: before?.updatedAt ?? now,
+      };
+    });
 
     const snapshot = await prisma.snapshot.upsert({
       where: {
@@ -120,35 +180,14 @@ router.post('/', async (req: Request, res: Response) => {
       update: {
         note,
         version: { increment: 1 },
-        positions: {
-          deleteMany: {},
-          create: (positions ?? []).map((p) => ({
-            productId: p.productId,
-            x: p.x,
-            y: p.y,
-            rotation: p.rotation ?? 0,
-            scale: p.scale ?? 1.0,
-            orientation: p.orientation ?? 'bottom',
-            elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
-          })),
-        },
+        positions: { deleteMany: {}, create: withAuthor },
       },
       create: {
         layoutId,
         date: parsedDate,
         note,
         createdBy: req.user!.email,
-        positions: {
-          create: (positions ?? []).map((p) => ({
-            productId: p.productId,
-            x: p.x,
-            y: p.y,
-            rotation: p.rotation ?? 0,
-            scale: p.scale ?? 1.0,
-            orientation: p.orientation ?? 'bottom',
-            elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
-          })),
-        },
+        positions: { create: withAuthor },
       },
       include: {
         positions: { include: { product: true } },

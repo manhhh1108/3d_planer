@@ -28,6 +28,14 @@
   function inputToCm(value: number): number {
     return settings.units === 'imperial' ? value * 2.54 : value;
   }
+  /** dd/MM HH:mm — đủ để biết "ai vừa động vào", không cần chi tiết hơn */
+  function fmtWhen(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
   function unitLabel(): string {
     return settings.units === 'imperial' ? 'in' : 'cm';
   }
@@ -236,6 +244,15 @@
           class="w-full px-2 py-1 border border-gray-200 rounded text-sm" 
         />
       </label>
+
+      {#if selectedFurniture.updatedBy}
+        <div class="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded px-2 py-1">
+          Thao tác cuối: <span class="text-gray-600">{selectedFurniture.updatedBy}</span>
+          {#if selectedFurniture.updatedAt}
+            <span class="text-gray-400"> · {fmtWhen(selectedFurniture.updatedAt)}</span>
+          {/if}
+        </div>
+      {/if}
 
       <label class="block">
         <span class="text-xs text-gray-500">Cao độ đáy block ({unitLabel()})</span>

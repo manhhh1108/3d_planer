@@ -70,6 +70,19 @@ export interface ApiProduct {
 	asset?: ApiAsset | null;
 }
 
+/** Ai đang mở một (mặt bằng, ngày) để chỉnh sửa */
+export interface ApiEditLock {
+	locked: boolean;
+	mine: boolean;
+	holder: {
+		userId: string;
+		email: string;
+		name: string;
+		acquiredAt: string;
+		expiresAt: string;
+	} | null;
+}
+
 /** Sản phẩm đang được bố trí ở mặt bằng nào, bao nhiêu bản */
 export interface ApiProductUsage {
 	productId: string;
@@ -120,6 +133,9 @@ export interface ApiPosition {
 	orientation: string;
 	/** Cao độ đáy block so với sàn, mét */
 	elevationM?: number;
+	/** Email người thao tác cuối với block này */
+	updatedBy?: string | null;
+	updatedAt?: string | null;
 	product?: ApiProduct;
 }
 
@@ -201,6 +217,17 @@ export const api = {
 		update: (id: string, data: Partial<Omit<ApiLayout, 'id' | 'siteId' | 'snapshots'>>) =>
 			http<ApiLayout>(`/layouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/layouts/${id}`, { method: 'DELETE' }),
+		/** Ai đang giữ quyền chỉnh sửa (layout, ngày) */
+		getLock: (id: string, date: string) =>
+			http<ApiEditLock>(`/layouts/${id}/lock?date=${date}`),
+		/** Giành hoặc gia hạn khoá. Người khác đang giữ thì trả về chính họ. */
+		acquireLock: (id: string, date: string) =>
+			http<ApiEditLock>(`/layouts/${id}/lock`, {
+				method: 'PUT',
+				body: JSON.stringify({ date }),
+			}),
+		releaseLock: (id: string, date: string) =>
+			http<ApiEditLock>(`/layouts/${id}/lock?date=${date}`, { method: 'DELETE' }),
 		saveWalls: (id: string, walls: ApiWall[]) =>
 			http<ApiLayout>(`/layouts/${id}/walls`, {
 				method: 'PUT',

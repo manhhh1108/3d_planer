@@ -16,12 +16,17 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 const upload = multer({ dest: TMP_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 
 const WALLS_PATH = /^\/[^/]+\/walls\/?$/;
+const LOCK_PATH = /^\/[^/]+\/lock\/?$/;
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   // Tường là nội dung mặt bằng chứ không phải cấu hình layout, nên người lập
   // kế hoạch sửa được — phần còn lại vẫn chỉ ADMIN.
   if (req.method === 'PUT' && WALLS_PATH.test(req.path)) {
+    return requireRole('ADMIN', 'PLANNING')(req, _res, next);
+  }
+  // Giành/nhả khoá chỉnh sửa — ai sửa được mặt bằng thì giữ khoá được
+  if (LOCK_PATH.test(req.path)) {
     return requireRole('ADMIN', 'PLANNING')(req, _res, next);
   }
   return requireRole('ADMIN')(req, _res, next);
@@ -112,6 +117,109 @@ router.get('/:id', async (req: Request, res: Response) => {
     });
     if (!layout) return res.status(404).json({ error: 'Not found' });
     res.json(withWalls(layout));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/**
+ * Khoá mềm: cho người vào sau biết ai đang chỉnh sửa.
+ *
+ * Không chặn xem, không chặn chỉnh sửa tại chỗ — chỉ chặn LƯU (xem
+ * routes/snapshots.ts). Có hạn dùng nên không bao giờ kẹt khoá vì ai đó đóng
+ * tab; client gia hạn định kỳ trong lúc còn mở editor.
+ */
+const LOCK_TTL_MS = 2 * 60 * 1000;
+
+function parseLockDate(v: unknown): Date | null {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Khoá còn hiệu lực, hoặc null nếu trống/đã hết hạn */
+export async function activeLock(layoutId: string, date: Date) {
+  const lock = await prisma.layoutLock.findUnique({
+    where: { layoutId_date: { layoutId, date } },
+  });
+  if (!lock || lock.expiresAt <= new Date()) return null;
+  return lock;
+}
+
+function serializeLock(lock: Awaited<ReturnType<typeof activeLock>>, meId: string | undefined) {
+  if (!lock) return { locked: false, holder: null, mine: false };
+  return {
+    locked: true,
+    mine: lock.userId === meId,
+    holder: {
+      userId: lock.userId,
+      email: lock.userEmail,
+      name: lock.userName,
+      acquiredAt: lock.acquiredAt,
+      expiresAt: lock.expiresAt,
+    },
+  };
+}
+
+// GET /:id/lock?date=YYYY-MM-DD — ai đang giữ khoá
+router.get('/:id/lock', async (req: Request, res: Response) => {
+  try {
+    const date = parseLockDate(req.query.date);
+    if (!date) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    const lock = await activeLock(String(req.params.id), date);
+    res.json(serializeLock(lock, req.user?.id));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// PUT /:id/lock — giành hoặc gia hạn khoá. Không cướp khoá của người khác.
+router.put('/:id/lock', async (req: Request, res: Response) => {
+  try {
+    const layoutId = String(req.params.id);
+    const date = parseLockDate((req.body as { date?: unknown })?.date);
+    if (!date) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+    const layout = await prisma.layout.findUnique({ where: { id: layoutId }, select: { id: true } });
+    if (!layout) return res.status(404).json({ error: 'Not found' });
+
+    const me = req.user!;
+    const current = await activeLock(layoutId, date);
+    if (current && current.userId !== me.id) {
+      // Người khác đang giữ — trả về trạng thái để client hiện cảnh báo,
+      // không phải lỗi: người này vẫn được xem và chỉnh sửa tại chỗ.
+      return res.json(serializeLock(current, me.id));
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } });
+    const expiresAt = new Date(Date.now() + LOCK_TTL_MS);
+    const lock = await prisma.layoutLock.upsert({
+      where: { layoutId_date: { layoutId, date } },
+      update: { userId: me.id, userEmail: me.email, userName: user?.name ?? me.email, expiresAt },
+      create: {
+        layoutId, date,
+        userId: me.id, userEmail: me.email, userName: user?.name ?? me.email,
+        expiresAt,
+      },
+    });
+    res.json(serializeLock(lock, me.id));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// DELETE /:id/lock?date=YYYY-MM-DD — nhả khoá (chỉ người đang giữ)
+router.delete('/:id/lock', async (req: Request, res: Response) => {
+  try {
+    const date = parseLockDate(req.query.date);
+    if (!date) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    const layoutId = String(req.params.id);
+    const current = await activeLock(layoutId, date);
+    if (current && current.userId !== req.user!.id) {
+      return res.status(403).json({ error: 'Khoá đang do người khác giữ' });
+    }
+    await prisma.layoutLock.deleteMany({ where: { layoutId, date } });
+    res.json({ locked: false, holder: null, mine: false });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

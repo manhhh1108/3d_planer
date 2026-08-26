@@ -11,7 +11,9 @@
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
   import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
   import PlanProductSidebar from '$lib/components/editor/PlanProductSidebar.svelte';
-  import { markClean, resetWorkingDate } from '$lib/stores/saveStatus';
+  import { markClean, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
+  import { startEditLock, stopEditLock, editLock, lockedByOther } from '$lib/stores/editLock';
+  import { todayStr } from '$lib/services/mapping';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
   import PropertiesPanel from '$lib/components/sidebar/PropertiesPanel.svelte';
@@ -171,6 +173,14 @@
       ready = true;
     })();
 
+    // Khoá chỉnh sửa bám theo (layout, ngày đang soạn). Đổi ngày = khoá khác,
+    // vì hai người soạn hai ngày khác nhau thì không đụng nhau.
+    const unsubLock = workingDate.subscribe((d) => {
+      if (backendLayoutId) startEditLock(backendLayoutId, d ?? todayStr());
+    });
+    const releaseOnLeave = () => stopEditLock();
+    window.addEventListener('pagehide', releaseOnLeave);
+
     // Auto-save on every project change (debounced)
     let saveTimeout: ReturnType<typeof setTimeout>;
     const unsub = currentProject.subscribe((p) => {
@@ -178,7 +188,13 @@
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => getActiveStore().save(p), 2000);
     });
-    return () => { unsub(); clearTimeout(saveTimeout); };
+    return () => {
+      unsub();
+      unsubLock();
+      window.removeEventListener('pagehide', releaseOnLeave);
+      stopEditLock();
+      clearTimeout(saveTimeout);
+    };
   });
 </script>
 
@@ -215,6 +231,15 @@
         </div>
       </div>
     {/if}
+    {#if $lockedByOther}
+      <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-sm">
+        <span class="text-amber-600 text-base">⚠</span>
+        <span class="text-amber-800">
+          <strong>{$editLock.holder?.name ?? 'Người khác'}</strong> đang chỉnh sửa mặt bằng này.
+          Bạn vẫn xem và thử bố trí được, nhưng <strong>chưa lưu được</strong> cho tới khi họ xong.
+        </span>
+      </div>
+    {/if}
     {#if activeTab === 'layout' || !backendLayoutId}
       <div class="flex flex-1 overflow-hidden">
           <!-- Build panel: inline sidebar on md+, off-canvas drawer on phones -->
@@ -238,10 +263,6 @@
             {:else}
               <div class="flex items-center justify-center h-full text-slate-400">Loading 3D viewer…</div>
             {/if}
-          {/if}
-          {#if $timelineReadonly && mode === '2d'}
-            <!-- Chặn thao tác chuột khi đang xem snapshot ngày cũ -->
-            <div class="absolute inset-0 z-30 cursor-not-allowed" aria-hidden="true"></div>
           {/if}
         </div>
         {#if showLayers && mode === '2d'}

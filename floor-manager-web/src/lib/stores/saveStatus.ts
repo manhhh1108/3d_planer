@@ -3,11 +3,14 @@ import { currentProject } from './project';
 import { getActiveStore } from '$lib/services/datastore';
 import { saveSnapshot } from '$lib/stores/versionHistory';
 import { isTimelineReadonly } from './timeline';
+import { lockedByOther, lockHolderName } from './editLock';
 import { todayStr } from '$lib/services/mapping';
 
 export type SaveState = 'saved' | 'unsaved' | 'saving';
 
 export const saveState = writable<SaveState>('saved');
+/** Lý do lần lưu gần nhất bị chặn, null nếu không bị chặn */
+export const saveBlockedReason = writable<string | null>(null);
 export const lastSavedAt = writable<Date | null>(null);
 
 /**
@@ -73,6 +76,13 @@ export function markDirty() {
   if (isTimelineReadonly()) return; // đang xem snapshot cũ — không auto-save
   saveState.set('unsaved');
   if (debounceTimer) clearTimeout(debounceTimer);
+  // Người khác đang giữ khoá: cứ để người dùng bố trí thoải mái, chỉ đừng
+  // nã request lưu mỗi 5 giây để rồi ăn 423.
+  if (get(lockedByOther)) {
+    saveBlockedReason.set(`Đang được ${lockHolderName()} chỉnh sửa — chưa lưu được`);
+    return;
+  }
+  saveBlockedReason.set(null);
   if (!get(autoSaveEnabled)) return; // tắt tự lưu: vẫn báo "chưa lưu", chỉ không tự ghi
   debounceTimer = setTimeout(() => {
     autoSave();
@@ -101,6 +111,7 @@ function captureThumbnail(projectId: string) {
 async function autoSave() {
   if (isTimelineReadonly()) return;
   if (!get(autoSaveEnabled)) return;
+  if (get(lockedByOther)) return;
   const p = get(currentProject);
   if (!p) return;
   saveState.set('saving');
@@ -123,6 +134,12 @@ export async function manualSave(date?: string) {
   const p = get(currentProject);
   if (!p) return;
   const target = date ?? saveTargetDate();
+  if (get(lockedByOther)) {
+    const reason = `Đang được ${lockHolderName()} chỉnh sửa — chưa lưu được`;
+    saveBlockedReason.set(reason);
+    saveState.set('unsaved');
+    throw new Error(reason);
+  }
   saveState.set('saving');
   try {
     await getActiveStore().save(p, target);
@@ -134,6 +151,7 @@ export async function manualSave(date?: string) {
     lastSavedAt.set(new Date());
   } catch (e) {
     console.error('[Save] Failed:', e);
+    if (e instanceof Error && /423|chỉnh sửa/.test(e.message)) saveBlockedReason.set(e.message);
     saveState.set('unsaved');
     throw e;
   }

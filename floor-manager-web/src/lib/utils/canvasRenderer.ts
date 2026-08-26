@@ -297,12 +297,21 @@ export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected
   const itemColor = item.color ?? cat.color;
   const strokeColor = selected ? '#3b82f6' : itemColor;
   ctx.lineWidth = selected ? 2 : 1;
-  if (cat.footprint && cat.footprint.length > 0) {
+  // Footprint từ CAD là hình chiếu của block khi NẰM ĐÁY. Lật nghiêng hay dựng
+  // đứng thì biên dạng nhìn từ trên là hình khác hẳn, mà dữ liệu đó không có —
+  // nên vẽ đúng khối chữ nhật bao theo kích thước đã lật, còn hơn vẽ một đường
+  // bao sai. (Kéo giãn polygon cho vừa số mới là bóp méo, không phải lật.)
+  const laidFlat = (item.orientation ?? 'bottom') === 'bottom';
+  // Người dùng gõ tay kích thước khác thì polygon phải co giãn theo
+  const kx = (item.width ?? cat.width) / (cat.width || 1);
+  const ky = (item.depth ?? cat.depth) / (cat.depth || 1);
+
+  if (laidFlat && cat.footprint && cat.footprint.length > 0) {
     ctx.beginPath();
     for (const ring of cat.footprint) {
       ring.forEach(([fx, fy], i) => {
-        const px = fx * zoom;
-        const py = -fy * zoom; // y canvas hướng xuống
+        const px = fx * kx * zoom;
+        const py = -fy * ky * zoom; // y canvas hướng xuống
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       });

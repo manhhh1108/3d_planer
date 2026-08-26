@@ -66,6 +66,8 @@ export function positionToItem(p: ApiPosition): FurnitureItem {
 		scale: { x: s, y: s, z: s },
 		orientation,
 		elevation: (p.elevationM ?? 0) * M_TO_CM,
+		updatedBy: p.updatedBy ?? null,
+		updatedAt: p.updatedAt ?? null,
 	};
 	// Lật khác mặc định -> ghi override kích thước để canvas/3D vẽ đúng
 	if (orientation !== 'bottom') {

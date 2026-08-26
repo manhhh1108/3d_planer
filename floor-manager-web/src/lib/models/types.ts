@@ -65,6 +65,10 @@ export interface FurnitureItem {
   orientation?: BlockOrientation;
   /** Cao độ đáy block so với sàn, cm. 0 = đặt trực tiếp xuống sàn. */
   elevation?: number;
+  /** Email người cuối cùng đặt/di chuyển block này (server suy ra, chỉ đọc) */
+  updatedBy?: string | null;
+  /** Thời điểm thao tác cuối, ISO string */
+  updatedAt?: string | null;
   // Per-item overrides (optional — falls back to catalog defaults)
   color?: string;
   width?: number;   // cm

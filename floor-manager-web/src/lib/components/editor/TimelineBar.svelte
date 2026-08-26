@@ -4,7 +4,7 @@
   import { positionToItem, todayStr } from '$lib/services/mapping';
   import { currentProject } from '$lib/stores/project';
   import { timelineDate } from '$lib/stores/timeline';
-  import { markClean, lastSavedAt, resetWorkingDate } from '$lib/stores/saveStatus';
+  import { markClean, lastSavedAt, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
   import { backendStore } from '$lib/services/datastore';
 
   let { layoutId }: { layoutId: string } = $props();
@@ -45,13 +45,26 @@
     markClean();
   }
 
+  /** Ngày chưa tới thì còn sửa được; ngày đã qua là lịch sử, chỉ đọc */
+  function isFuture(d: string): boolean {
+    return d > todayStr();
+  }
+
   async function viewDate(s: ApiSnapshot) {
     const d = dateOf(s);
     if (d === todayStr()) return backToToday();
     loading = true;
     try {
       const detail = await api.snapshots.get(s.id);
-      timelineDate.set(d);
+      if (isFuture(d)) {
+        // Bố trí trước cho ngày sau: mở ở chế độ SỬA, và chốt ngày đích để mọi
+        // lần lưu (kể cả tự lưu) ghi vào đúng ngày đó chứ không phải hôm nay.
+        timelineDate.set(null);
+        workingDate.set(d);
+      } else {
+        timelineDate.set(d);
+        resetWorkingDate();
+      }
       applyPositions(detail);
     } finally {
       loading = false;
@@ -80,7 +93,8 @@
     {#each snapshots as s}
       {@const d = dateOf(s)}
       {@const isToday = d === todayStr()}
-      {@const isActive = $timelineDate === d || (isToday && $timelineDate === null)}
+      {@const isEditingFuture = $workingDate === d}
+      {@const isActive = $timelineDate === d || isEditingFuture || (isToday && $timelineDate === null && $workingDate === null)}
       <button
         class="px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors
           {isToday
@@ -91,16 +105,27 @@
         onclick={() => viewDate(s)}
         disabled={loading}
         title={s.note ?? d}
-      >{fmt(d)}{isToday ? ' · Hôm nay' : ''}</button>
+      >{fmt(d)}{isToday ? ' · Hôm nay' : ''}{isEditingFuture ? ' · đang soạn' : ''}</button>
     {/each}
     {#if snapshots.length === 0}
       <span class="text-xs text-gray-400 italic">Chưa có snapshot — bấm "Lưu Snapshot" để chốt vị trí hôm nay</span>
     {/if}
   </div>
-  {#if $timelineDate}
+  {#if $workingDate}
+    <div class="flex items-center gap-2 shrink-0">
+      <span class="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5 whitespace-nowrap">
+        ✎ Đang soạn cho {fmt($workingDate)} — sửa và lưu bình thường
+      </span>
+      <button
+        class="px-3 py-1 rounded-full text-xs bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap"
+        onclick={backToToday}
+        disabled={loading}
+      >Về hôm nay</button>
+    </div>
+  {:else if $timelineDate}
     <div class="flex items-center gap-2 shrink-0">
       <span class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 whitespace-nowrap">
-        👁 Đang xem {fmt($timelineDate)} — chỉ đọc
+        👁 Đang xem {fmt($timelineDate)} — chỉ đọc, phóng to và kéo xem được
       </span>
       <button
         class="px-3 py-1 rounded-full text-xs bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap"

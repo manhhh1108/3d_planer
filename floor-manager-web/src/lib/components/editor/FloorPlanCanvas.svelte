@@ -7,6 +7,7 @@
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
   import { handleGlobalShortcut } from '$lib/utils/shortcuts';
+  import { timelineReadonly } from '$lib/stores/timeline';
   import ContextMenu from './ContextMenu.svelte';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
@@ -1696,6 +1697,16 @@
 
   function onMouseDown(e: MouseEvent) {
     markDirty();
+    // Xem snapshot ngày cũ: cho đi lại trong bản vẽ, chặn mọi thao tác sửa.
+    // Kéo chuột trái thành pan luôn, vì ở chế độ này không có gì để chọn.
+    if ($timelineReadonly) {
+      if (e.button === 0 || e.button === 1) {
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+      }
+      return;
+    }
     if (e.button === 1 || (e.button === 0 && (spaceDown || $panMode || (e.shiftKey && currentTool === 'select')))) {
       isPanning = true;
       panStartX = e.clientX;
@@ -2118,6 +2129,7 @@
   }
 
   function onDblClick(e: MouseEvent) {
+    if ($timelineReadonly) return;
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
@@ -2742,9 +2754,15 @@
     return true;
   }
 
+  /** Phím chỉ đổi góc nhìn, an toàn cả khi đang xem snapshot cũ */
+  const VIEW_ONLY_KEYS = new Set(['f', 'F', 'g', 'G', 'h', 'H', 'm', 'M']);
+
   function onKeyDown(e: KeyboardEvent) {
     shiftDown = e.shiftKey;
     if (e.code === 'Space') { spaceDown = true; e.preventDefault(); return; }
+
+    // Chỉ đọc: cho phím xem (fit, lưới, pan), chặn xoá/hoàn tác/dán...
+    if ($timelineReadonly && !VIEW_ONLY_KEYS.has(e.key)) return;
 
     // Exact-length entry while drawing a wall (issue #6):
     // type a number, then Enter places the wall at exactly that length.
@@ -3004,6 +3022,7 @@
   }
 
   function onDragOver(e: DragEvent) {
+    if ($timelineReadonly) return;
     if (e.dataTransfer?.types.includes('application/o3d-type')) {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -3095,6 +3114,7 @@
 
   function onContextMenu(e: MouseEvent) {
     e.preventDefault();
+    if ($timelineReadonly) return;
 
     // Trong tool wall, chuột phải là nút huỷ như mọi phần mềm CAD:
     // đang vẽ dở thì bỏ đoạn, không vẽ dở thì thoát hẳn về select.
