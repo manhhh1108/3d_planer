@@ -90,6 +90,14 @@ export interface ApiProductUsage {
 	layouts: { layoutId: string; layoutName: string; siteName: string; count: number }[];
 }
 
+/** Kết quả nhập một file CAD. `skipped` nghĩa là mã đã có sẵn trong dự án. */
+export interface ApiImportCadResult {
+	action: 'created' | 'skipped';
+	code: string;
+	productId: string | null;
+	assetId?: string;
+}
+
 export interface DxfInsertData {
 	blockName: string;
 	xCm: number;
@@ -199,6 +207,29 @@ export const api = {
 			),
 		create: (data: Partial<ApiProduct> & { projectId: string; name: string; code: string }) =>
 			http<ApiProduct>('/products', { method: 'POST', body: JSON.stringify(data) }),
+		/**
+		 * Nhập một file CAD thành một sản phẩm. Mã và tên lấy từ tên file.
+		 * Mã đã tồn tại trong dự án thì máy chủ bỏ qua và trả `action: 'skipped'`.
+		 */
+		importCad: async (projectId: string, file: File): Promise<ApiImportCadResult> => {
+			const fd = new FormData();
+			fd.append('file', file);
+			fd.append('projectId', projectId);
+			const res = await fetch(`${BASE}/products/import-cad`, {
+				method: 'POST',
+				body: fd,
+				credentials: 'include',
+			});
+			if (!res.ok) {
+				// Server trả { error } — giữ lại message thật thay vì chỉ mã HTTP
+				const detail = await res
+					.json()
+					.then((b) => (b && typeof b.error === 'string' ? b.error : null))
+					.catch(() => null);
+				throw new Error(detail ?? `API POST /products/import-cad: ${res.status}`);
+			}
+			return res.json();
+		},
 		update: (id: string, data: Partial<ApiProduct>) =>
 			http<ApiProduct>(`/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/products/${id}`, { method: 'DELETE' }),
