@@ -3,6 +3,7 @@ import request from 'supertest';
 import app from '../server/app.js';
 import prisma from '../server/db.js';
 import { adminToken } from './setup.js';
+import { deriveProductCode } from '../server/routes/productsImportCad.js';
 
 async function makeProject() {
   return (
@@ -67,5 +68,33 @@ describe('mã sản phẩm là duy nhất trong một dự án', () => {
       .set('Cookie', `access_token=${token}`)
       .send({ code: 'AAA' });
     expect(res.status).toBe(409);
+  });
+});
+
+describe('deriveProductCode', () => {
+  it('bỏ đuôi file', () => {
+    expect(deriveProductCode('662-01.dwg')).toBe('662-01');
+    expect(deriveProductCode('FR01.DXF')).toBe('FR01');
+  });
+
+  it('chỉ bỏ đuôi cuối, giữ nguyên các dấu chấm khác', () => {
+    expect(deriveProductCode('10022-01-DC 1.1.stp')).toBe('10022-01-DC 1.1');
+  });
+
+  it('giữ nguyên dấu tiếng Việt', () => {
+    expect(deriveProductCode('Dầm chính A1.dwg')).toBe('Dầm chính A1');
+  });
+
+  it('cắt khoảng trắng thừa hai đầu', () => {
+    expect(deriveProductCode('  662-01.dwg  ')).toBe('662-01');
+  });
+
+  it('bỏ phần đường dẫn nếu trình duyệt gửi kèm', () => {
+    expect(deriveProductCode('CAD/662-01.dwg')).toBe('662-01');
+    expect(deriveProductCode('C:\\CAD\\662-01.dwg')).toBe('662-01');
+  });
+
+  it('tên chỉ có đuôi thì trả chuỗi rỗng', () => {
+    expect(deriveProductCode('.dwg')).toBe('');
   });
 });
