@@ -70,6 +70,9 @@
   let backendLayoutId = $state<string | null>(null);
   let printSiteName = $state('');
   let printLayoutName = $state('');
+  // Khung tên bản vẽ lấy từ mặt bằng, không bắt gõ lại mỗi lần xuất PDF
+  let printCompanyName = $state('');
+  let printCompanyLogo = $state('');
   // Đích của nút quay lại trên TopBar: mặt bằng chứa layout đang mở.
   // Chưa biết layout thuộc mặt bằng nào thì về trang chủ.
   let backHref = $state(base || '/');
@@ -138,6 +141,8 @@
                 const site = await api.sites.get(layout.siteId);
                 backLabel = site.name;
                 printSiteName = site.name;
+                printCompanyName = site.companyName ?? '';
+                printCompanyLogo = site.companyLogo ?? '';
               } catch {
                 backLabel = 'Mặt bằng';
                 printSiteName = 'Mặt bằng';
@@ -538,6 +543,8 @@
     layoutId={backendLayoutId ?? ''}
     siteName={printSiteName}
     layoutName={printLayoutName}
+    companyNameProp={printCompanyName}
+    companyLogoUrl={printCompanyLogo}
   />
   <OnboardingTooltip />
 

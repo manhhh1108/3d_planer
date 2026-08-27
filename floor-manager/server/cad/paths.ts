@@ -33,6 +33,16 @@ export function snapshotThumbPaths(layoutId: string, snapshotId: string) {
   };
 }
 
+/** Logo công ty của một mặt bằng — in vào khung tên bản vẽ */
+export function siteLogoPaths(siteId: string, ext: string) {
+  const dir = path.resolve(UPLOAD_DIR, 'sites', siteId);
+  return {
+    dir,
+    file: path.join(dir, `logo.${ext}`),
+    url: `/uploads/sites/${siteId}/logo.${ext}`,
+  };
+}
+
 export function layoutBgPaths(layoutId: string) {
   const sourceDir = path.resolve(STORAGE_DIR, 'sources', 'layouts', layoutId);
   const artifactDir = path.resolve(UPLOAD_DIR, 'layouts', layoutId);

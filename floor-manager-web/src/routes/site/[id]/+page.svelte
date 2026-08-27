@@ -27,8 +27,10 @@
   let siteName = $state('');
   let siteAddress = $state('');
   let siteActive = $state(true);
+  let siteCompany = $state('');
   let siteSaving = $state(false);
   let siteError = $state<string | null>(null);
+  let logoBusy = $state(false);
 
   // Thu nhỏ layout đã có snapshot thì block đã đặt có thể rơi ra ngoài biên mới
   let shrinkWarning = $derived(
@@ -138,6 +140,7 @@
     siteName = site.name;
     siteAddress = site.address ?? '';
     siteActive = site.active;
+    siteCompany = site.companyName ?? '';
     siteError = null;
     showSiteForm = true;
   }
@@ -156,6 +159,7 @@
         name: siteName.trim(),
         address: siteAddress.trim(),
         active: siteActive,
+        companyName: siteCompany.trim(),
       });
     } catch (e) {
       siteError = e instanceof Error ? e.message : String(e);
@@ -165,6 +169,41 @@
     }
     showSiteForm = false;
     await refresh();
+  }
+
+  /** Logo ghi ngay khi chọn file — không đợi bấm Lưu, vì nó là file chứ không phải ô nhập */
+  async function pickLogo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      siteError = null;
+      logoBusy = true;
+      try {
+        await api.sites.uploadLogo(siteId, file);
+        await refresh();
+      } catch (e) {
+        siteError = e instanceof Error ? e.message : String(e);
+      } finally {
+        logoBusy = false;
+      }
+    };
+    input.click();
+  }
+
+  async function removeLogo() {
+    siteError = null;
+    logoBusy = true;
+    try {
+      await api.sites.removeLogo(siteId);
+      await refresh();
+    } catch (e) {
+      siteError = e instanceof Error ? e.message : String(e);
+    } finally {
+      logoBusy = false;
+    }
   }
 
   async function deleteLayout(id: string) {
@@ -380,6 +419,37 @@
             class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
             onkeydown={(e) => { if (e.key === 'Enter') submitSite(); }} />
         </label>
+        <div class="border-t border-gray-100 pt-3 mb-3">
+          <p class="text-xs font-semibold text-gray-500 mb-2">Khung tên bản vẽ</p>
+          <p class="text-[11px] text-gray-400 mb-2">Dùng cho mọi bản PDF xuất từ các layout của mặt bằng này.</p>
+          <label class="block mb-3">
+            <span class="text-xs font-medium text-gray-500">Tên công ty</span>
+            <input type="text" bind:value={siteCompany} placeholder="VD: Công ty CP VHE"
+              class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+              onkeydown={(e) => { if (e.key === 'Enter') submitSite(); }} />
+          </label>
+          <div class="flex items-center gap-3">
+            <div class="w-20 h-12 shrink-0 border border-gray-200 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">
+              {#if site?.companyLogo}
+                <img src={`${FILES_BASE}${site.companyLogo}`} alt="Logo công ty" class="max-w-full max-h-full object-contain" />
+              {:else}
+                <span class="text-[10px] text-gray-300">chưa có</span>
+              {/if}
+            </div>
+            <div class="flex gap-2">
+              <button onclick={pickLogo} disabled={logoBusy}
+                class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                {logoBusy ? 'Đang xử lý…' : site?.companyLogo ? 'Đổi logo' : 'Tải logo lên'}
+              </button>
+              {#if site?.companyLogo}
+                <button onclick={removeLogo} disabled={logoBusy}
+                  class="px-3 py-1.5 border border-red-200 rounded-lg text-xs text-red-600 hover:bg-red-50 disabled:opacity-40">Gỡ</button>
+              {/if}
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-2">PNG, JPEG hoặc WEBP, tối đa 1MB. Lưu ngay khi chọn file.</p>
+        </div>
+
         <label class="flex items-center gap-2 mb-1 cursor-pointer">
           <input type="checkbox" bind:checked={siteActive} class="w-4 h-4 rounded border-gray-300 accent-blue-600" />
           <span class="text-sm text-gray-700">Đang hoạt động</span>

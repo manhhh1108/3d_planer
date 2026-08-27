@@ -1,8 +1,25 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
+import multer from 'multer';
+import fs from 'fs';
+import { siteLogoPaths } from '../cad/paths.js';
 
 const router = Router();
+
+// Logo in vào khung tên bản vẽ — 1MB là quá đủ cho một con dấu công ty
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+});
+
+/** Đuôi file theo mime. SVG bị loại: file tự tải lên được phục vụ tĩnh cùng
+ *  origin, mà SVG thì nhúng script được. */
+const LOGO_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -68,12 +85,74 @@ router.post('/', async (req: Request, res: Response) => {
 // PUT /:id — update site
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, address, active } = req.body;
+    const { name, address, active, companyName } = req.body;
     const site = await prisma.site.update({
       where: { id: String(req.params.id) },
-      data: { name, address, active },
+      data: {
+        name,
+        address,
+        active,
+        // '' = xoá tên công ty, undefined = không đụng tới
+        ...(companyName === undefined
+          ? {}
+          : { companyName: String(companyName).trim() || null }),
+      },
     });
     res.json(site);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// PUT /:id/logo — logo công ty, in vào khung tên bản vẽ
+router.put('/:id/logo', logoUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file is required' });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: 'Logo phải là PNG, JPEG hoặc WEBP' });
+
+    const site = await prisma.site.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true, companyLogo: true },
+    });
+    if (!site) return res.status(404).json({ error: 'Not found' });
+
+    const p = siteLogoPaths(site.id, ext);
+    fs.mkdirSync(p.dir, { recursive: true });
+    // Đổi từ png sang jpg thì file cũ phải xoá, không thì nằm lại làm rác
+    if (site.companyLogo && site.companyLogo !== p.url) {
+      const old = siteLogoPaths(site.id, site.companyLogo.split('.').pop() ?? '');
+      fs.rmSync(old.file, { force: true });
+    }
+    fs.writeFileSync(p.file, req.file.buffer);
+
+    const updated = await prisma.site.update({
+      where: { id: site.id },
+      data: { companyLogo: p.url },
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// DELETE /:id/logo — gỡ logo
+router.delete('/:id/logo', async (req: Request, res: Response) => {
+  try {
+    const site = await prisma.site.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true, companyLogo: true },
+    });
+    if (!site) return res.status(404).json({ error: 'Not found' });
+    if (site.companyLogo) {
+      const p = siteLogoPaths(site.id, site.companyLogo.split('.').pop() ?? '');
+      fs.rmSync(p.file, { force: true });
+    }
+    const updated = await prisma.site.update({
+      where: { id: site.id },
+      data: { companyLogo: null },
+    });
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

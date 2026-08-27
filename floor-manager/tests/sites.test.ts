@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import app from '../server/app.js';
-import { adminToken } from './setup.js';
+import { adminToken, planningToken } from './setup.js';
+import fs from 'fs';
+import { siteLogoPaths } from '../server/cad/paths.js';
 
 describe('sites', () => {
   it('creates a site and lists it with layout count', async () => {
@@ -85,5 +87,73 @@ describe('sites', () => {
       .delete(`/api/sites/${site.id}`)
       .set('Cookie', `access_token=${adminToken()}`);
     expect(res.status).toBe(409);
+  });
+});
+
+// JPEG 1x1 hợp lệ nhỏ nhất — đủ để multer nhận đúng mimetype
+const JPEG_1PX = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64',
+);
+
+describe('site company branding', () => {
+  async function makeSite() {
+    return (await request(app)
+      .post('/api/sites')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ name: 'S' })).body;
+  }
+
+  it('lưu tên công ty cho khung tên bản vẽ', async () => {
+    const site = await makeSite();
+    const res = await request(app)
+      .put(`/api/sites/${site.id}`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ companyName: '  Công ty CP VHE  ' });
+    expect(res.status).toBe(200);
+    expect(res.body.companyName).toBe('Công ty CP VHE');
+
+    // '' = xoá, khác với không gửi gì
+    const cleared = await request(app)
+      .put(`/api/sites/${site.id}`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ companyName: '' });
+    expect(cleared.body.companyName).toBeNull();
+  });
+
+  it('tải logo lên, phục vụ được và gỡ được', async () => {
+    const site = await makeSite();
+    const up = await request(app)
+      .put(`/api/sites/${site.id}/logo`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', JPEG_1PX, { filename: 'logo.jpg', contentType: 'image/jpeg' });
+    expect(up.status).toBe(200);
+    expect(up.body.companyLogo).toBe(`/uploads/sites/${site.id}/logo.jpg`);
+    expect(fs.existsSync(siteLogoPaths(site.id, 'jpg').file)).toBe(true);
+
+    const del = await request(app)
+      .delete(`/api/sites/${site.id}/logo`)
+      .set('Cookie', `access_token=${adminToken()}`);
+    expect(del.status).toBe(200);
+    expect(del.body.companyLogo).toBeNull();
+    expect(fs.existsSync(siteLogoPaths(site.id, 'jpg').file)).toBe(false);
+  });
+
+  it('từ chối file không phải ảnh', async () => {
+    const site = await makeSite();
+    const res = await request(app)
+      .put(`/api/sites/${site.id}/logo`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', Buffer.from('không phải ảnh'), { filename: 'x.txt', contentType: 'text/plain' });
+    expect(res.status).toBe(400);
+  });
+
+  it('chỉ ADMIN được đổi logo', async () => {
+    const site = await makeSite();
+    const res = await request(app)
+      .put(`/api/sites/${site.id}/logo`)
+      .set('Cookie', `access_token=${planningToken()}`)
+      .attach('file', JPEG_1PX, { filename: 'logo.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(403);
   });
 });

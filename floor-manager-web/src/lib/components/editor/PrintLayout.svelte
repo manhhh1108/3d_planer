@@ -5,7 +5,7 @@
   import { floorPlanBounds, planHasContent } from '$lib/utils/planRender';
   import { drawWallsToCanvas } from '$lib/utils/planRender';
   import type { Project, Floor } from '$lib/models/types';
-  import { api, type ApiSnapshot } from '$lib/services/api';
+  import { api, FILES_BASE, type ApiSnapshot } from '$lib/services/api';
   import { positionToItem, todayStr } from '$lib/services/mapping';
 
   let {
@@ -13,11 +13,17 @@
     layoutId = '',
     siteName = '',
     layoutName = '',
+    companyNameProp = '',
+    companyLogoUrl = '',
   }: {
     open?: boolean;
     layoutId?: string;
     siteName?: string;
     layoutName?: string;
+    /** Tên công ty đã lưu ở cấp mặt bằng — khỏi gõ lại mỗi lần xuất */
+    companyNameProp?: string;
+    /** Đường dẫn logo đã lưu ở cấp mặt bằng */
+    companyLogoUrl?: string;
   } = $props();
 
   let pageSize = $state<'a4' | 'letter'>('a4');
@@ -26,11 +32,29 @@
   let showLegend = $state(true);
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
-  let companyName = $state('VHE');
-  let companyLogoText = $state('VHE1');
+  let companyName = $state('');
+  let companyLogoText = $state('');
   let snapshots = $state<ApiSnapshot[]>([]);
   let selectedDates = $state<string[]>([]);
   let loadingSnapshots = $state(false);
+
+  /**
+   * Logo đã nạp sẵn để vẽ lên canvas.
+   *
+   * Nạp qua fetch -> blob -> data URL chứ không gán thẳng src: canvas bị "vấy
+   * bẩn" (tainted) bởi ảnh khác origin sẽ làm toDataURL() ném lỗi, tức là hỏng
+   * luôn cả việc xuất PDF chỉ vì một cái logo.
+   */
+  let logoImage = $state<HTMLImageElement | null>(null);
+
+  /** Trang đang xem trước (chỉ số trong pageDates) */
+  let previewIndex = $state(0);
+  /** Bố cục từng ngày đã nạp cho khung xem trước */
+  let pageProjects = $state<Record<string, Project>>({});
+  let loadingPreview = $state(false);
+
+  let pageDates = $derived(selectedDates.length > 0 ? [...selectedDates].sort() : [todayStr()]);
+  let previewDate = $derived(pageDates[Math.min(previewIndex, pageDates.length - 1)] ?? todayStr());
 
   const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
   const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
@@ -67,6 +91,8 @@
     selectedDates = selectedDates.includes(date)
       ? selectedDates.filter((d) => d !== date)
       : [...selectedDates, date].sort();
+    // Bỏ tick bớt ngày thì trang đang xem có thể vượt quá số trang còn lại
+    previewIndex = Math.min(previewIndex, Math.max(0, selectedDates.length - 1));
   }
 
   async function refreshSnapshots() {
@@ -112,7 +138,7 @@
     const floor = getActiveFloor(project);
     const resolvedSiteName = siteName || 'Mặt bằng';
     const resolvedLayoutName = layoutName || floor?.name || project.name;
-    const resolvedCompany = companyName.trim() || 'Công ty';
+    const resolvedCompany = companyName.trim() || companyNameProp.trim() || 'Công ty';
     const resolvedLogo = companyLogoText.trim() || resolvedCompany.slice(0, 4).toUpperCase();
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -126,7 +152,9 @@
     ctx.font = `bold 17px ${FONT}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(project.name, PAD, 13);
+    // Dòng 1 là công ty, không phải project.name: ở chế độ backend project.name
+    // chính là tên layout, in ra thành "Layout / Mặt bằng · Layout" lặp vô nghĩa.
+    ctx.fillText(resolvedCompany, PAD, 13);
 
     ctx.font = `12px ${FONT}`;
     ctx.fillStyle = '#475569';
@@ -366,12 +394,23 @@
     ctx.fillText(`Đơn vị: ${scale}`, footerX + col1W + 10, footerY + 26, col2W - 20);
 
     const logoX = footerX + col1W + col2W + 12;
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 12px ${FONT}`;
-    ctx.fillText(resolvedLogo, logoX, footerY + 10, col3W - 24);
+    if (logoImage?.complete && logoImage.naturalWidth > 0) {
+      // Vừa khung, giữ nguyên tỉ lệ — logo méo còn tệ hơn không có logo
+      const boxH = 22;
+      const boxW = Math.min(col3W - 24, 90);
+      const ratio = logoImage.naturalWidth / logoImage.naturalHeight;
+      let dw = boxW;
+      let dh = dw / ratio;
+      if (dh > boxH) { dh = boxH; dw = dh * ratio; }
+      ctx.drawImage(logoImage, logoX, footerY + 8, dw, dh);
+    } else {
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `bold 12px ${FONT}`;
+      ctx.fillText(resolvedLogo, logoX, footerY + 10, col3W - 24);
+    }
     ctx.font = `10px ${FONT}`;
     ctx.fillStyle = '#ef4444';
-    ctx.fillText(resolvedCompany, logoX, footerY + 28, col3W - 24);
+    ctx.fillText(resolvedCompany, logoX, footerY + 34, col3W - 24);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#64748b';
@@ -379,14 +418,67 @@
     ctx.fillText(`Trang ${pageIndex} / ${pageTotal}`, cw - PAD - 8, footerY + FOOTER_H - 24);
   }
 
-  function renderPrintCanvas() {
+  /** Tải logo về dạng data URL để vẽ lên canvas mà không làm hỏng toDataURL() */
+  async function loadLogo() {
+    logoImage = null;
+    if (!companyLogoUrl) return;
+    try {
+      const res = await fetch(`${FILES_BASE}${companyLogoUrl}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const img = new Image();
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve(); // logo hỏng thì rơi về chữ, đừng chặn xuất PDF
+        img.src = dataUrl;
+      });
+      if (img.naturalWidth > 0) logoImage = img;
+    } catch {
+      /* không có logo cũng in được — khung tên rơi về chữ viết tắt */
+    }
+  }
+
+  /** Bố cục của một ngày, lấy từ snapshot ngày đó (có nhớ lại để khỏi tải lặp) */
+  async function projectForDate(date: string): Promise<Project | null> {
+    const base = get(currentProject);
+    if (!base) return null;
+    if (pageProjects[date]) return pageProjects[date];
+    const snap = snapshots.find((s) => isoDate(s.date) === date);
+    if (!layoutId || !snap) return base;
+    const detail = await api.snapshots.get(snap.id);
+    const built = withSnapshotPositions(base, detail);
+    pageProjects = { ...pageProjects, [date]: built };
+    return built;
+  }
+
+  async function renderPrintCanvas() {
     if (!printCanvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const cw = printCanvas.clientWidth;
-    const ch = printCanvas.clientHeight;
-    printCanvas.width = cw * dpr;
-    printCanvas.height = ch * dpr;
-    renderToCanvas(printCanvas.getContext('2d')!, cw, ch, dpr);
+    loadingPreview = true;
+    try {
+      const project = await projectForDate(previewDate);
+      if (!printCanvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const cw = printCanvas.clientWidth;
+      const ch = printCanvas.clientHeight;
+      printCanvas.width = cw * dpr;
+      printCanvas.height = ch * dpr;
+      renderToCanvas(
+        printCanvas.getContext('2d')!,
+        cw, ch, dpr,
+        project,
+        previewDate,
+        Math.min(previewIndex, pageDates.length - 1) + 1,
+        pageDates.length,
+      );
+    } finally {
+      loadingPreview = false;
+    }
   }
 
   async function exportPDF() {
@@ -412,16 +504,9 @@
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
 
-      const dates = selectedDates.length > 0 ? selectedDates : [todayStr()];
       const pages: { date: string; project: Project }[] = [];
-      for (const date of dates) {
-        const snap = snapshots.find((s) => isoDate(s.date) === date);
-        if (layoutId && snap) {
-          const detail = await api.snapshots.get(snap.id);
-          pages.push({ date, project: withSnapshotPositions(project, detail) });
-        } else {
-          pages.push({ date, project });
-        }
+      for (const date of pageDates) {
+        pages.push({ date, project: (await projectForDate(date)) ?? project });
       }
 
       pages.forEach((page, index) => {
@@ -444,12 +529,22 @@
 
   $effect(() => {
     if (open) {
+      // Mở lại là lấy tên công ty đã lưu ở mặt bằng; trước đây luôn về 'VHE'
+      companyName = companyNameProp;
+      companyLogoText = '';
+      pageProjects = {};
+      previewIndex = 0;
+      void loadLogo();
       void refreshSnapshots();
       setTimeout(renderPrintCanvas, 60);
     }
   });
   $effect(() => {
-    if (open) { void pageSize; void orientation; void scale; void showLegend; void companyName; void companyLogoText; setTimeout(renderPrintCanvas, 20); }
+    if (open) {
+      void pageSize; void orientation; void scale; void showLegend;
+      void companyName; void companyLogoText; void previewIndex; void pageDates; void logoImage;
+      setTimeout(renderPrintCanvas, 20);
+    }
   });
 </script>
 
@@ -505,10 +600,17 @@
         <input bind:value={companyName} class="w-28 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
       </label>
 
-      <label class="text-xs text-white/70 flex items-center gap-1.5">
-        Logo
-        <input bind:value={companyLogoText} class="w-20 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
-      </label>
+      {#if logoImage}
+        <span class="text-xs text-white/50 flex items-center gap-1.5" title="Logo lấy từ cấu hình mặt bằng">
+          Logo
+          <img src={logoImage.src} alt="" class="h-5 max-w-[3.5rem] object-contain bg-white/90 rounded px-1" />
+        </span>
+      {:else}
+        <label class="text-xs text-white/70 flex items-center gap-1.5" title="Chưa có ảnh logo — sửa mặt bằng để tải lên">
+          Logo
+          <input bind:value={companyLogoText} placeholder="chữ tắt" class="w-20 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
+        </label>
+      {/if}
 
       {#if layoutId}
         <div class="flex items-center gap-1.5 max-w-[22rem] overflow-x-auto">
@@ -531,6 +633,27 @@
               </label>
             {/each}
           {/if}
+        </div>
+      {/if}
+
+      {#if pageDates.length > 1}
+        <div class="flex items-center gap-1 text-xs text-white/70">
+          <button
+            onclick={() => previewIndex = Math.max(0, previewIndex - 1)}
+            disabled={previewIndex === 0}
+            class="w-6 h-6 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30"
+            aria-label="Trang trước"
+          >‹</button>
+          <span class="whitespace-nowrap">
+            Trang {Math.min(previewIndex, pageDates.length - 1) + 1}/{pageDates.length}
+            {#if loadingPreview}<span class="text-white/40">…</span>{/if}
+          </span>
+          <button
+            onclick={() => previewIndex = Math.min(pageDates.length - 1, previewIndex + 1)}
+            disabled={previewIndex >= pageDates.length - 1}
+            class="w-6 h-6 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30"
+            aria-label="Trang sau"
+          >›</button>
         </div>
       {/if}
 

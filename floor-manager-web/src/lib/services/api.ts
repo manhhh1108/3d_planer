@@ -28,6 +28,10 @@ export interface ApiSite {
 	name: string;
 	address: string | null;
 	active: boolean;
+	/** Tên công ty in vào khung tên bản vẽ */
+	companyName: string | null;
+	/** Đường dẫn logo đã tải lên, kiểu /uploads/sites/<id>/logo.png */
+	companyLogo: string | null;
 	createdAt: string;
 	_count?: { layouts: number };
 	layouts?: (ApiLayout & { _count?: { snapshots: number } })[];
@@ -180,9 +184,27 @@ export const api = {
 		get: (id: string) => http<ApiSite>(`/sites/${id}`),
 		create: (data: { name: string; address?: string }) =>
 			http<ApiSite>('/sites', { method: 'POST', body: JSON.stringify(data) }),
-		update: (id: string, data: { name?: string; address?: string; active?: boolean }) =>
-			http<ApiSite>(`/sites/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+		update: (
+			id: string,
+			data: { name?: string; address?: string; active?: boolean; companyName?: string }
+		) => http<ApiSite>(`/sites/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: string) => http<void>(`/sites/${id}`, { method: 'DELETE' }),
+		/** Logo công ty — PNG/JPEG/WEBP, tối đa 1MB */
+		uploadLogo: async (id: string, file: File): Promise<ApiSite> => {
+			const fd = new FormData();
+			fd.append('file', file);
+			const res = await fetch(`${BASE}/sites/${id}/logo`, {
+				method: 'PUT',
+				body: fd,
+				credentials: 'include',
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error((body as any).error ?? `Tải logo thất bại (${res.status})`);
+			}
+			return res.json();
+		},
+		removeLogo: (id: string) => http<ApiSite>(`/sites/${id}/logo`, { method: 'DELETE' }),
 	},
 	files: {
 		/** Upload ảnh/tệp lẻ, trả về đường dẫn tương đối kiểu /uploads/<tên> */

@@ -30,6 +30,9 @@ model Site {
   name      String
   address   String?
   active    Boolean  @default(true)
+  // Khung tên bản vẽ in ra lấy từ đây, thay vì bắt gõ lại mỗi lần xuất PDF
+  companyName String? @map("company_name")
+  companyLogo String? @map("company_logo") // URL ảnh logo đã tải lên
   createdAt DateTime @default(now()) @map("created_at")
   layouts   Layout[]
 
