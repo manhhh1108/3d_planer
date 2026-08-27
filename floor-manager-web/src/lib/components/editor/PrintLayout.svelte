@@ -5,8 +5,20 @@
   import { floorPlanBounds, planHasContent } from '$lib/utils/planRender';
   import { drawWallsToCanvas } from '$lib/utils/planRender';
   import type { Project, Floor } from '$lib/models/types';
+  import { api, type ApiSnapshot } from '$lib/services/api';
+  import { positionToItem, todayStr } from '$lib/services/mapping';
 
-  let { open = $bindable(false) } = $props();
+  let {
+    open = $bindable(false),
+    layoutId = '',
+    siteName = '',
+    layoutName = '',
+  }: {
+    open?: boolean;
+    layoutId?: string;
+    siteName?: string;
+    layoutName?: string;
+  } = $props();
 
   let pageSize = $state<'a4' | 'letter'>('a4');
   let orientation = $state<'landscape' | 'portrait'>('landscape');
@@ -14,11 +26,16 @@
   let showLegend = $state(true);
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
+  let companyName = $state('VHE');
+  let companyLogoText = $state('VHE1');
+  let snapshots = $state<ApiSnapshot[]>([]);
+  let selectedDates = $state<string[]>([]);
+  let loadingSnapshots = $state(false);
 
   const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
   const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
   const TITLE_H = 68;
-  const FOOTER_H = 26;
+  const FOOTER_H = 64;
   const PAD = 36;
 
   function getActiveFloor(project: Project): Floor | undefined {
@@ -29,15 +46,74 @@
     return get(currentProject)?.name ?? 'Mặt bằng';
   }
 
-  function todayViVN(): string {
-    return new Date().toLocaleDateString('vi-VN', { year: 'numeric', month: 'long', day: 'numeric' });
+  function isoDate(d: string): string {
+    return d.slice(0, 10);
+  }
+
+  function todayViVN(date = todayStr()): string {
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+
+  function shortDate(date: string): string {
+    return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
+  }
+
+  function toggleDate(date: string) {
+    selectedDates = selectedDates.includes(date)
+      ? selectedDates.filter((d) => d !== date)
+      : [...selectedDates, date].sort();
+  }
+
+  async function refreshSnapshots() {
+    if (!layoutId) {
+      snapshots = [];
+      selectedDates = [];
+      return;
+    }
+    loadingSnapshots = true;
+    try {
+      snapshots = await api.snapshots.list(layoutId);
+      if (selectedDates.length === 0) {
+        selectedDates = snapshots.some((s) => isoDate(s.date) === todayStr()) ? [todayStr()] : [];
+      }
+    } catch (e) {
+      console.error('[PrintLayout] Không tải được danh sách snapshot:', e);
+      snapshots = [];
+    } finally {
+      loadingSnapshots = false;
+    }
+  }
+
+  function withSnapshotPositions(project: Project, snapshot: ApiSnapshot): Project {
+    const clone = structuredClone(project) as Project;
+    const floor = getActiveFloor(clone);
+    if (floor) floor.furniture = (snapshot.positions ?? []).map(positionToItem);
+    return clone;
   }
 
   /** Core rendering — works for screen preview (dpr>1) and PDF export (dpr=1). */
-  function renderToCanvas(ctx: CanvasRenderingContext2D, cw: number, ch: number, dpr = 1) {
-    const project = get(currentProject);
+  function renderToCanvas(
+    ctx: CanvasRenderingContext2D,
+    cw: number,
+    ch: number,
+    dpr = 1,
+    renderProject: Project | null = get(currentProject),
+    snapshotDate = todayStr(),
+    pageIndex = 1,
+    pageTotal = 1,
+  ) {
+    const project = renderProject;
     if (!project) return;
     const floor = getActiveFloor(project);
+    const resolvedSiteName = siteName || 'Mặt bằng';
+    const resolvedLayoutName = layoutName || floor?.name || project.name;
+    const resolvedCompany = companyName.trim() || 'Công ty';
+    const resolvedLogo = companyLogoText.trim() || resolvedCompany.slice(0, 4).toUpperCase();
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -54,7 +130,7 @@
 
     ctx.font = `12px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(floor?.name ?? '', PAD, 35);
+    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 35);
 
     ctx.textAlign = 'right';
     ctx.font = `bold 11px ${FONT}`;
@@ -62,7 +138,7 @@
     ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 13);
     ctx.font = `11px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(todayViVN(), cw - PAD, 32);
+    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 32);
 
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1.5;
@@ -105,7 +181,7 @@
       for (const [cid, cnt] of counts) {
         const cat = getCatalogItem(cid);
         if (!cat) continue;
-        if (rowY + rowH > ch - FOOTER_H - 8) break;
+        if (rowY + rowH > ch - FOOTER_H - 14) break;
 
         // Color dot
         ctx.fillStyle = cat.color ?? '#3b82f6';
@@ -258,20 +334,49 @@
     }
 
     // ── Footer ───────────────────────────────────────────────────
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 0.8;
+    const footerY = ch - FOOTER_H + 6;
+    const footerX = PAD;
+    const footerW = cw - PAD * 2;
+    const col1W = footerW * 0.44;
+    const col2W = footerW * 0.25;
+    const col3W = footerW - col1W - col2W;
+
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(footerX, footerY, footerW, FOOTER_H - 12);
     ctx.beginPath();
-    ctx.moveTo(PAD, ch - FOOTER_H + 5);
-    ctx.lineTo(cw - PAD, ch - FOOTER_H + 5);
+    ctx.moveTo(footerX + col1W, footerY);
+    ctx.lineTo(footerX + col1W, footerY + FOOTER_H - 12);
+    ctx.moveTo(footerX + col1W + col2W, footerY);
+    ctx.lineTo(footerX + col1W + col2W, footerY + FOOTER_H - 12);
     ctx.stroke();
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `8.5px ${FONT}`;
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('Floor Manager — Hệ thống quản lý mặt bằng sản xuất', PAD, ch - 8);
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.fillText(resolvedSiteName, footerX + 10, footerY + 10, col1W - 20);
+    ctx.font = `10px ${FONT}`;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText(resolvedLayoutName, footerX + 10, footerY + 28, col1W - 20);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `9px ${FONT}`;
+    ctx.fillText(`Ngày: ${shortDate(snapshotDate)}`, footerX + col1W + 10, footerY + 10, col2W - 20);
+    ctx.fillText(`Đơn vị: ${scale}`, footerX + col1W + 10, footerY + 26, col2W - 20);
+
+    const logoX = footerX + col1W + col2W + 12;
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.fillText(resolvedLogo, logoX, footerY + 10, col3W - 24);
+    ctx.font = `10px ${FONT}`;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText(resolvedCompany, logoX, footerY + 28, col3W - 24);
+
     ctx.textAlign = 'right';
-    ctx.fillText('Trang 1 / 1', cw - PAD, ch - 8);
+    ctx.fillStyle = '#64748b';
+    ctx.font = `8px ${FONT}`;
+    ctx.fillText(`Trang ${pageIndex} / ${pageTotal}`, cw - PAD - 8, footerY + FOOTER_H - 24);
   }
 
   function renderPrintCanvas() {
@@ -288,6 +393,8 @@
     exporting = true;
     try {
       await document.fonts.ready;
+      const project = get(currentProject);
+      if (!project) return;
 
       const isLandscape = orientation === 'landscape';
       const isA4 = pageSize === 'a4';
@@ -295,13 +402,6 @@
       // 150 dpi resolution
       const W = isA4 ? (isLandscape ? 1754 : 1240) : (isLandscape ? 1650 : 1275);
       const H = isA4 ? (isLandscape ? 1240 : 1754) : (isLandscape ? 1275 : 1650);
-
-      const off = document.createElement('canvas');
-      off.width = W;
-      off.height = H;
-      renderToCanvas(off.getContext('2d')!, W, H, 1);
-
-      const imgData = off.toDataURL('image/jpeg', 0.93);
 
       const { jsPDF } = await import('jspdf');
       const pdf = new jsPDF({
@@ -311,7 +411,28 @@
       });
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
-      pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+
+      const dates = selectedDates.length > 0 ? selectedDates : [todayStr()];
+      const pages: { date: string; project: Project }[] = [];
+      for (const date of dates) {
+        const snap = snapshots.find((s) => isoDate(s.date) === date);
+        if (layoutId && snap) {
+          const detail = await api.snapshots.get(snap.id);
+          pages.push({ date, project: withSnapshotPositions(project, detail) });
+        } else {
+          pages.push({ date, project });
+        }
+      }
+
+      pages.forEach((page, index) => {
+        if (index > 0) pdf.addPage(isA4 ? 'a4' : 'letter', isLandscape ? 'landscape' : 'portrait');
+        const off = document.createElement('canvas');
+        off.width = W;
+        off.height = H;
+        renderToCanvas(off.getContext('2d')!, W, H, 1, page.project, page.date, index + 1, pages.length);
+        const imgData = off.toDataURL('image/jpeg', 0.93);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+      });
       pdf.save(`${getProjectName()}-matbang.pdf`);
     } finally {
       exporting = false;
@@ -322,10 +443,13 @@
   function close() { open = false; }
 
   $effect(() => {
-    if (open) setTimeout(renderPrintCanvas, 60);
+    if (open) {
+      void refreshSnapshots();
+      setTimeout(renderPrintCanvas, 60);
+    }
   });
   $effect(() => {
-    if (open) { void pageSize; void orientation; void scale; void showLegend; setTimeout(renderPrintCanvas, 20); }
+    if (open) { void pageSize; void orientation; void scale; void showLegend; void companyName; void companyLogoText; setTimeout(renderPrintCanvas, 20); }
   });
 </script>
 
@@ -375,6 +499,40 @@
         <input type="checkbox" bind:checked={showLegend} class="accent-blue-400" />
         Danh sách block
       </label>
+
+      <label class="text-xs text-white/70 flex items-center gap-1.5">
+        Công ty
+        <input bind:value={companyName} class="w-28 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
+      </label>
+
+      <label class="text-xs text-white/70 flex items-center gap-1.5">
+        Logo
+        <input bind:value={companyLogoText} class="w-20 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
+      </label>
+
+      {#if layoutId}
+        <div class="flex items-center gap-1.5 max-w-[22rem] overflow-x-auto">
+          <span class="text-xs text-white/70 shrink-0">Ngày</span>
+          {#if loadingSnapshots}
+            <span class="text-xs text-white/40">Đang tải...</span>
+          {:else if snapshots.length === 0}
+            <span class="text-xs text-white/40">Chưa có snapshot</span>
+          {:else}
+            {#each [...snapshots].reverse() as s}
+              {@const d = isoDate(s.date)}
+              <label class="text-xs text-white/75 flex items-center gap-1 bg-white/10 rounded px-2 py-1 whitespace-nowrap cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedDates.includes(d)}
+                  onchange={() => toggleDate(d)}
+                  class="accent-blue-400"
+                />
+                {shortDate(d)}
+              </label>
+            {/each}
+          {/if}
+        </div>
+      {/if}
 
       <div class="flex-1"></div>
 

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
   import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
-  import { localStore, backendStore, setActiveStore, getActiveStore } from '$lib/services/datastore';
+  import { localStore, backendStore, setActiveStore } from '$lib/services/datastore';
   import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult, type ApiComment } from '$lib/services/api';
   import { currentUser, canEdit } from '$lib/stores/auth';
   import CommentPanel from '$lib/components/editor/CommentPanel.svelte';
@@ -25,7 +25,7 @@
   import UndoHistoryPanel from '$lib/components/editor/UndoHistoryPanel.svelte';
   import CommandPalette from '$lib/components/editor/CommandPalette.svelte';
   import TimelineBar from '$lib/components/editor/TimelineBar.svelte';
-  import { timelineReadonly } from '$lib/stores/timeline';
+  import { timelineDate } from '$lib/stores/timeline';
   import PrintLayout from '$lib/components/editor/PrintLayout.svelte';
   import DxfImportPanel from '$lib/components/editor/DxfImportPanel.svelte';
   import OnboardingTooltip from '$lib/components/OnboardingTooltip.svelte';
@@ -68,6 +68,8 @@
 
   let loadError = $state<string | null>(null);
   let backendLayoutId = $state<string | null>(null);
+  let printSiteName = $state('');
+  let printLayoutName = $state('');
   // Đích của nút quay lại trên TopBar: mặt bằng chứa layout đang mở.
   // Chưa biết layout thuộc mặt bằng nào thì về trang chủ.
   let backHref = $state(base || '/');
@@ -127,20 +129,25 @@
           // Load layout metadata for canvas background
           try {
             const layout = await api.layouts.get(layoutId);
+            printLayoutName = layout.name;
             layoutBgFile.set(layout.backgroundFile ? `${FILES_BASE}${layout.backgroundFile}` : null);
             layoutDimsCm.set({ widthCm: layout.widthM * 100, heightCm: layout.heightM * 100 });
             if (layout.siteId) {
               backHref = `${base}/site/${layout.siteId}`;
               try {
-                backLabel = (await api.sites.get(layout.siteId)).name;
+                const site = await api.sites.get(layout.siteId);
+                backLabel = site.name;
+                printSiteName = site.name;
               } catch {
                 backLabel = 'Mặt bằng';
+                printSiteName = 'Mặt bằng';
               }
             }
           } catch {
             // non-critical: background won't show but editor still works
           }
           // Mở layout mới thì soạn cho hôm nay, không mang theo ngày của layout trước
+          timelineDate.set(null);
           resetWorkingDate();
           markClean();
         } catch (e: any) {
@@ -181,19 +188,10 @@
     const releaseOnLeave = () => stopEditLock();
     window.addEventListener('pagehide', releaseOnLeave);
 
-    // Auto-save on every project change (debounced)
-    let saveTimeout: ReturnType<typeof setTimeout>;
-    const unsub = currentProject.subscribe((p) => {
-      if (!p) return;
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => getActiveStore().save(p), 2000);
-    });
     return () => {
-      unsub();
       unsubLock();
       window.removeEventListener('pagehide', releaseOnLeave);
       stopEditLock();
-      clearTimeout(saveTimeout);
     };
   });
 </script>
@@ -545,7 +543,12 @@
   {/if}
 
   <CommandPalette bind:open={commandPaletteOpen} />
-  <PrintLayout bind:open={printOpen} />
+  <PrintLayout
+    bind:open={printOpen}
+    layoutId={backendLayoutId ?? ''}
+    siteName={printSiteName}
+    layoutName={printLayoutName}
+  />
   <OnboardingTooltip />
 
   {#if dxfImportOpen && backendLayoutId}

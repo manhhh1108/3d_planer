@@ -40,6 +40,10 @@ function readAutoSavePref(): boolean {
 /** Tự lưu sau mỗi thay đổi. Tắt được để soạn nhiều ngày mà không ghi lung tung. */
 export const autoSaveEnabled = writable<boolean>(readAutoSavePref());
 
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let initialized = false;
+let skipNext = false;
+
 autoSaveEnabled.subscribe((on) => {
   try {
     localStorage.setItem(AUTOSAVE_KEY, on ? '1' : '0');
@@ -51,10 +55,6 @@ autoSaveEnabled.subscribe((on) => {
     debounceTimer = null;
   }
 });
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let initialized = false;
-let skipNext = false;
 
 /** Call once to start watching project changes */
 export function initAutoSave() {

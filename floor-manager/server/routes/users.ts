@@ -5,6 +5,10 @@ import prisma from '../db.js';
 const router = Router();
 // All routes here require ADMIN (enforced at app.ts mount point)
 
+function getSingleParam(value: string | string[] | undefined): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 // GET /api/users
 router.get('/', async (_req: Request, res: Response) => {
   try {
@@ -47,12 +51,15 @@ router.post('/', async (req: Request, res: Response) => {
 // PATCH /api/users/:id
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
+    const id = getSingleParam(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid user id' });
+
     const { name, role, active } = req.body as { name?: string; role?: string; active?: boolean };
     if (role && !['ADMIN', 'PLANNING', 'VIEWER'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
     const user = await prisma.user.update({
-      where: { id: req.params.id },
+      where: { id },
       data: {
         ...(name !== undefined && { name }),
         ...(role !== undefined && { role: role as 'ADMIN' | 'PLANNING' | 'VIEWER' }),
@@ -70,12 +77,15 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // POST /api/users/:id/reset-password
 router.post('/:id/reset-password', async (req: Request, res: Response) => {
   try {
+    const id = getSingleParam(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid user id' });
+
     const { password } = req.body as { password?: string };
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'password must be at least 6 characters' });
     }
     const passwordHash = await bcrypt.hash(password, 12);
-    await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash } });
+    await prisma.user.update({ where: { id }, data: { passwordHash } });
     res.json({ ok: true });
   } catch (err: any) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'Not found' });
