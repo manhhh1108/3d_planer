@@ -4,8 +4,8 @@
   import { positionToItem, todayStr } from '$lib/services/mapping';
   import { currentProject } from '$lib/stores/project';
   import { timelineDate } from '$lib/stores/timeline';
-  import { markClean, lastSavedAt, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
-  import { backendStore } from '$lib/services/datastore';
+  import { applyWithoutDirty, markClean, lastSavedAt, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
+  import { backToToday as goBackToToday } from '$lib/services/workingDay';
 
   let { layoutId }: { layoutId: string } = $props();
 
@@ -36,11 +36,15 @@
 
   /** Thay toàn bộ vị trí block trên floor đang active bằng positions của snapshot */
   function applyPositions(snap: ApiSnapshot | null) {
-    currentProject.update((p) => {
-      if (!p) return p;
-      const floor = p.floors.find((f) => f.id === p.activeFloorId) ?? p.floors[0];
-      if (floor) floor.furniture = (snap?.positions ?? []).map(positionToItem);
-      return { ...p };
+    // Thay bố cục bằng dữ liệu tải về thì không phải "người dùng vừa sửa" —
+    // để nó kích hoạt tự lưu là ghi bố cục ngày này đè lên ngày kia.
+    applyWithoutDirty(() => {
+      currentProject.update((p) => {
+        if (!p) return p;
+        const floor = p.floors.find((f) => f.id === p.activeFloorId) ?? p.floors[0];
+        if (floor) floor.furniture = (snap?.positions ?? []).map(positionToItem);
+        return { ...p };
+      });
     });
     markClean();
   }
@@ -74,13 +78,7 @@
   async function backToToday() {
     loading = true;
     try {
-      timelineDate.set(null);
-      resetWorkingDate();
-      const project = await backendStore.load(layoutId);
-      if (project) {
-        currentProject.set(project);
-        markClean();
-      }
+      await goBackToToday(layoutId);
     } finally {
       loading = false;
     }

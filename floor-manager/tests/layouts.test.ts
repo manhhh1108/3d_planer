@@ -38,6 +38,41 @@ describe('layouts', () => {
   });
 });
 
+describe('layout dxf block map', () => {
+  it('nhớ mapping block -> sản phẩm và bỏ những block chưa chọn', async () => {
+    const layout = await makeLayout();
+
+    const saved = await request(app)
+      .put(`/api/layouts/${layout.id}/dxf-map`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ dxfBlockMap: { 'A$C0C3937EC': 'prod-1', 'ZW$9178': '' } });
+    expect(saved.status).toBe(200);
+
+    const read = await request(app)
+      .get(`/api/layouts/${layout.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
+    // '' = người dùng chọn "bỏ qua" -> không lưu, để lần sau khỏi hiện nhầm
+    expect(read.body.dxfBlockMap).toEqual({ 'A$C0C3937EC': 'prod-1' });
+  });
+
+  it('từ chối payload không phải object chuỗi -> chuỗi', async () => {
+    const layout = await makeLayout();
+    const res = await request(app)
+      .put(`/api/layouts/${layout.id}/dxf-map`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ dxfBlockMap: { block: 123 } });
+    expect(res.status).toBe(400);
+  });
+
+  it('404 khi layout không tồn tại', async () => {
+    const res = await request(app)
+      .put('/api/layouts/khong-co-that/dxf-map')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ dxfBlockMap: {} });
+    expect(res.status).toBe(404);
+  });
+});
+
 async function makeLayout() {
   const site = (await request(app)
     .post('/api/sites')

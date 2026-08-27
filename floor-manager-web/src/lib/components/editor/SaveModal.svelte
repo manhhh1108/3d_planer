@@ -4,8 +4,10 @@
   interface Props {
     onConfirm: (date: string) => void;
     onCancel: () => void;
+    /** Lỗi của lần bấm Lưu vừa rồi — hộp thoại ở lại để người dùng thử lại */
+    error?: string | null;
   }
-  const { onConfirm, onCancel }: Props = $props();
+  const { onConfirm, onCancel, error = null }: Props = $props();
 
   const today = todayStr();
   let selectedDate = $state(today);
@@ -30,6 +32,12 @@
       bind:value={selectedDate}
       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     />
+
+    {#if error}
+      <p class="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        ⚠ {error}
+      </p>
+    {/if}
 
     <div class="flex gap-2 mt-5 justify-end">
       <button

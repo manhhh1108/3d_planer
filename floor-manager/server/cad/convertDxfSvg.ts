@@ -14,6 +14,15 @@ export interface DxfInsertData {
   yCm: number;
   rotationDeg: number;
   svgPreview: string;
+  /**
+   * Layer của INSERT. Tên block trong bản vẽ thật thường là mã sinh tự động
+   * ("A$C0C3937EC"), còn layer lại do người vẽ đặt ("EVERGREEN", "22-CAT_2")
+   * nên đây thường là manh mối đọc được duy nhất.
+   */
+  layer: string;
+  /** Kích thước block khi đã đặt xuống bản vẽ (đã nhân tỉ lệ của INSERT), cm */
+  widthCm: number;
+  heightCm: number;
 }
 
 export interface DxfSvgResult {
@@ -381,16 +390,27 @@ export function dxfToSvg(dxfText: string, unitScale?: number): DxfSvgResult {
 
   const svg = wrapSvg(elements, minX, maxY, Math.max(widthM, 1e-6), Math.max(heightM, 1e-6));
 
-  // Build SVG preview cache: unique block name → svg string
-  const previewCache = new Map<string, string>();
-  function getPreview(name: string): string {
-    if (previewCache.has(name)) return previewCache.get(name)!;
+  // Build cache theo tên block: ảnh preview + kích thước gốc (đơn vị DXF)
+  type BlockInfo = { preview: string; wUnits: number; hUnits: number };
+  const previewCache = new Map<string, BlockInfo>();
+  function getBlockInfo(name: string): BlockInfo {
+    const cached = previewCache.get(name);
+    if (cached) return cached;
     const block = blocks[name];
-    if (!block?.entities) { previewCache.set(name, ''); return ''; }
+    if (!block?.entities) {
+      const empty = { preview: '', wUnits: 0, hUnits: 0 };
+      previewCache.set(name, empty);
+      return empty;
+    }
     const { elements: bElems, points: bPts } = renderEntities(block.entities, IDENTITY, blocks);
-    const preview = buildSvg(bElems, bPts);
-    previewCache.set(name, preview);
-    return preview;
+    const bb = bboxFromPoints(bPts);
+    const info: BlockInfo = {
+      preview: buildSvg(bElems, bPts),
+      wUnits: bb ? bb.maxX - bb.minX : 0,
+      hUnits: bb ? bb.maxY - bb.minY : 0,
+    };
+    previewCache.set(name, info);
+    return info;
   }
 
   // Extract INSERT entities that fall within the layout bounding box (with generous tolerance)
@@ -407,12 +427,20 @@ export function dxfToSvg(dxfText: string, unitScale?: number): DxfSvgResult {
     const yCm = Math.round((maxY - y_m) * 100 * 100) / 100;
     if (xCm < -padCm || xCm > widthM * 100 + padCm) continue;
     if (yCm < -padCm || yCm > heightM * 100 + padCm) continue;
+    const info = getBlockInfo(blockName);
+    // Cùng một block được chèn với tỉ lệ khác nhau thì kích thước thật khác
+    // nhau; lấy trị tuyệt đối vì tỉ lệ âm chỉ có nghĩa là lật gương.
+    const sx = Math.abs(Number(ent.xScale ?? 1)) || 1;
+    const sy = Math.abs(Number(ent.yScale ?? 1)) || 1;
     inserts.push({
       blockName,
       xCm,
       yCm,
       rotationDeg: -(ent.rotation ?? 0),
-      svgPreview: getPreview(blockName),
+      svgPreview: info.preview,
+      layer: String(ent.layer ?? ''),
+      widthCm: Math.round(info.wUnits * sx * scale * 100 * 10) / 10,
+      heightCm: Math.round(info.hUnits * sy * scale * 100 * 10) / 10,
     });
   }
 

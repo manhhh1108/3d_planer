@@ -16,6 +16,15 @@
   import { applyOrientation } from '$lib/utils/blockOrientation';
   import { decideCameraFit, initialCameraFitState, computeFitBox, type CameraFitState } from '$lib/utils/cameraFit';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
+  import { propertiesPanelOpen } from '$lib/stores/ui';
+
+  /**
+   * Bảng thuộc tính (fixed, rộng 20rem) đè lên mép phải khung 3D. Khi nó mở,
+   * mọi nút nổi neo phải phải dịch sang trái đúng bề rộng đó — nếu không thanh
+   * công cụ sẽ nằm chồng lên hàng chọn màu và bấm không trúng.
+   * Trên mobile bảng là sheet dưới đáy nên không cần né (chỉ áp dụng từ md).
+   */
+  let panelInset = $derived($propertiesPanelOpen ? 'md:right-[21rem]' : '');
 
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer;
@@ -1532,7 +1541,7 @@
 
 <div bind:this={container} class="w-full h-full relative">
   <!-- 3D Toolbar Row -->
-  <div class="absolute top-4 right-4 z-50 flex gap-1.5">
+  <div class="absolute top-4 right-4 z-50 flex gap-1.5 transition-[right] duration-150 {panelInset}">
     <!-- Multi-Floor Stacking Toggle -->
     <button
       onclick={() => { showAllFloors = !showAllFloors; rebuildScene(true); }}
@@ -1686,7 +1695,7 @@
 
   <!-- Camera Preview Panel -->
   {#if cameraPreviewOpen && cameraPlaced}
-    <div class="absolute bottom-4 right-4 z-50 bg-gray-900/95 rounded-xl shadow-2xl backdrop-blur-sm overflow-y-auto max-w-[calc(100vw-2rem)]" style="width: 420px; max-height: calc(100vh - 8rem);">
+    <div class="absolute bottom-4 right-4 z-50 bg-gray-900/95 rounded-xl shadow-2xl backdrop-blur-sm overflow-y-auto max-w-[calc(100vw-2rem)] {panelInset}" style="width: 420px; max-height: calc(100vh - 8rem);">
       <div class="flex items-center justify-between px-3 py-2 border-b border-gray-700">
         <span class="text-white text-sm font-medium">📷 Interior Camera</span>
         <div class="flex gap-2">
@@ -1917,7 +1926,7 @@
     <!-- Furniture Placement Toggle -->
     <button
       onclick={() => { furniturePlacementMode = !furniturePlacementMode; if (!furniturePlacementMode) { removeGhostPreview(); selectedCatalogId = null; furniturePickerOpen = false; } else { furniturePickerOpen = true; } }}
-      class="absolute top-16 right-28 z-50 p-2 rounded-lg transition-colors {furniturePlacementMode ? 'bg-green-600 text-white ring-2 ring-green-300' : 'bg-black/70 text-white hover:bg-black/80'}"
+      class="absolute top-16 right-28 z-50 p-2 rounded-lg transition-colors {$propertiesPanelOpen ? 'md:right-[27rem]' : ''} {furniturePlacementMode ? 'bg-green-600 text-white ring-2 ring-green-300' : 'bg-black/70 text-white hover:bg-black/80'}"
       title={furniturePlacementMode ? 'Exit Furniture Placement' : 'Place Furniture'}
       aria-label={furniturePlacementMode ? 'Exit Furniture Placement' : 'Place Furniture'}
     >

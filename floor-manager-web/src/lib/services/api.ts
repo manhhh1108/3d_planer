@@ -104,6 +104,11 @@ export interface DxfInsertData {
 	yCm: number;
 	rotationDeg: number;
 	svgPreview: string;
+	/** Layer của INSERT — thường dễ đọc hơn tên block sinh tự động */
+	layer: string;
+	/** Kích thước block khi đã đặt xuống bản vẽ (đã nhân tỉ lệ), cm */
+	widthCm: number;
+	heightCm: number;
 }
 
 /** Tường của mặt bằng như backend lưu — toạ độ và kích thước theo mét */
@@ -125,6 +130,8 @@ export interface ApiLayout {
 	heightM: number;
 	backgroundFile: string | null;
 	gridSize: number;
+	/** Block DXF nào ứng với sản phẩm nào: { "<tên block>": "<productId>" } */
+	dxfBlockMap?: Record<string, string> | null;
 	/** Chỉ có trong GET /layouts/:id — danh sách layout không kèm tường */
 	walls?: ApiWall[];
 	snapshots?: ApiSnapshot[];
@@ -282,6 +289,12 @@ export const api = {
 			http<ApiLayout>(`/layouts/${id}/background`, { method: 'DELETE' }),
 		fetchInserts: (id: string) =>
 			http<DxfInsertData[]>(`/layouts/${id}/background/inserts`),
+		/** Nhớ mapping block DXF -> sản phẩm cho lần nhập sau */
+		saveDxfMap: (id: string, dxfBlockMap: Record<string, string>) =>
+			http<ApiLayout>(`/layouts/${id}/dxf-map`, {
+				method: 'PUT',
+				body: JSON.stringify({ dxfBlockMap }),
+			}),
 	},
   reports: {
     summary: (layoutId: string, date: string) =>

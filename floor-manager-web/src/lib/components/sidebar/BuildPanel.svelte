@@ -1,5 +1,7 @@
 <script lang="ts">
   import { selectedTool, placingFurnitureId, setBackgroundImage, draggingCatalogId, currentProject, externalPlacements } from '$lib/stores/project';
+  import { backgroundPanelOpen, dxfImportOpen } from '$lib/stores/ui';
+  import { layoutBgFile } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
@@ -156,6 +158,7 @@
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
+        backgroundPanelOpen.set(true); // nhập ảnh mới thì luôn hiện lại bảng chỉnh ảnh
         setBackgroundImage({
           dataUrl,
           position: { x: 0, y: 0 },
@@ -304,6 +307,29 @@
           <div class="text-left">
             <div class="font-medium">Import Image</div>
             <div class="text-xs text-gray-400">Floor plan background</div>
+          </div>
+        </button>
+
+        <!-- Nhập sản phẩm từ DXF. Trước đây là nút tròn không nhãn ở góc dưới
+             trái canvas và biến mất hẳn khi layout chưa có bản vẽ nền, nên
+             không ai biết tính năng tồn tại. Giờ luôn hiện, chưa dùng được thì
+             mờ đi và nói rõ lý do. -->
+        <button
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {$layoutBgFile ? 'hover:bg-gray-50 text-gray-700' : 'text-gray-400 cursor-not-allowed'}"
+          disabled={!$layoutBgFile}
+          onclick={() => dxfImportOpen.set(true)}
+          title={$layoutBgFile
+            ? 'Đọc các block trong bản vẽ nền và đặt sản phẩm theo đúng vị trí trong CAD'
+            : 'Layout chưa có bản vẽ nền DXF/DWG — tải lên ở trang mặt bằng trước'}
+        >
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center {$layoutBgFile ? 'bg-gray-100' : 'bg-gray-50'}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+          </div>
+          <div class="text-left">
+            <div class="font-medium">Nhập sản phẩm từ DXF</div>
+            <div class="text-xs {$layoutBgFile ? 'text-gray-400' : 'text-gray-300'}">
+              {$layoutBgFile ? 'Đặt block theo bản vẽ CAD' : 'Cần bản vẽ nền DXF/DWG'}
+            </div>
           </div>
         </button>
       </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
+  import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, beginDrag, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
   import { layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
@@ -8,6 +8,8 @@
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
   import { handleGlobalShortcut } from '$lib/utils/shortcuts';
   import { timelineReadonly } from '$lib/stores/timeline';
+  import { backgroundPanelOpen } from '$lib/stores/ui';
+  import { hitTestBackgroundImage } from '$lib/utils/backgroundImageHit';
   import ContextMenu from './ContextMenu.svelte';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
@@ -191,6 +193,11 @@
   let bgImage: HTMLImageElement | null = $state(null);
   let bgLayoutImage = $state<HTMLImageElement | null>(null);
   let _bgLayoutDimsCm = { widthCm: 0, heightCm: 0 };
+
+  // Kéo ảnh nền: model đã có position + locked từ đầu nhưng canvas chưa bao giờ
+  // xử lý, nên ảnh nhập vào là dính cứng một chỗ.
+  let draggingBgImage = $state(false);
+  let bgDragOffset: Point = { x: 0, y: 0 };
 
   // Room label drag state
   let draggingRoomLabelId: string | null = $state(null);
@@ -999,6 +1006,13 @@
     ctx.restore();
   }
 
+  /** Bấm trúng ảnh nền chưa khoá không? Phép biến đổi ở utils, dùng chung với test. */
+  function hitBackgroundImage(wp: Point): boolean {
+    const bg = currentFloor?.backgroundImage;
+    if (!bg || !bgImage) return false;
+    return hitTestBackgroundImage(wp, bg, bgImage.width, bgImage.height);
+  }
+
   function drawBackgroundImage() {
     if (!bgImage || !currentFloor?.backgroundImage) return;
     const bg = currentFloor.backgroundImage;
@@ -1472,6 +1486,7 @@
           e.preventDefault();
           const reader = new FileReader();
           reader.onload = () => {
+            backgroundPanelOpen.set(true);
             setBackgroundImage({
               dataUrl: reader.result as string,
               position: { x: camX, y: camY },
@@ -2127,6 +2142,16 @@
             const w = currentFloor!.walls.find(wall => wall.id === wid);
             if (w) roomDragStartPositions.set(wid, { start: { ...w.start }, end: { ...w.end } });
           }
+        } else if (hitBackgroundImage(wp)) {
+          // Ảnh nền chưa khoá — kéo để căn ảnh, và mở lại bảng điều khiển ảnh
+          draggingBgImage = true;
+          beginDrag('Di chuyển ảnh nền'); // chốt trạng thái trước khi kéo để Ctrl+Z hoàn tác được
+          bgDragOffset = { x: wp.x - currentFloor!.backgroundImage!.position.x,
+                           y: wp.y - currentFloor!.backgroundImage!.position.y };
+          backgroundPanelOpen.set(true);
+          selectedElementId.set(null);
+          selectedElementIds.set(new Set());
+          selectedRoomId.set(null);
         } else {
           // Empty space — start marquee selection
           marqueeStart = { ...wp };
@@ -2400,6 +2425,12 @@
         editingTextAnnotationPos = { x: sp.x, y: sp.y };
       }
     }
+    if (draggingBgImage) {
+      updateBackgroundImage({
+        position: { x: mousePos.x - bgDragOffset.x, y: mousePos.y - bgDragOffset.y },
+      });
+      return;
+    }
     if (draggingColumnId && currentFloor?.columns) {
       const basePos = { x: mousePos.x - columnDragOffset.x, y: mousePos.y - columnDragOffset.y };
       moveColumn(draggingColumnId, { x: snap(basePos.x), y: snap(basePos.y) });
@@ -2488,6 +2519,7 @@
     markDirty();
     isPanning = false;
     draggingGuideId = null;
+    draggingBgImage = false;
 
     // Finalize room label drag
     if (draggingRoomLabelId) {
@@ -3354,6 +3386,7 @@
     spaceDown || isPanning || $panMode || (shiftDown && currentTool === 'select') ? 'grab' :
     pickingElevation ? 'crosshair' :
     draggingFurnitureId ? 'move' :
+    draggingBgImage ? 'move' :
     draggingRoomId ? 'move' :
     draggingMultiSelect ? 'move' :
     draggingDoorId ? 'move' :
@@ -3512,6 +3545,15 @@
       ondragstart={(e) => e.preventDefault()}
       onclick={onMinimapClick}
     ></canvas>
+  {/if}
+  <!-- Đã đóng bảng chỉnh ảnh nền: giữ một lối mở lại. Ảnh đang khoá thì bấm vào
+       ảnh trên bản vẽ không ăn, nếu không có nút này là hết đường quay lại. -->
+  {#if currentFloor?.backgroundImage && !$backgroundPanelOpen}
+    <button
+      onclick={() => backgroundPanelOpen.set(true)}
+      class="absolute bottom-2 left-2 z-20 bg-white/90 hover:bg-white border border-gray-300 rounded-full px-3 py-1 text-xs text-gray-600 shadow flex items-center gap-1.5"
+      title="Mở lại bảng chỉnh ảnh nền"
+    >Background</button>
   {/if}
   <div class="absolute bottom-2 right-2 bg-white/80 rounded px-2 py-1 text-xs text-gray-500 flex gap-3">
     {#if currentFloor}

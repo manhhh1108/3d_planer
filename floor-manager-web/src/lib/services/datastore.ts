@@ -1,6 +1,7 @@
 import type { Project } from '$lib/models/types';
 import { api } from './api';
 import { layoutToProject, projectToPositions, projectToWalls, todayStr } from './mapping';
+import { pickSnapshotForDate } from './snapshotPick';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
 import { externalPlacements } from '$lib/stores/project';
 
@@ -162,7 +163,11 @@ export const backendStore: DataStore = {
     // Catalog sản phẩm phải sẵn sàng trước khi canvas render các block
     await loadProductCatalog();
     const snapshots = await api.snapshots.list(layoutId);
-    const latest = snapshots[0] ? await api.snapshots.get(snapshots[0].id) : null;
+    // Bản MỚI NHẤT có thể là bố trí trước cho ngày mai. Nạp nó vào coi như
+    // hôm nay là lần lưu sau đè bố cục tương lai lên hôm nay, nên chỉ lấy bản
+    // của hôm nay (hoặc gần nhất trước hôm nay).
+    const current = pickSnapshotForDate(snapshots, todayStr());
+    const latest = current ? await api.snapshots.get(current.id) : null;
     // Bản đang bị chiếm ở mặt bằng khác — nạp trước khi canvas render, để badge
     // số lượng không nhấp nháy từ "còn" sang "hết".
     try {

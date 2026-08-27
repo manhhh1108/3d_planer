@@ -34,6 +34,8 @@ router.use((req, _res, next) => {
 
 /** Số tường tối đa cho một layout — chặn client gửi blob khổng lồ */
 const MAX_WALLS = 5000;
+// Một bản vẽ vài chục loại block là nhiều; giới hạn rộng tay để chặn payload rác
+const MAX_BLOCK_MAP_ENTRIES = 500;
 
 type StoredWall = {
   id: string;
@@ -251,6 +253,45 @@ router.put('/:id/walls', async (req: Request, res: Response) => {
     const layout = await prisma.layout.update({
       where: { id: String(req.params.id) },
       data: { walls },
+    });
+    res.json(withWalls(layout));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** Mapping block DXF -> sản phẩm: object phẳng, khoá và giá trị đều là chuỗi */
+function normalizeBlockMap(raw: unknown): Record<string, string> | null {
+  if (raw === null) return {};
+  if (typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: Record<string, string> = {};
+  for (const [blockName, productId] of Object.entries(raw as Record<string, unknown>)) {
+    if (!blockName || blockName.length > 255) return null;
+    if (typeof productId !== 'string') return null;
+    if (productId) out[blockName] = productId; // '' = bỏ qua block, không cần lưu
+  }
+  return out;
+}
+
+// PUT /:id/dxf-map — nhớ block DXF nào ứng với sản phẩm nào, để lần nhập sau
+// không phải map lại từ đầu
+router.put('/:id/dxf-map', async (req: Request, res: Response) => {
+  try {
+    const map = normalizeBlockMap((req.body as Record<string, unknown> | undefined)?.dxfBlockMap);
+    if (!map) return res.status(400).json({ error: 'dxfBlockMap must be an object of string -> string' });
+    if (Object.keys(map).length > MAX_BLOCK_MAP_ENTRIES) {
+      return res.status(400).json({ error: `Too many entries (max ${MAX_BLOCK_MAP_ENTRIES})` });
+    }
+
+    const exists = await prisma.layout.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true },
+    });
+    if (!exists) return res.status(404).json({ error: 'Not found' });
+
+    const layout = await prisma.layout.update({
+      where: { id: String(req.params.id) },
+      data: { dxfBlockMap: map },
     });
     res.json(withWalls(layout));
   } catch (err) {

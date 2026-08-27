@@ -75,6 +75,10 @@ model Layout {
   // Ranh giới/tường của mặt bằng (mét). Hình học cố định của layout, không đổi
   // theo ngày như vị trí block nên không nằm trong snapshot.
   walls          Json?
+  // Block trong file DXF nền ứng với sản phẩm nào: { "<tên block>": "<productId>" }.
+  // Thuộc về nội dung bản vẽ chứ không phải sở thích cá nhân, nên để ở server
+  // cho cả nhóm dùng chung thay vì mỗi máy map lại từ đầu.
+  dxfBlockMap    Json?      @map("dxf_block_map")
   createdAt      DateTime   @default(now()) @map("created_at")
   site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]

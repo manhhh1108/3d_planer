@@ -8,7 +8,8 @@
   import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
   import SettingsDialog from './SettingsDialog.svelte';
   import SaveModal from '$lib/components/editor/SaveModal.svelte';
-  import { saveState, lastSavedAt, manualSave, initAutoSave, autoSaveEnabled, workingDate, resetWorkingDate, markDirty } from '$lib/stores/saveStatus';
+  import { saveState, lastSavedAt, manualSave, initAutoSave, autoSaveEnabled, workingDate, markDirty, saveBlockedReason } from '$lib/stores/saveStatus';
+  import { backToToday } from '$lib/services/workingDay';
   import { timelineReadonly } from '$lib/stores/timeline';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
   import { currentUser } from '$lib/stores/auth';
@@ -94,9 +95,28 @@
     return y && m && d ? `${d}/${m}` : iso;
   }
 
+  let saveError = $state<string | null>(null);
+
   async function confirmSave(date: string) {
-    showSaveModal = false;
-    await manualSave(date);
+    try {
+      await manualSave(date);
+      saveError = null;
+      showSaveModal = false;
+    } catch (e) {
+      // Đóng hộp thoại rồi im lặng là người dùng tưởng đã lưu xong
+      saveError = e instanceof Error ? e.message : 'Không lưu được — thử lại';
+    }
+  }
+
+  /** Về hôm nay: phải nạp lại bố cục hôm nay, không chỉ đổi ngày đích */
+  let returningToday = $state(false);
+  async function onBackToToday() {
+    returningToday = true;
+    try {
+      await backToToday();
+    } finally {
+      returningToday = false;
+    }
   }
 
   // Relative time for tooltip
@@ -492,9 +512,10 @@
         title="Mọi lần lưu — kể cả tự lưu — đang ghi vào ngày này, không phải hôm nay"
       >📅 Đang soạn cho {fmtDay($workingDate)}</span>
       <button
-        onclick={resetWorkingDate}
-        class="text-[11px] text-white/60 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10 whitespace-nowrap"
-        title="Quay lại soạn cho hôm nay"
+        onclick={onBackToToday}
+        disabled={returningToday}
+        class="text-[11px] text-white/60 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10 whitespace-nowrap disabled:opacity-50"
+        title="Quay lại soạn cho hôm nay (nạp lại bố cục hôm nay)"
       >↩ Hôm nay</button>
     </div>
   {/if}
@@ -523,6 +544,12 @@
       Chưa lưu — bấm {saveLabel}
     {/if}
   </span>
+  {#if $saveBlockedReason}
+    <span
+      class="text-[11px] font-semibold text-red-300 bg-red-400/15 border border-red-300/30 rounded-full px-2 py-0.5 max-w-[16rem] truncate max-md:hidden"
+      title={$saveBlockedReason}
+    >⚠ {$saveBlockedReason}</span>
+  {/if}
   <button
     onclick={openSaveModal}
     disabled={$timelineReadonly}
@@ -537,7 +564,8 @@
 
 {#if showSaveModal}
   <SaveModal
+    error={saveError}
     onConfirm={confirmSave}
-    onCancel={() => (showSaveModal = false)}
+    onCancel={() => { showSaveModal = false; saveError = null; }}
   />
 {/if}

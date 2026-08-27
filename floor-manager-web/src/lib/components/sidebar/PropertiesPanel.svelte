@@ -6,6 +6,7 @@
   import { orientedDims } from '$lib/services/mapping';
   import { api } from '$lib/services/api';
   import { loadProductCatalog } from '$lib/stores/productCatalog';
+  import { propertiesPanelOpen, backgroundPanelOpen } from '$lib/stores/ui';
 
   /** Khớp danh sách công đoạn ở trang quản lý sản phẩm */
   const STAGES = ['Hàn', 'Sơn', 'Lắp ráp', 'Cắt', 'Khác'];
@@ -45,7 +46,9 @@
   let selectedWall = $derived(floor?.walls?.find(w => w.id === selId) ?? null);
   let selectedTextAnnotation = $derived(floor?.textAnnotations?.find(t => t.id === selId) ?? null);
   let selectedEntourage = $derived(floor?.entourage?.find(en => en.id === selId) ?? null);
-  let hasBgImage = $derived(!!floor?.backgroundImage);
+  // Có ảnh nền là bảng tự bật; phải đóng được, không thì nó che bản vẽ vĩnh viễn.
+  // Bấm lại vào ảnh trên canvas (hoặc nhập ảnh mới) sẽ mở lại.
+  let hasBgImage = $derived(!!floor?.backgroundImage && $backgroundPanelOpen);
 
   // Wall handlers
   function onWallThickness(e: Event) {
@@ -146,6 +149,12 @@
   }
 
   let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage));
+
+  // Bảng fixed nên nó đè lên mép phải khung 3D — báo để các nút nổi ở đó né ra
+  $effect(() => {
+    propertiesPanelOpen.set(hasSelection);
+    return () => propertiesPanelOpen.set(false);
+  });
 </script>
 
 <!-- Right sidebar on md+; slides up as a bottom sheet on phones -->
@@ -173,25 +182,30 @@
             <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
           </svg>
         </div>
-        <div class="grid grid-cols-5 gap-1.5 mb-2">
+        <!-- Ô màu lấp đầy ô lưới: vùng bấm rộng gấp ~3 lần ô 24px trước đây,
+             và khoảng cách đều nhau thay vì dồn về mép trái mỗi cột. -->
+        <div class="grid grid-cols-5 gap-2 mb-2">
           {#each ['#ffffff', '#f5f5dc', '#d2b48c', '#daa520', '#8b4513', '#696969', '#191970', '#000000', '#dc143c', '#228b22'] as color}
+            {@const active = (selectedFurniture.color ?? getCatalogItem(selectedFurniture.catalogId)?.color) === color}
             <button
-              class="w-6 h-6 rounded border-2 hover:border-gray-300 transition-colors {(selectedFurniture.color ?? getCatalogItem(selectedFurniture.catalogId)?.color) === color ? 'border-blue-500 ring-1 ring-blue-200' : 'border-gray-200'}"
+              class="h-8 w-full rounded-md border-2 transition-colors hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 {active ? 'border-blue-600 ring-2 ring-blue-200' : 'border-gray-200'}"
               style="background-color: {color}"
-              title="Color: {color}"
+              title={color}
+              aria-label="Đổi màu block sang {color}"
+              aria-pressed={active}
               onclick={() => onFurnitureColor(color)}
             ></button>
           {/each}
         </div>
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-gray-500">Custom:</span>
-          <input 
-            type="color" 
-            value={selectedFurniture.color ?? getCatalogItem(selectedFurniture.catalogId)?.color ?? '#888888'} 
-            oninput={(e) => onFurnitureColor((e.target as HTMLInputElement).value)} 
-            class="w-8 h-6 rounded border border-gray-200 cursor-pointer" 
+        <label class="flex items-center gap-2">
+          <span class="text-xs text-gray-500 shrink-0">Màu khác</span>
+          <input
+            type="color"
+            value={selectedFurniture.color ?? getCatalogItem(selectedFurniture.catalogId)?.color ?? '#888888'}
+            oninput={(e) => onFurnitureColor((e.target as HTMLInputElement).value)}
+            class="h-8 flex-1 min-w-0 rounded-md border border-gray-200 cursor-pointer bg-white p-0.5"
           />
-        </div>
+        </label>
       </div>
       
       <!-- Dimensions -->
@@ -433,8 +447,15 @@
     <div class="mt-4 pt-3 border-t border-gray-200">
       <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
         <span class="w-6 h-6 bg-blue-100 rounded flex items-center justify-center text-xs">🖼️</span>
-        Background Image
+        Ảnh nền
+        <button
+          onclick={() => backgroundPanelOpen.set(false)}
+          class="ml-auto w-6 h-6 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex items-center justify-center text-base leading-none"
+          title="Đóng bảng — bấm vào ảnh trên bản vẽ để mở lại"
+          aria-label="Đóng bảng ảnh nền"
+        >✕</button>
       </h3>
+      <p class="text-xs text-gray-400 -mt-2 mb-3">Kéo ảnh trên bản vẽ để di chuyển. Khoá lại để tránh xê dịch.</p>
       <div class="space-y-3">
         <label class="block">
           <span class="text-xs text-gray-500">Opacity</span>

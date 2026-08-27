@@ -11,7 +11,8 @@
   import GanttChart from '$lib/components/editor/GanttChart.svelte';
   import ConflictPanel from '$lib/components/editor/ConflictPanel.svelte';
   import PlanProductSidebar from '$lib/components/editor/PlanProductSidebar.svelte';
-  import { markClean, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
+  import { applyWithoutDirty, markClean, resetWorkingDate, workingDate } from '$lib/stores/saveStatus';
+  import { dxfImportOpen } from '$lib/stores/ui';
   import { startEditLock, stopEditLock, editLock, lockedByOther } from '$lib/stores/editLock';
   import { todayStr } from '$lib/services/mapping';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
@@ -33,7 +34,6 @@
 
   let commandPaletteOpen = $state(false);
   let printOpen = $state(false);
-  let dxfImportOpen = $state(false);
 
   // Lazy-load ThreeViewer to avoid loading Three.js (~1.4MB) until 3D mode is activated
   let ThreeViewer: any = $state(null);
@@ -125,7 +125,7 @@
         try {
           const project = await backendStore.load(layoutId);
           if (!project) throw new Error('Không tìm thấy layout');
-          currentProject.set(project);
+          applyWithoutDirty(() => currentProject.set(project));
           // Load layout metadata for canvas background
           try {
             const layout = await api.layouts.get(layoutId);
@@ -164,7 +164,7 @@
       if (id) {
         const project = await localStore.load(id);
         if (project) {
-          currentProject.set(project);
+          applyWithoutDirty(() => currentProject.set(project));
         } else {
           const p = createDefaultProject();
           currentProject.set(p);
@@ -352,16 +352,6 @@
   >⟲</button>
 
   <UndoHistoryPanel bind:visible={showUndoHistory} />
-
-  <!-- DXF import button — only when a background DXF is loaded -->
-  {#if mode === '2d' && backendLayoutId && $layoutBgFile}
-    <button
-      class="max-md:hidden fixed {backendLayoutId ? 'bottom-16' : 'bottom-4'} left-[8.5rem] w-8 h-8 rounded-full bg-slate-700 text-white text-xs shadow-lg hover:bg-blue-600 transition-colors z-50"
-      onclick={() => dxfImportOpen = true}
-      title="Nhập sản phẩm từ DXF"
-      aria-label="Nhập sản phẩm từ DXF"
-    >DXF</button>
-  {/if}
 
   <!-- Help button (desktop only — keyboard shortcuts are meaningless on touch) -->
   <button
@@ -551,8 +541,8 @@
   />
   <OnboardingTooltip />
 
-  {#if dxfImportOpen && backendLayoutId}
-    <DxfImportPanel layoutId={backendLayoutId} onClose={() => dxfImportOpen = false} />
+  {#if $dxfImportOpen && backendLayoutId}
+    <DxfImportPanel layoutId={backendLayoutId} onClose={() => dxfImportOpen.set(false)} />
   {/if}
 {:else}
   <div class="h-screen flex flex-col items-center justify-center gap-3">
