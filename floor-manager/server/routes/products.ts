@@ -3,6 +3,7 @@ import fs from 'fs';
 import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
 import { assetPaths } from '../cad/paths.js';
+import { isUniqueViolation } from '../prismaError.js';
 
 const router = Router();
 
@@ -167,6 +168,9 @@ router.post('/', async (req: Request, res: Response) => {
     });
     res.status(201).json(withAssetUrls(product));
   } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ error: 'Mã sản phẩm đã tồn tại trong dự án này' });
+    }
     res.status(500).json({ error: String(err) });
   }
 });
@@ -207,6 +211,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     });
     res.json(withAssetUrls(product));
   } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ error: 'Mã sản phẩm đã tồn tại trong dự án này' });
+    }
     res.status(500).json({ error: String(err) });
   }
 });

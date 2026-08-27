@@ -108,6 +108,10 @@ model Product {
   positions      Position[]
   planItems  PlanItem[]
 
+  /// Mã sản phẩm là duy nhất trong một dự án. Đây là khoá để việc nhập
+  /// hàng loạt biết một file CAD đã được nhập hay chưa, và để hai request
+  /// cùng mã chạy song song không cùng tạo ra sản phẩm.
+  @@unique([projectId, code])
   @@map("products")
 }
 
