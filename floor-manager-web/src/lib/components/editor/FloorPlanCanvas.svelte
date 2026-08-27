@@ -1405,6 +1405,14 @@
       currentTool = t;
       textAnnotationMode = t === 'text';
       if (t !== 'text') { editingTextAnnotationId = null; }
+
+      // Đo và ghi kích thước phải bám theo tool đang chọn. Trước đây canvas chỉ
+      // nghe phím M/N nên bấm nút ở sidebar chỉ làm nút sáng, canvas không biết
+      // gì và hai lệnh này coi như không dùng được bằng chuột.
+      measuring = t === 'measure';
+      annotating = t === 'annotate';
+      if (!measuring) { measureStart = null; measureEnd = null; }
+      if (!annotating) { annotationStart = null; }
       // Bỏ tool wall mà còn wallStart thì draw() giữ cờ dirty và redraw mãi
       if (t !== 'wall') cancelWallDrawing();
       markDirty();
@@ -1762,6 +1770,23 @@
       editingTextAnnotationValue = '';
       selectedTextAnnotationId = id;
       selectedElementId.set(id);
+      return;
+    }
+
+    // Đo khoảng cách: bấm điểm đầu, bấm điểm cuối.
+    // Trước đây chỉ nhận chuột PHẢI — trái với mọi lệnh còn lại của app, nên
+    // chọn lệnh xong bấm chuột trái thì không có gì xảy ra.
+    if (measuring) {
+      const snapped = magneticSnap(wp);
+      if (!measureStart || measureEnd) {
+        measureStart = { x: snapped.x, y: snapped.y };
+        measureEnd = null;
+      } else {
+        measureEnd = { x: snapped.x, y: snapped.y };
+        addMeasurement(measureStart.x, measureStart.y, snapped.x, snapped.y);
+        measureStart = null;
+        measureEnd = null;
+      }
       return;
     }
 
@@ -2842,10 +2867,11 @@
       placingRotation.set(0);
       editingTextAnnotationId = null;
       textAnnotationMode = false;
-      measuring = false;
+      // Trả tool về select — subscription ở trên sẽ tắt measuring/annotating,
+      // đồng thời nút bên sidebar cũng thôi sáng.
+      if (currentTool === 'measure' || currentTool === 'annotate') selectedTool.set('select');
       measureStart = null;
       measureEnd = null;
-      annotating = false;
       annotationStart = null;
       marqueeStart = null;
       marqueeEnd = null;
@@ -2993,15 +3019,12 @@
     if (e.key === 'g' || e.key === 'G') {
       showGrid = !showGrid;
     }
+    // Đổi tool qua store để nút ở sidebar sáng/tắt khớp với phím tắt
     if (e.key === 'm' || e.key === 'M') {
-      measuring = !measuring;
-      if (!measuring) { measureStart = null; measureEnd = null; }
-      if (measuring) { annotating = false; annotationStart = null; }
+      selectedTool.set(currentTool === 'measure' ? 'select' : 'measure');
     }
     if (e.key === 'n' || e.key === 'N') {
-      annotating = !annotating;
-      if (!annotating) { annotationStart = null; }
-      if (annotating) { measuring = false; measureStart = null; measureEnd = null; }
+      selectedTool.set(currentTool === 'annotate' ? 'select' : 'annotate');
     }
     if (e.key === 'f' || e.key === 'F') {
       zoomToFit();
@@ -3123,18 +3146,14 @@
       return;
     }
 
-    // If in measurement mode, use old behaviour
+    // Đang đo: chuột phải là huỷ, giống tool vẽ tường
     if (measuring) {
-      const rect = canvas.getBoundingClientRect();
-      const wp = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      if (!measureStart || measureEnd) {
-        measureStart = wp;
-        measureEnd = null;
-      } else {
-        measureEnd = wp;
-        addMeasurement(measureStart.x, measureStart.y, wp.x, wp.y);
+      if (measureStart) {
         measureStart = null;
         measureEnd = null;
+        markDirty();
+      } else {
+        selectedTool.set('select');
       }
       return;
     }
@@ -3565,9 +3584,14 @@
       {quantityLimitMsg}
     </div>
   {/if}
+  {#if annotating}
+    <div class="absolute top-2 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-3 py-1 rounded-full text-xs shadow">
+      ⇥ Ghi kích thước — bấm điểm đầu rồi điểm cuối · Esc để huỷ
+    </div>
+  {/if}
   {#if measuring}
     <div class="absolute top-2 left-1/2 -translate-x-1/2 bg-red-600 text-white px-3 py-1 rounded-full text-xs shadow">
-      Right-click two points to measure · M to exit · Esc to cancel
+      📏 Đo khoảng cách — bấm điểm đầu rồi điểm cuối · chuột phải hoặc Esc để huỷ
     </div>
   {/if}
   {#if textAnnotationMode}

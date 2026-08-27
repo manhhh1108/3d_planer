@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import { base } from '$app/paths';
   import { authApi, type ApiUser } from '$lib/services/api';
 
   let { data } = $props();
@@ -80,7 +81,18 @@
 <div class="min-h-screen bg-gray-50 p-6">
   <div class="max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-gray-800">Quản lý người dùng</h1>
+      <div>
+        <!-- Trang này vào từ header trang chủ, không có thanh điều hướng nào
+             khác — thiếu lối về thì phải bấm nút Back của trình duyệt -->
+        <a
+          href={base || '/'}
+          class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          Trang chủ
+        </a>
+        <h1 class="text-xl font-bold text-gray-800 mt-0.5">Quản lý người dùng</h1>
+      </div>
       <button
         onclick={() => (showCreate = true)}
         class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
