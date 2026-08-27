@@ -6,6 +6,7 @@ import prisma from '../server/db.js';
 import { assetPaths } from '../server/cad/paths.js';
 import { convertQueue } from '../server/cad/convertQueue.js';
 import { cadExtOf, ALLOWED_CAD_EXT, storeUploadedAsset } from '../server/cad/storeAsset.js';
+import { recoverStuckAssets } from '../server/cad/convert.js';
 
 const FIXTURE_DXF = path.join(import.meta.dirname, 'fixtures', 'box.dxf');
 
@@ -104,5 +105,50 @@ describe('storeUploadedAsset', () => {
     } finally {
       enqueueSpy.mockRestore();
     }
+  });
+});
+
+describe('recoverStuckAssets', () => {
+  it('còn file gốc thì đưa về pending và trả id để chạy lại', async () => {
+    const asset = await storeUploadedAsset(fakeUpload('lai.dxf'), 'dxf');
+    await convertQueue.idle();
+    // Giả lập server chết giữa chừng: bản ghi đang dở, file gốc vẫn còn
+    await prisma.asset.update({
+      where: { id: asset.id },
+      data: { status: 'processing', error: null },
+    });
+
+    const retry = await recoverStuckAssets();
+
+    expect(retry).toContain(asset.id);
+    const after = await prisma.asset.findUnique({ where: { id: asset.id } });
+    expect(after!.status).toBe('pending');
+    expect(after!.error).toBeNull();
+  });
+
+  it('mất file gốc thì đánh failed và không chạy lại', async () => {
+    const asset = await storeUploadedAsset(fakeUpload('mat.dxf'), 'dxf');
+    await convertQueue.idle();
+    await prisma.asset.update({ where: { id: asset.id }, data: { status: 'pending' } });
+    fs.rmSync(assetPaths(asset.id, 'dxf').sourceDir, { recursive: true, force: true });
+
+    const retry = await recoverStuckAssets();
+
+    expect(retry).not.toContain(asset.id);
+    const after = await prisma.asset.findUnique({ where: { id: asset.id } });
+    expect(after!.status).toBe('failed');
+    expect(after!.error).toBeTruthy();
+  });
+
+  it('không đụng tới asset đã xong hoặc đã hỏng', async () => {
+    const done = await storeUploadedAsset(fakeUpload('xong.dxf'), 'dxf');
+    await convertQueue.idle();
+    await prisma.asset.update({ where: { id: done.id }, data: { status: 'ready', error: null } });
+
+    const retry = await recoverStuckAssets();
+
+    expect(retry).not.toContain(done.id);
+    const after = await prisma.asset.findUnique({ where: { id: done.id } });
+    expect(after!.status).toBe('ready');
   });
 });

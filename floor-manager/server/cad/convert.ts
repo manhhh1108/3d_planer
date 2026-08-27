@@ -105,10 +105,37 @@ export async function runConversion(assetId: string): Promise<void> {
   }
 }
 
-/** Boot recovery: job đang processing khi server chết -> failed để user upload lại. */
-export async function recoverStuckAssets(): Promise<void> {
-  await prisma.asset.updateMany({
+/**
+ * Boot recovery cho job convert đang dở khi server chết.
+ *
+ * File CAD gốc không bao giờ bị xoá và convert đọc lại từ đó mỗi lần chạy, nên
+ * job dở dang chạy lại được và cho kết quả y hệt. Trước đây hàm này đánh hỏng cả
+ * lô và bắt upload lại — với một lô nhập 50 file thì một lần restart là mất sạch.
+ *
+ * Trả về danh sách asset cần đưa lại vào hàng đợi. Việc enqueue để cho
+ * `server/index.ts` làm, nhờ vậy file này không phải import ngược module hàng đợi.
+ */
+export async function recoverStuckAssets(): Promise<string[]> {
+  const stuck = await prisma.asset.findMany({
     where: { status: { in: ['pending', 'processing'] } },
-    data: { status: 'failed', error: 'Server restarted during conversion — upload lại file' },
+    select: { id: true, fileType: true },
   });
+
+  const retry: string[] = [];
+  for (const a of stuck) {
+    const p = assetPaths(a.id, a.fileType);
+    if (p.sourceFile && fs.existsSync(p.sourceFile)) {
+      await prisma.asset.update({
+        where: { id: a.id },
+        data: { status: 'pending', error: null },
+      });
+      retry.push(a.id);
+    } else {
+      await prisma.asset.update({
+        where: { id: a.id },
+        data: { status: 'failed', error: 'Mất file gốc khi server khởi động lại — upload lại file' },
+      });
+    }
+  }
+  return retry;
 }
