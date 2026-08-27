@@ -1,23 +1,13 @@
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 import prisma from '../db.js';
 import { assetPaths } from '../cad/paths.js';
 import { requireRole } from '../middleware/auth.js';
 import { convertQueue } from '../cad/convertQueue.js';
+import { ALLOWED_CAD_EXT, cadUpload, cadExtOf, storeUploadedAsset } from '../cad/storeAsset.js';
 
 // Re-export: tests và code cũ vẫn import convertQueue từ đây.
 export { convertQueue };
-
-const ALLOWED = ['dwg', 'dxf', 'step', 'stp', 'ifc'];
-const TMP_DIR = path.resolve(process.env.STORAGE_DIR || './storage', 'tmp');
-fs.mkdirSync(TMP_DIR, { recursive: true });
-
-const upload = multer({
-  dest: TMP_DIR,
-  limits: { fileSize: 200 * 1024 * 1024 },
-});
 
 function serialize(asset: {
   id: string;
@@ -50,32 +40,20 @@ router.use((req, _res, next) => {
 });
 
 // POST / — multipart: file (bắt buộc), productId?, unitScale?
-router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/', cadUpload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'file is required' });
-    const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
-    if (!ALLOWED.includes(ext)) {
+    const ext = cadExtOf(req.file.originalname);
+    if (!ALLOWED_CAD_EXT.includes(ext)) {
       fs.rmSync(req.file.path, { force: true });
-      return res.status(400).json({ error: `File type .${ext} not supported (${ALLOWED.join(', ')})` });
+      return res
+        .status(400)
+        .json({ error: `File type .${ext} not supported (${ALLOWED_CAD_EXT.join(', ')})` });
     }
-    const { productId } = req.body;
-    const unitScale = req.body.unitScale
-      ? Number(req.body.unitScale)
-      : ext === 'ifc'
-        ? 1
-        : 0.001;
-
-    const asset = await prisma.asset.create({
-      data: { fileName: req.file.originalname, fileType: ext, unitScale },
+    const asset = await storeUploadedAsset(req.file, ext, {
+      unitScale: req.body.unitScale ? Number(req.body.unitScale) : undefined,
+      productId: req.body.productId ? String(req.body.productId) : undefined,
     });
-    const p = assetPaths(asset.id, ext);
-    fs.mkdirSync(p.sourceDir, { recursive: true });
-    fs.renameSync(req.file.path, p.sourceFile!);
-
-    if (productId) {
-      await prisma.product.update({ where: { id: String(productId) }, data: { assetId: asset.id } });
-    }
-    convertQueue.enqueue(asset.id);
     res.status(201).json(serialize(asset));
   } catch (err) {
     res.status(500).json({ error: String(err) });
