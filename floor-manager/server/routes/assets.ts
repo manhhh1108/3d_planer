@@ -4,9 +4,11 @@ import path from 'path';
 import fs from 'fs';
 import prisma from '../db.js';
 import { assetPaths } from '../cad/paths.js';
-import { ConvertQueue, type ConverterFn } from '../cad/queue.js';
-import { runConversion } from '../cad/convert.js';
 import { requireRole } from '../middleware/auth.js';
+import { convertQueue } from '../cad/convertQueue.js';
+
+// Re-export: tests và code cũ vẫn import convertQueue từ đây.
+export { convertQueue };
 
 const ALLOWED = ['dwg', 'dxf', 'step', 'stp', 'ifc'];
 const TMP_DIR = path.resolve(process.env.STORAGE_DIR || './storage', 'tmp');
@@ -16,8 +18,6 @@ const upload = multer({
   dest: TMP_DIR,
   limits: { fileSize: 200 * 1024 * 1024 },
 });
-
-export const convertQueue = new ConvertQueue(runConversion, 2);
 
 function serialize(asset: {
   id: string;
