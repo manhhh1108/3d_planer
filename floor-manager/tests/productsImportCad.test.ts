@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+import fs from 'fs';
+import path from 'path';
 import app from '../server/app.js';
 import prisma from '../server/db.js';
-import { adminToken } from './setup.js';
+import { convertQueue } from '../server/cad/convertQueue.js';
+import { adminToken, planningToken, viewerToken } from './setup.js';
 import { deriveProductCode } from '../server/routes/productsImportCad.js';
+
+const FIXTURE_DXF = path.join(import.meta.dirname, 'fixtures', 'box.dxf');
 
 async function makeProject() {
   return (
@@ -96,5 +101,130 @@ describe('deriveProductCode', () => {
 
   it('tên chỉ có đuôi thì trả chuỗi rỗng', () => {
     expect(deriveProductCode('.dwg')).toBe('');
+  });
+});
+
+describe('POST /api/products/import-cad', () => {
+  it('tạo sản phẩm mới với mã và tên lấy từ tên file', async () => {
+    const proj = await makeProject();
+    const res = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), '662-01.dxf');
+
+    expect(res.status).toBe(201);
+    expect(res.body.action).toBe('created');
+    expect(res.body.code).toBe('662-01');
+
+    const p = await prisma.product.findUnique({ where: { id: res.body.productId } });
+    expect(p!.code).toBe('662-01');
+    expect(p!.name).toBe('662-01');
+    expect(p!.quantity).toBe(1);
+    expect(p!.assetId).toBe(res.body.assetId);
+
+    await convertQueue.idle();
+    const done = await prisma.product.findUnique({ where: { id: res.body.productId } });
+    expect(done!.areaM2).toBeCloseTo(8, 1);
+  });
+
+  it('mã đã có thì bỏ qua, không tạo thêm sản phẩm lẫn asset', async () => {
+    const proj = await makeProject();
+    const token = adminToken();
+    const first = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${token}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), '662-01.dxf');
+    expect(first.status).toBe(201);
+    const assetsAfterFirst = await prisma.asset.count();
+
+    const second = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${token}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), '662-01.dxf');
+
+    expect(second.status).toBe(200);
+    expect(second.body.action).toBe('skipped');
+    expect(second.body.productId).toBe(first.body.productId);
+    expect(await prisma.product.count({ where: { projectId: proj.id } })).toBe(1);
+    expect(await prisma.asset.count()).toBe(assetsAfterFirst);
+  });
+
+  it('hai request cùng mã chạy song song chỉ tạo đúng một sản phẩm', async () => {
+    const proj = await makeProject();
+    const token = adminToken();
+    const send = () =>
+      request(app)
+        .post('/api/products/import-cad')
+        .set('Cookie', `access_token=${token}`)
+        .field('projectId', proj.id)
+        .attach('file', fs.readFileSync(FIXTURE_DXF), 'SONG-SONG.dxf');
+
+    const [a, b] = await Promise.all([send(), send()]);
+    const actions = [a.body.action, b.body.action].sort();
+    expect(actions).toEqual(['created', 'skipped']);
+    expect(await prisma.product.count({ where: { projectId: proj.id } })).toBe(1);
+    await convertQueue.idle();
+  });
+
+  it('đuôi file không hỗ trợ thì 400 và không để lại bản ghi', async () => {
+    const proj = await makeProject();
+    const res = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .field('projectId', proj.id)
+      .attach('file', Buffer.from('xin chao'), 'ghichu.txt');
+
+    expect(res.status).toBe(400);
+    expect(await prisma.product.count({ where: { projectId: proj.id } })).toBe(0);
+    expect(await prisma.asset.count()).toBe(0);
+  });
+
+  it('thiếu projectId thì 400', async () => {
+    const res = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'a.dxf');
+    expect(res.status).toBe(400);
+  });
+
+  it('projectId không tồn tại thì 400, không phải 500', async () => {
+    const res = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .field('projectId', 'khong-co-that')
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'a.dxf');
+    expect(res.status).toBe(400);
+    expect(await prisma.asset.count()).toBe(0);
+  });
+
+  it('tên file chỉ có đuôi thì 400', async () => {
+    const proj = await makeProject();
+    const res = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), '.dxf');
+    expect(res.status).toBe(400);
+  });
+
+  it('PLANNING nhập được, VIEWER thì không', async () => {
+    const proj = await makeProject();
+    const ok = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${planningToken()}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'PL-01.dxf');
+    expect(ok.status).toBe(201);
+
+    const denied = await request(app)
+      .post('/api/products/import-cad')
+      .set('Cookie', `access_token=${viewerToken()}`)
+      .field('projectId', proj.id)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'VW-01.dxf');
+    expect(denied.status).toBe(403);
+    await convertQueue.idle();
   });
 });

@@ -4,6 +4,8 @@ import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
 import { assetPaths } from '../cad/paths.js';
 import { isUniqueViolation } from '../prismaError.js';
+import { cadUpload } from '../cad/storeAsset.js';
+import { importCadHandler } from './productsImportCad.js';
 
 const router = Router();
 
@@ -32,6 +34,9 @@ router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   return requireRole('ADMIN', 'PLANNING')(req, _res, next);
 });
+
+// POST /import-cad — multipart: file, projectId. Mỗi request một file.
+router.post('/import-cad', cadUpload.single('file'), importCadHandler);
 
 // GET /?projectId=xxx — list products filtered by projectId
 router.get('/', async (req: Request, res: Response) => {
