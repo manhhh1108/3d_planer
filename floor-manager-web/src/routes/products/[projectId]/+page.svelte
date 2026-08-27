@@ -6,6 +6,7 @@
   import { shrinkImage, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXT } from '$lib/utils/imageThumb';
   import { canEdit } from '$lib/stores/auth';
   import CadDropzone from '$lib/components/products/CadDropzone.svelte';
+  import BulkCadImportDialog from '$lib/components/products/BulkCadImportDialog.svelte';
 
   const projectId = $page.params.projectId ?? '';
 
@@ -44,6 +45,7 @@
   let formUploading = $state(false);
   let formError = $state<string | null>(null);
   let confirmDeleteId = $state<string | null>(null);
+  let showBulkImport = $state(false);
 
   let uploadingFor = $state<string | null>(null);
   let uploadError = $state<string | null>(null);
@@ -110,6 +112,18 @@
       }
       await refresh();
     }, 2500);
+  }
+
+  /**
+   * Nhập xong thì nạp lại danh sách và bật polling — asset vừa tạo còn đang
+   * convert, kích thước và ảnh sẽ hiện dần.
+   */
+  async function onBulkImportClose(imported: boolean) {
+    showBulkImport = false;
+    if (imported) {
+      await refresh();
+      ensurePolling();
+    }
   }
 
   onDestroy(() => {
@@ -275,6 +289,9 @@
         📊 Báo cáo
       </a>
       {#if $canEdit}
+      <button onclick={() => (showBulkImport = true)} class="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold text-sm">
+        Nhập nhiều file CAD
+      </button>
       <button onclick={openCreate} class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold text-sm">
         + Thêm sản phẩm
       </button>
@@ -523,5 +540,9 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  {#if showBulkImport}
+    <BulkCadImportDialog {projectId} onclose={onBulkImportClose} />
   {/if}
 </div>
