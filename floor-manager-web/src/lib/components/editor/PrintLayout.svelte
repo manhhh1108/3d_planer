@@ -34,6 +34,8 @@
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
   let printing = $state(false);
+  /** Lỗi của lần xuất/in gần nhất — hiện thẳng trên thanh công cụ */
+  let exportError = $state<string | null>(null);
   let companyName = $state('');
   let companyLogoText = $state('');
   let snapshots = $state<ApiSnapshot[]>([]);
@@ -60,9 +62,11 @@
 
   const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
   const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
-  const TITLE_H = 68;
-  const FOOTER_H = 64;
+  const TITLE_H = 86;
+  const FOOTER_H = 92;
   const PAD = 36;
+  /** Bội số độ phân giải khi xuất — 3× khổ 96dpi ≈ 288dpi, đủ nét khi in giấy */
+  const EXPORT_SCALE = 3;
 
   function getActiveFloor(project: Project): Floor | undefined {
     return project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
@@ -124,6 +128,35 @@
     return clone;
   }
 
+  /**
+   * Vẽ chữ vừa bề ngang cho trước: thu nhỏ cỡ chữ trước, hết cỡ thì cắt bớt.
+   *
+   * Không dùng tham số maxWidth của fillText — nó ép co ngang chữ lại thành
+   * nét dẹp dính vào nhau, đúng kiểu "nhìn như bị mờ" trên nhãn block.
+   */
+  function drawFittedText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    y: number,
+    maxW: number,
+    size: number,
+    bold: boolean,
+  ) {
+    const setFont = (px: number) => { ctx.font = `${bold ? 'bold ' : ''}${px}px ${FONT}`; };
+    let px = size;
+    setFont(px);
+    while (px > 6 && ctx.measureText(text).width > maxW) {
+      px -= 0.5;
+      setFont(px);
+    }
+    let out = text;
+    if (ctx.measureText(out).width > maxW) {
+      while (out.length > 1 && ctx.measureText(`${out}…`).width > maxW) out = out.slice(0, -1);
+      out = `${out}…`;
+    }
+    ctx.fillText(out, 0, y);
+  }
+
   /** Core rendering — works for screen preview (dpr>1) and PDF export (dpr=1). */
   function renderToCanvas(
     ctx: CanvasRenderingContext2D,
@@ -151,24 +184,24 @@
 
     // ── Title block ──────────────────────────────────────────────
     ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 17px ${FONT}`;
+    ctx.font = `bold 23px ${FONT}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     // Dòng 1 là công ty, không phải project.name: ở chế độ backend project.name
     // chính là tên layout, in ra thành "Layout / Mặt bằng · Layout" lặp vô nghĩa.
-    ctx.fillText(resolvedCompany, PAD, 13);
+    ctx.fillText(resolvedCompany, PAD, 14);
 
-    ctx.font = `12px ${FONT}`;
+    ctx.font = `16px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 35);
+    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 46);
 
     ctx.textAlign = 'right';
-    ctx.font = `bold 11px ${FONT}`;
+    ctx.font = `bold 15px ${FONT}`;
     ctx.fillStyle = '#0f172a';
-    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 13);
-    ctx.font = `11px ${FONT}`;
+    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 15);
+    ctx.font = `14px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 32);
+    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 42);
 
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1.5;
@@ -178,7 +211,7 @@
     ctx.stroke();
 
     // ── Legend column (right side) ───────────────────────────────
-    const legendW = showLegend ? 160 : 0;
+    const legendW = showLegend ? 215 : 0;
     const planAreaX = PAD;
     const planAreaY = TITLE_H + 4;
     const planAreaW = cw - PAD * 2 - legendW - (legendW > 0 ? 12 : 0);
@@ -187,17 +220,17 @@
     if (showLegend && floor?.furniture?.length) {
       const lx = planAreaX + planAreaW + 12;
       const ly = planAreaY + 4;
-      ctx.font = `bold 9px ${FONT}`;
+      ctx.font = `bold 13px ${FONT}`;
       ctx.fillStyle = '#0f172a';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText('DANH SÁCH BLOCK', lx, ly);
 
-      ctx.strokeStyle = '#e2e8f0';
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(lx, ly + 13);
-      ctx.lineTo(lx + legendW - 4, ly + 13);
+      ctx.moveTo(lx, ly + 20);
+      ctx.lineTo(lx + legendW - 4, ly + 20);
       ctx.stroke();
 
       // Group by catalogId
@@ -206,8 +239,8 @@
         counts.set(fi.catalogId, (counts.get(fi.catalogId) ?? 0) + 1);
       }
 
-      let rowY = ly + 18;
-      const rowH = 18;
+      let rowY = ly + 28;
+      const rowH = 28;
       for (const [cid, cnt] of counts) {
         const cat = getCatalogItem(cid);
         if (!cat) continue;
@@ -216,21 +249,21 @@
         // Color dot
         ctx.fillStyle = cat.color ?? '#3b82f6';
         ctx.beginPath();
-        ctx.arc(lx + 5, rowY + 5, 4, 0, Math.PI * 2);
+        ctx.arc(lx + 6, rowY + 7, 5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = '#1e293b';
-        ctx.font = `8px ${FONT}`;
+        ctx.font = `bold 12px ${FONT}`;
         ctx.textBaseline = 'top';
 
         // Truncate long names
         let name = cat.name;
-        if (name.length > 16) name = name.slice(0, 15) + '…';
-        ctx.fillText(name, lx + 14, rowY + 1);
+        if (name.length > 20) name = name.slice(0, 19) + '…';
+        ctx.fillText(name, lx + 18, rowY);
 
         ctx.fillStyle = '#64748b';
-        ctx.font = `7.5px ${FONT}`;
-        ctx.fillText(`SL: ${cnt}  |  ${cat.width ?? 0}×${cat.depth ?? 0}cm`, lx + 14, rowY + 11);
+        ctx.font = `10.5px ${FONT}`;
+        ctx.fillText(`SL: ${cnt}  |  ${cat.width ?? 0}×${cat.depth ?? 0}cm`, lx + 18, rowY + 14);
 
         rowY += rowH;
       }
@@ -303,18 +336,31 @@
 
           // Label
           if (cat) {
-            const maxFontPx = Math.min(fw, fd) * 0.28;
-            const fontSize = Math.max(5 / fitScale, Math.min(10 / fitScale, maxFontPx));
-            ctx.fillStyle = '#1e293b';
-            ctx.font = `bold ${fontSize}px ${FONT}`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const maxW = fw * 0.88;
-            ctx.fillText(cat.name, 0, fd > fw * 1.5 ? -fontSize * 0.6 : 0, maxW);
-            if (fd > fw * 1.2) {
-              ctx.font = `${fontSize * 0.75}px ${FONT}`;
-              ctx.fillStyle = '#475569';
-              ctx.fillText(cat.id.slice(-6).toUpperCase(), 0, fontSize * 0.9, maxW);
+            // Kích thước ô tính ra px trang, rồi vẽ chữ ở hệ px đó: vẽ trong hệ
+            // cm sẽ khiến nét chữ to nhỏ theo mức thu phóng của từng bản vẽ.
+            const boxW = fw * fitScale;
+            const boxH = fd * fitScale;
+            // Block cao hẹp thì xoay chữ dọc thay vì nhồi vào bề ngang
+            const vertical = boxH > boxW * 1.35;
+            const availW = (vertical ? boxH : boxW) - 8;
+            const availH = (vertical ? boxW : boxH) - 6;
+
+            if (availW > 14 && availH > 9) {
+              ctx.save();
+              ctx.scale(1 / fitScale, 1 / fitScale);
+              if (vertical) ctx.rotate(-Math.PI / 2);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+
+              const twoLines = availH >= 26;
+              const nameSize = Math.min(13, Math.max(6, availH * (twoLines ? 0.34 : 0.58)));
+              ctx.fillStyle = '#0f172a';
+              drawFittedText(ctx, cat.name, twoLines ? -nameSize * 0.6 : 0, availW, nameSize, true);
+              if (twoLines) {
+                ctx.fillStyle = '#475569';
+                drawFittedText(ctx, cat.id.slice(-6).toUpperCase(), nameSize * 0.8, availW, nameSize * 0.8, false);
+              }
+              ctx.restore();
             }
           }
           ctx.restore();
@@ -328,25 +374,25 @@
         const bx = planAreaX + 4;
         const by = planAreaY + planAreaH - 10;
         ctx.fillStyle = '#0f172a';
-        ctx.fillRect(bx, by - 3, barPx / 2, 3);
+        ctx.fillRect(bx, by - 4, barPx / 2, 4);
         ctx.fillStyle = '#94a3b8';
-        ctx.fillRect(bx + barPx / 2, by - 3, barPx / 2, 3);
+        ctx.fillRect(bx + barPx / 2, by - 4, barPx / 2, 4);
         ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 0.6;
-        ctx.beginPath(); ctx.moveTo(bx, by - 3); ctx.lineTo(bx, by + 1); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(bx + barPx, by - 3); ctx.lineTo(bx + barPx, by + 1); ctx.stroke();
+        ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by + 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + barPx, by - 4); ctx.lineTo(bx + barPx, by + 2); ctx.stroke();
         ctx.fillStyle = '#475569';
-        ctx.font = `8px ${FONT}`;
+        ctx.font = `11px ${FONT}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
-        ctx.fillText('0', bx, by - 5);
+        ctx.fillText('0', bx, by - 6);
         ctx.textAlign = 'right';
-        ctx.fillText(`${barM}m`, bx + barPx, by - 5);
+        ctx.fillText(`${barM}m`, bx + barPx, by - 6);
 
         // North arrow (bottom-right of plan area)
-        const ax = planAreaX + planAreaW - 16;
-        const ay = planAreaY + planAreaH - 14;
-        const aw = 8;
+        const ax = planAreaX + planAreaW - 20;
+        const ay = planAreaY + planAreaH - 16;
+        const aw = 12;
         ctx.fillStyle = '#0f172a';
         ctx.beginPath();
         ctx.moveTo(ax, ay - aw); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay - aw * 0.35); ctx.lineTo(ax - aw * 0.55, ay);
@@ -356,10 +402,10 @@
         ctx.moveTo(ax, ay - aw * 0.35); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay + aw); ctx.lineTo(ax - aw * 0.55, ay);
         ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#0f172a';
-        ctx.font = `bold 8px ${FONT}`;
+        ctx.font = `bold 11px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText('N', ax, ay - aw - 1);
+        ctx.fillText('N', ax, ay - aw - 2);
       }
     }
 
@@ -371,53 +417,54 @@
     const col2W = footerW * 0.25;
     const col3W = footerW - col1W - col2W;
 
+    const frameH = FOOTER_H - 14;
     ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(footerX, footerY, footerW, FOOTER_H - 12);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(footerX, footerY, footerW, frameH);
     ctx.beginPath();
     ctx.moveTo(footerX + col1W, footerY);
-    ctx.lineTo(footerX + col1W, footerY + FOOTER_H - 12);
+    ctx.lineTo(footerX + col1W, footerY + frameH);
     ctx.moveTo(footerX + col1W + col2W, footerY);
-    ctx.lineTo(footerX + col1W + col2W, footerY + FOOTER_H - 12);
+    ctx.lineTo(footerX + col1W + col2W, footerY + frameH);
     ctx.stroke();
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 12px ${FONT}`;
-    ctx.fillText(resolvedSiteName, footerX + 10, footerY + 10, col1W - 20);
-    ctx.font = `10px ${FONT}`;
+    ctx.font = `bold 17px ${FONT}`;
+    ctx.fillText(resolvedSiteName, footerX + 12, footerY + 13, col1W - 24);
+    ctx.font = `13px ${FONT}`;
     ctx.fillStyle = '#ef4444';
-    ctx.fillText(resolvedLayoutName, footerX + 10, footerY + 28, col1W - 20);
+    ctx.fillText(resolvedLayoutName, footerX + 12, footerY + 41, col1W - 24);
 
     ctx.fillStyle = '#0f172a';
-    ctx.font = `9px ${FONT}`;
-    ctx.fillText(`Ngày: ${shortDate(snapshotDate)}`, footerX + col1W + 10, footerY + 10, col2W - 20);
-    ctx.fillText(`Đơn vị: ${scale}`, footerX + col1W + 10, footerY + 26, col2W - 20);
+    ctx.font = `12px ${FONT}`;
+    ctx.fillText(`Ngày: ${shortDate(snapshotDate)}`, footerX + col1W + 12, footerY + 14, col2W - 24);
+    ctx.fillText(`Tỉ lệ: ${scale}`, footerX + col1W + 12, footerY + 38, col2W - 24);
 
-    const logoX = footerX + col1W + col2W + 12;
+    const logoX = footerX + col1W + col2W + 14;
     if (logoImage?.complete && logoImage.naturalWidth > 0) {
       // Vừa khung, giữ nguyên tỉ lệ — logo méo còn tệ hơn không có logo
-      const boxH = 22;
-      const boxW = Math.min(col3W - 24, 90);
+      const logoBoxH = 34;
+      const logoBoxW = Math.min(col3W - 28, 150);
       const ratio = logoImage.naturalWidth / logoImage.naturalHeight;
-      let dw = boxW;
+      let dw = logoBoxW;
       let dh = dw / ratio;
-      if (dh > boxH) { dh = boxH; dw = dh * ratio; }
-      ctx.drawImage(logoImage, logoX, footerY + 8, dw, dh);
+      if (dh > logoBoxH) { dh = logoBoxH; dw = dh * ratio; }
+      ctx.drawImage(logoImage, logoX, footerY + 9, dw, dh);
     } else {
       ctx.fillStyle = '#0f172a';
-      ctx.font = `bold 12px ${FONT}`;
-      ctx.fillText(resolvedLogo, logoX, footerY + 10, col3W - 24);
+      ctx.font = `bold 20px ${FONT}`;
+      ctx.fillText(resolvedLogo, logoX, footerY + 13, col3W - 28);
     }
-    ctx.font = `10px ${FONT}`;
+    ctx.font = `13px ${FONT}`;
     ctx.fillStyle = '#ef4444';
-    ctx.fillText(resolvedCompany, logoX, footerY + 34, col3W - 24);
+    ctx.fillText(resolvedCompany, logoX, footerY + 50, col3W - 28);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#64748b';
-    ctx.font = `8px ${FONT}`;
-    ctx.fillText(`Trang ${pageIndex} / ${pageTotal}`, cw - PAD - 8, footerY + FOOTER_H - 24);
+    ctx.font = `10px ${FONT}`;
+    ctx.fillText(`Trang ${pageIndex} / ${pageTotal}`, cw - PAD - 10, footerY + frameH - 16);
   }
 
   /** Tải logo về dạng data URL để vẽ lên canvas mà không làm hỏng toDataURL() */
@@ -478,21 +525,31 @@
         Math.min(previewIndex, pageDates.length - 1) + 1,
         pageDates.length,
       );
+    } catch (e) {
+      // Nạp snapshot hỏng thì khung xem trước đứng im — nói ra thay vì để trắng
+      console.error('[PrintLayout] Dựng bản xem trước thất bại:', e);
+      exportError = `Không dựng được bản xem trước: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       loadingPreview = false;
     }
   }
 
-  /** Khổ giấy hiện chọn, tính ở một chỗ để PDF và bản in không lệch nhau */
+  /**
+   * Khổ giấy quy ra px logic 96dpi — đúng hệ toạ độ của khung xem trước
+   * (`.print-page` đặt theo mm nên clientWidth ra đúng những số này).
+   *
+   * Trước đây bản xuất dùng khung 1754px trong khi cỡ chữ vẫn là cỡ thiết kế
+   * cho khung 1123px, nên chữ in ra bé lại còn khoảng 2/3. Độ nét giờ nâng
+   * bằng EXPORT_SCALE chứ không nâng bằng cách phóng to hệ toạ độ.
+   */
   function pageDims() {
     const isLandscape = orientation === 'landscape';
     const isA4 = pageSize === 'a4';
-    // 150 dpi resolution
     return {
       isLandscape,
       isA4,
-      W: isA4 ? (isLandscape ? 1754 : 1240) : (isLandscape ? 1650 : 1275),
-      H: isA4 ? (isLandscape ? 1240 : 1754) : (isLandscape ? 1275 : 1650),
+      W: isA4 ? (isLandscape ? 1123 : 794) : (isLandscape ? 1056 : 816),
+      H: isA4 ? (isLandscape ? 794 : 1123) : (isLandscape ? 816 : 1056),
     };
   }
 
@@ -507,19 +564,41 @@
       const date = pageDates[i];
       const project = (await projectForDate(date)) ?? base;
       const off = document.createElement('canvas');
-      off.width = W;
-      off.height = H;
-      renderToCanvas(off.getContext('2d')!, W, H, 1, project, date, i + 1, pageDates.length);
-      out.push({ date, src: off.toDataURL('image/jpeg', 0.93) });
+      off.width = Math.round(W * EXPORT_SCALE);
+      off.height = Math.round(H * EXPORT_SCALE);
+      renderToCanvas(off.getContext('2d')!, W, H, EXPORT_SCALE, project, date, i + 1, pageDates.length);
+      out.push({ date, src: off.toDataURL('image/jpeg', 0.95) });
     }
     return out;
   }
 
+  /** Bỏ ký tự Windows/POSIX không cho phép trong tên tệp, tránh trình duyệt chặn tải */
+  function safeFileName(name: string): string {
+    return (name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'mat-bang').slice(0, 80);
+  }
+
+  /** Tải blob về máy bằng thẻ <a download> — chủ động hơn pdf.save() để bắt được lỗi */
+  function downloadBlob(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
   async function exportPDF() {
     exporting = true;
+    exportError = null;
     try {
       const pages = await renderPageImages();
-      if (pages.length === 0) return;
+      if (pages.length === 0) {
+        exportError = 'Chưa có dữ liệu mặt bằng để xuất';
+        return;
+      }
 
       const { isLandscape, isA4 } = pageDims();
       const { jsPDF } = await import('jspdf');
@@ -535,7 +614,13 @@
         if (index > 0) pdf.addPage(isA4 ? 'a4' : 'letter', isLandscape ? 'landscape' : 'portrait');
         pdf.addImage(page.src, 'JPEG', 0, 0, pw, ph);
       });
-      pdf.save(`${getProjectName()}-matbang.pdf`);
+
+      // Tự tạo blob rồi tải, thay vì pdf.save(): save() nuốt lỗi bên trong nên
+      // hỏng ở đâu cũng chỉ thấy "bấm mà không ra file".
+      downloadBlob(pdf.output('blob'), `${safeFileName(getProjectName())}-matbang.pdf`);
+    } catch (e) {
+      console.error('[PrintLayout] Xuất PDF thất bại:', e);
+      exportError = `Xuất PDF lỗi: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       exporting = false;
     }
@@ -551,10 +636,14 @@
    */
   async function doPrint() {
     printing = true;
+    exportError = null;
     let frame: HTMLIFrameElement | null = null;
     try {
       const pages = await renderPageImages();
-      if (pages.length === 0) return;
+      if (pages.length === 0) {
+        exportError = 'Chưa có dữ liệu mặt bằng để in';
+        return;
+      }
 
       const { isA4, isLandscape } = pageDims();
       const size = `${isA4 ? 'A4' : 'letter'} ${isLandscape ? 'landscape' : 'portrait'}`;
@@ -571,9 +660,13 @@ img:last-child { break-after: auto; page-break-after: auto; }
       frame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
       document.body.appendChild(frame);
 
+      const sheet = frame;
       const doc = frame.contentDocument;
       const win = frame.contentWindow;
-      if (!doc || !win) return;
+      if (!doc || !win) {
+        exportError = 'Trình duyệt chặn khung in';
+        return;
+      }
       doc.open();
       doc.write(html);
       doc.close();
@@ -593,13 +686,18 @@ img:last-child { break-after: auto; page-break-after: auto; }
       });
       await tick();
 
-      const cleanup = () => frame?.remove();
+      // Giữ tham chiếu riêng: `frame` bị gán null ngay dưới đây để khối finally
+      // không gỡ iframe khi hộp thoại in còn đang mở.
+      const cleanup = () => sheet.remove();
       win.addEventListener('afterprint', cleanup, { once: true });
       win.focus();
       win.print();
       // Firefox không bắn afterprint trong iframe — dọn muộn cho chắc
       setTimeout(cleanup, 60_000);
       frame = null;
+    } catch (e) {
+      console.error('[PrintLayout] In thất bại:', e);
+      exportError = `In lỗi: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       frame?.remove();
       printing = false;
@@ -614,6 +712,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
       companyLogoText = '';
       pageProjects = {};
       previewIndex = 0;
+      exportError = null;
       void loadLogo();
       void refreshSnapshots();
       setTimeout(renderPrintCanvas, 60);
@@ -738,6 +837,10 @@ img:last-child { break-after: auto; page-break-after: auto; }
       {/if}
 
       <div class="flex-1"></div>
+
+      {#if exportError}
+        <span class="text-xs text-red-300 max-w-[20rem] truncate" title={exportError} role="alert">{exportError}</span>
+      {/if}
 
       <button
         onclick={exportPDF}
