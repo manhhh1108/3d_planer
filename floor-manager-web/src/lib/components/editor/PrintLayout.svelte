@@ -1,6 +1,7 @@
 <script lang="ts">
   import { currentProject } from '$lib/stores/project';
   import { get } from 'svelte/store';
+  import { tick } from 'svelte';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { floorPlanBounds, planHasContent } from '$lib/utils/planRender';
   import { drawWallsToCanvas } from '$lib/utils/planRender';
@@ -32,6 +33,7 @@
   let showLegend = $state(true);
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
+  let printing = $state(false);
   let companyName = $state('');
   let companyLogoText = $state('');
   let snapshots = $state<ApiSnapshot[]>([]);
@@ -481,20 +483,45 @@
     }
   }
 
+  /** Khổ giấy hiện chọn, tính ở một chỗ để PDF và bản in không lệch nhau */
+  function pageDims() {
+    const isLandscape = orientation === 'landscape';
+    const isA4 = pageSize === 'a4';
+    // 150 dpi resolution
+    return {
+      isLandscape,
+      isA4,
+      W: isA4 ? (isLandscape ? 1754 : 1240) : (isLandscape ? 1650 : 1275),
+      H: isA4 ? (isLandscape ? 1240 : 1754) : (isLandscape ? 1275 : 1650),
+    };
+  }
+
+  /** Vẽ sẵn mỗi ngày thành một ảnh trang — dùng chung cho xuất PDF và in trực tiếp */
+  async function renderPageImages(): Promise<{ date: string; src: string }[]> {
+    await document.fonts.ready;
+    const base = get(currentProject);
+    if (!base) return [];
+    const { W, H } = pageDims();
+    const out: { date: string; src: string }[] = [];
+    for (let i = 0; i < pageDates.length; i++) {
+      const date = pageDates[i];
+      const project = (await projectForDate(date)) ?? base;
+      const off = document.createElement('canvas');
+      off.width = W;
+      off.height = H;
+      renderToCanvas(off.getContext('2d')!, W, H, 1, project, date, i + 1, pageDates.length);
+      out.push({ date, src: off.toDataURL('image/jpeg', 0.93) });
+    }
+    return out;
+  }
+
   async function exportPDF() {
     exporting = true;
     try {
-      await document.fonts.ready;
-      const project = get(currentProject);
-      if (!project) return;
+      const pages = await renderPageImages();
+      if (pages.length === 0) return;
 
-      const isLandscape = orientation === 'landscape';
-      const isA4 = pageSize === 'a4';
-
-      // 150 dpi resolution
-      const W = isA4 ? (isLandscape ? 1754 : 1240) : (isLandscape ? 1650 : 1275);
-      const H = isA4 ? (isLandscape ? 1240 : 1754) : (isLandscape ? 1275 : 1650);
-
+      const { isLandscape, isA4 } = pageDims();
       const { jsPDF } = await import('jspdf');
       const pdf = new jsPDF({
         orientation: isLandscape ? 'landscape' : 'portrait',
@@ -504,19 +531,9 @@
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
 
-      const pages: { date: string; project: Project }[] = [];
-      for (const date of pageDates) {
-        pages.push({ date, project: (await projectForDate(date)) ?? project });
-      }
-
       pages.forEach((page, index) => {
         if (index > 0) pdf.addPage(isA4 ? 'a4' : 'letter', isLandscape ? 'landscape' : 'portrait');
-        const off = document.createElement('canvas');
-        off.width = W;
-        off.height = H;
-        renderToCanvas(off.getContext('2d')!, W, H, 1, page.project, page.date, index + 1, pages.length);
-        const imgData = off.toDataURL('image/jpeg', 0.93);
-        pdf.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+        pdf.addImage(page.src, 'JPEG', 0, 0, pw, ph);
       });
       pdf.save(`${getProjectName()}-matbang.pdf`);
     } finally {
@@ -524,7 +541,70 @@
     }
   }
 
-  function doPrint() { window.print(); }
+  /**
+   * In tất cả ngày đã chọn.
+   *
+   * Khung xem trước chỉ có đúng một canvas nên `window.print()` trần chỉ in
+   * được trang đang xem. Ở đây dựng ảnh từng ngày rồi in qua iframe riêng:
+   * tài liệu in tự đặt @page và chỉ chứa đúng các trang cần in, không phải
+   * chống chọi với CSS của trang editor bên dưới lớp phủ.
+   */
+  async function doPrint() {
+    printing = true;
+    let frame: HTMLIFrameElement | null = null;
+    try {
+      const pages = await renderPageImages();
+      if (pages.length === 0) return;
+
+      const { isA4, isLandscape } = pageDims();
+      const size = `${isA4 ? 'A4' : 'letter'} ${isLandscape ? 'landscape' : 'portrait'}`;
+      const body = pages.map((p) => `<img src="${p.src}" alt="">`).join('');
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${getProjectName()}</title><style>
+@page { size: ${size}; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+img { display: block; width: 100%; height: auto; break-after: page; page-break-after: always; }
+img:last-child { break-after: auto; page-break-after: auto; }
+</style></head><body>${body}</body></html>`;
+
+      frame = document.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
+      document.body.appendChild(frame);
+
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+      if (!doc || !win) return;
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      // Ảnh chưa nạp xong mà in là ra trang trắng
+      await new Promise<void>((resolve) => {
+        const imgs = Array.from(doc.images);
+        let left = imgs.filter((im) => !im.complete).length;
+        if (left === 0) { resolve(); return; }
+        const done = () => { if (--left <= 0) resolve(); };
+        for (const im of imgs) {
+          if (im.complete) continue;
+          im.addEventListener('load', done, { once: true });
+          im.addEventListener('error', done, { once: true });
+        }
+        setTimeout(resolve, 5000);
+      });
+      await tick();
+
+      const cleanup = () => frame?.remove();
+      win.addEventListener('afterprint', cleanup, { once: true });
+      win.focus();
+      win.print();
+      // Firefox không bắn afterprint trong iframe — dọn muộn cho chắc
+      setTimeout(cleanup, 60_000);
+      frame = null;
+    } finally {
+      frame?.remove();
+      printing = false;
+    }
+  }
   function close() { open = false; }
 
   $effect(() => {
@@ -679,14 +759,21 @@
 
       <button
         onclick={doPrint}
-        class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+        disabled={printing}
+        title={pageDates.length > 1 ? `In ${pageDates.length} trang (mỗi ngày một trang)` : 'In'}
+        class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 6 2 18 2 18 9"/>
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 0 2 2v5a2 2 0 0 1-2 2h-2"/>
-          <rect x="6" y="14" width="12" height="8"/>
-        </svg>
-        In
+        {#if printing}
+          <span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+          Đang dựng trang...
+        {:else}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 0 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          In{pageDates.length > 1 ? ` (${pageDates.length})` : ''}
+        {/if}
       </button>
 
       <button onclick={close} class="px-2.5 py-1.5 text-white/60 hover:text-white text-sm transition-colors">✕</button>
