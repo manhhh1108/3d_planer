@@ -435,14 +435,30 @@
     return end;
   }
 
+  /**
+   * Số điểm ảnh vật lý trên mỗi px CSS, chặn trần ở 2.
+   *
+   * Màn 3x mà vẽ đủ thì mỗi khung hình phải tô gấp 9 lần số điểm ảnh, không
+   * bõ so với phần nét thêm được.
+   */
+  function canvasDpr(): number {
+    return Math.min(window.devicePixelRatio || 1, 2);
+  }
+
   function resize() {
     const parent = canvas?.parentElement;
     if (!parent) return;
     width = parent.clientWidth;
     height = parent.clientHeight;
     if (canvas) {
-      canvas.width = width;
-      canvas.height = height;
+      // Trước đây canvas dựng đúng bằng số px CSS. Trên màn hình có
+      // devicePixelRatio > 1 (Windows để 125%/150%, hay màn retina) trình duyệt
+      // phải phóng ảnh lên cho vừa, nên chữ và nét mảnh nhoè hết. Dựng theo px
+      // vật lý rồi scale ngữ cảnh lại ở draw(), phần code vẽ vẫn tính bằng px
+      // CSS như cũ, không phải sửa gì.
+      const dpr = canvasDpr();
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
     }
     markDirty();
   }
@@ -1037,6 +1053,9 @@
     if (!ctx) return;
     if (!canvasDirty) { requestAnimationFrame(draw); return; }
     canvasDirty = false;
+    // Quy ngữ cảnh về px CSS: mọi lệnh vẽ phía dưới vẫn dùng width/height CSS
+    const dpr = canvasDpr();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#f8f9fa';
     ctx.fillRect(0, 0, width, height);

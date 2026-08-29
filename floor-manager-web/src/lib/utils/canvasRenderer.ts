@@ -331,13 +331,15 @@ export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected
     drawFurnitureIcon(ctx, item.catalogId, w, d, itemColor, strokeColor);
   }
 
-  const fontSize = Math.max(8, Math.min(12, Math.min(w, d) * 0.2));
+  // Nhãn tên block. Cỡ chữ cũ là fontSize * 0.7, tức 5.6-8.4px — dưới 9px thì
+  // nét chữ mảnh hơn một điểm ảnh, trông như vệt xám chứ không đọc được nữa.
+  const labelPx = Math.max(9, Math.min(13, Math.min(w, d) * 0.22));
   if (Math.min(w, d) > 20) {
     ctx.fillStyle = '#374151';
-    ctx.font = `${fontSize * 0.7}px sans-serif`;
+    ctx.font = `500 ${labelPx}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(cat.name, 0, d / 2 + fontSize * 0.8);
+    ctx.fillText(cat.name, 0, d / 2 + labelPx * 0.9);
   }
 
   if (selected) {

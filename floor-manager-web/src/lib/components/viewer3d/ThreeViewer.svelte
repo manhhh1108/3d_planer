@@ -1123,6 +1123,13 @@
     bgPlane = null;
   }
 
+  /** Bội số vẽ dư của texture nhãn so với cỡ hiển thị */
+  const LABEL_SUPERSAMPLE = 2;
+  /** Chiều cao tối thiểu của khung nhãn trên màn hình (px) — chữ chiếm ~60% */
+  const MIN_LABEL_PX = 22;
+  /** Dùng lại một vector cho mọi nhãn, khỏi cấp phát mỗi khung hình */
+  const labelWorldPos = new THREE.Vector3();
+
   function createBlockNameLabel(text: string): THREE.Sprite {
     const fontSize = 30;
     const paddingX = 18;
@@ -1135,11 +1142,14 @@
     const width = textWidth + paddingX * 2;
     const height = fontSize + paddingY * 2;
 
+    // Vẽ dư độ phân giải so với cỡ hiển thị: có dư mới còn chi tiết để mipmap
+    // thu nhỏ dần cho mượt, và lúc camera lại gần cũng không bị phóng nhoè.
+    const ss = dpr * LABEL_SUPERSAMPLE;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(width * dpr);
-    canvas.height = Math.ceil(height * dpr);
+    canvas.width = Math.ceil(width * ss);
+    canvas.height = Math.ceil(height * ss);
     const cx = canvas.getContext('2d')!;
-    cx.scale(dpr, dpr);
+    cx.scale(ss, ss);
     cx.font = `600 ${fontSize}px Arial, sans-serif`;
     cx.textAlign = 'center';
     cx.textBaseline = 'middle';
@@ -1156,6 +1166,12 @@
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
+    // Lùi camera ra là nhãn bị thu nhỏ mạnh; không có mipmap với lọc bất đẳng
+    // hướng thì chữ vỡ thành hạt lấm tấm.
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
     const mat = new THREE.SpriteMaterial({
       map: tex,
       transparent: true,
@@ -1165,9 +1181,37 @@
     const sprite = new THREE.Sprite(mat);
     sprite.name = 'block_name_label';
     sprite.renderOrder = 999;
-    sprite.scale.set(width * 0.9, height * 0.9, 1);
+    const baseW = width * 0.9;
+    const baseH = height * 0.9;
+    sprite.scale.set(baseW, baseH, 1);
+    // updateLabelScales() cần cỡ gốc để nới ra, đừng nới chồng lên lần trước
+    sprite.userData.baseScale = { x: baseW, y: baseH };
     sprite.raycast = () => {};
     return sprite;
+  }
+
+  /**
+   * Giữ nhãn tên block không nhỏ hơn ngưỡng đọc được.
+   *
+   * Sprite có kích thước cố định theo world nên lùi camera ra xa là nhãn co
+   * lại thành vệt xám. Ở đây nới tỉ lệ theo khoảng cách sao cho nhãn luôn cao
+   * ít nhất MIN_LABEL_PX điểm ảnh; lại gần thì trả về đúng cỡ thật.
+   */
+  function updateLabelScales() {
+    if (!camera || !scene || !renderer) return;
+    const vh = renderer.domElement.clientHeight || 1;
+    const halfFovTan = Math.tan(((camera.fov * Math.PI) / 180) / 2);
+    scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Sprite) || obj.name !== 'block_name_label') return;
+      const base = obj.userData.baseScale as { x: number; y: number } | undefined;
+      if (!base) return;
+      obj.getWorldPosition(labelWorldPos);
+      const dist = camera.position.distanceTo(labelWorldPos);
+      // Chiều cao thế giới ứng với đúng 1 px màn hình ở khoảng cách này
+      const worldPerPx = (2 * halfFovTan * dist) / vh;
+      const k = Math.max(1, (MIN_LABEL_PX * worldPerPx) / base.y);
+      obj.scale.set(base.x * k, base.y * k, 1);
+    });
   }
 
   /** Dựng mặt phẳng sàn từ nền DXF (SVG) của layout, khớp toạ độ với canvas 2D:
@@ -1472,12 +1516,14 @@
         camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x + pitch));
       }
       // Always render in walkthrough mode (camera constantly moving)
+      updateLabelScales();
       renderer.render(scene, camera);
     } else {
       // controls.update() may fire 'change' event (which sets sceneDirty)
       controls.update();
       if (sceneDirty) {
         sceneDirty = false;
+        updateLabelScales();
         renderer.render(scene, camera);
       }
     }
