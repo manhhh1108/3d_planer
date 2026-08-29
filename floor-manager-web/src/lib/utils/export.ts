@@ -12,6 +12,25 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+/**
+ * Trần kích thước canvas an toàn cho mọi trình duyệt.
+ *
+ * Vượt trần thì canvas không ném lỗi ngay: nó lặng lẽ hỏng, toDataURL() trả về
+ * chuỗi rỗng "data:," và mãi tới lúc jsPDF giải mã mới báo "wrong PNG
+ * signature" — nhìn vào không đoán ra là do bản vẽ quá to. Bản vẽ tính bằng cm
+ * nên một nhà xưởng 100m đã là 10000 đơn vị, nhân đôi là vượt trần ngay.
+ */
+const MAX_CANVAS_SIDE = 8192;
+const MAX_CANVAS_AREA = 40_000_000;
+
+/** Hệ số phóng to lớn nhất còn giữ canvas trong giới hạn cạnh lẫn diện tích */
+function fitCanvasScale(w: number, h: number, desired = 2): number {
+  if (w <= 0 || h <= 0) return desired;
+  const bySide = Math.min(MAX_CANVAS_SIDE / w, MAX_CANVAS_SIDE / h);
+  const byArea = Math.sqrt(MAX_CANVAS_AREA / (w * h));
+  return Math.max(0.05, Math.min(desired, bySide, byArea));
+}
+
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -36,11 +55,11 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
       const pad = 80;
       const w = maxX - minX + pad * 2;
       const h = maxY - minY + pad * 2;
-      // Scale up for high-res (2x)
-      const scale = 2;
+      // Gấp đôi cho nét, nhưng hạ xuống nếu bản vẽ to quá trần canvas
+      const scale = fitCanvasScale(w, h);
       const offscreen = document.createElement('canvas');
-      offscreen.width = w * scale;
-      offscreen.height = h * scale;
+      offscreen.width = Math.round(w * scale);
+      offscreen.height = Math.round(h * scale);
       const ctx = offscreen.getContext('2d')!;
       ctx.scale(scale, scale);
       ctx.fillStyle = 'white';
@@ -85,6 +104,7 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
 
       offscreen.toBlob((blob) => {
         if (blob) download(blob, `${name}.png`);
+        else console.error('[export] Không dựng được ảnh PNG — bản vẽ quá lớn so với giới hạn canvas');
       });
       return;
     }
@@ -287,10 +307,10 @@ export async function exportPDF(project: Project) {
   const pad = 80;
   const planW = maxX - minX + pad * 2;
   const planH = maxY - minY + pad * 2;
-  const scale = 2;
+  const scale = fitCanvasScale(planW, planH);
   const offscreen = document.createElement('canvas');
-  offscreen.width = planW * scale;
-  offscreen.height = planH * scale;
+  offscreen.width = Math.round(planW * scale);
+  offscreen.height = Math.round(planH * scale);
   const ctx = offscreen.getContext('2d')!;
   ctx.scale(scale, scale);
   ctx.fillStyle = 'white';
@@ -329,6 +349,10 @@ export async function exportPDF(project: Project) {
 
   // Embed rendered plan into PDF
   const imgData = offscreen.toDataURL('image/png');
+  // Canvas hỏng trả về "data:," — chặn ở đây thay vì để jsPDF báo "wrong PNG signature"
+  if (!imgData.startsWith('data:image/png')) {
+    throw new Error('Không dựng được ảnh bản vẽ (bản vẽ quá lớn so với giới hạn canvas của trình duyệt)');
+  }
   const drawAreaW = pw - margin * 2 - 4;
   const drawAreaH = ph - margin * 2 - titleBlockH - 6;
   const aspect = planW / planH;

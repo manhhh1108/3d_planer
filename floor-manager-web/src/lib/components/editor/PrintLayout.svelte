@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { currentProject } from '$lib/stores/project';
+  import { currentProject, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
   import { get } from 'svelte/store';
   import { tick } from 'svelte';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
-  import { floorPlanBounds, planHasContent } from '$lib/utils/planRender';
+  import { floorPlanBounds, planHasContent, type PlanBounds } from '$lib/utils/planRender';
   import { drawWallsToCanvas } from '$lib/utils/planRender';
   import type { Project, Floor } from '$lib/models/types';
   import { api, FILES_BASE, type ApiSnapshot } from '$lib/services/api';
@@ -31,6 +31,7 @@
   let orientation = $state<'landscape' | 'portrait'>('landscape');
   let scale = $state('1:50');
   let showLegend = $state(true);
+  let showBackground = $state(true);
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
   let printing = $state(false);
@@ -51,6 +52,13 @@
    */
   let logoImage = $state<HTMLImageElement | null>(null);
 
+  /** Nền layout (bản vẽ DXF/ảnh đã import) — trải từ gốc toạ độ theo layoutDimsCm */
+  let bgLayoutImage = $state<HTMLImageElement | null>(null);
+  let bgLayoutDims = $state({ widthCm: 0, heightCm: 0 });
+  /** Ảnh nền riêng của tầng — có vị trí, xoay, tỉ lệ và độ mờ riêng */
+  let bgFloorImage = $state<HTMLImageElement | null>(null);
+  let hasBackground = $derived(bgLayoutImage !== null || bgFloorImage !== null);
+
   /** Trang đang xem trước (chỉ số trong pageDates) */
   let previewIndex = $state(0);
   /** Bố cục từng ngày đã nạp cho khung xem trước */
@@ -65,6 +73,11 @@
   const TITLE_H = 86;
   const FOOTER_H = 92;
   const PAD = 36;
+  /**
+   * Độ mờ của nền khi in. Trên màn hình nền để 0.4, nhưng in ra giấy mức đó
+   * nhạt gần như mất; 0.55 vẫn đủ chìm để block nổi lên trên.
+   */
+  const BG_ALPHA = 0.55;
   /** Bội số độ phân giải khi xuất — 3× khổ 96dpi ≈ 288dpi, đủ nét khi in giấy */
   const EXPORT_SCALE = 3;
 
@@ -155,6 +168,64 @@
       out = `${out}…`;
     }
     ctx.fillText(out, 0, y);
+  }
+
+  /**
+   * Nới khung nhìn để chứa cả tấm nền.
+   *
+   * Bản vẽ CAD thường rộng hơn hẳn vùng đã đặt block; căn theo bounds của
+   * block không thôi thì phần nền còn lại bị cắt mất gần hết.
+   */
+  function boundsWithBackground(base: PlanBounds | null, floor: Floor | undefined): PlanBounds | null {
+    let b: PlanBounds | null = base ? { ...base } : null;
+    const grow = (x1: number, y1: number, x2: number, y2: number) => {
+      b = b
+        ? {
+            minX: Math.min(b.minX, x1),
+            minY: Math.min(b.minY, y1),
+            maxX: Math.max(b.maxX, x2),
+            maxY: Math.max(b.maxY, y2),
+          }
+        : { minX: x1, minY: y1, maxX: x2, maxY: y2 };
+    };
+
+    if (bgLayoutImage && bgLayoutDims.widthCm > 0 && bgLayoutDims.heightCm > 0) {
+      grow(0, 0, bgLayoutDims.widthCm, bgLayoutDims.heightCm);
+    }
+
+    const fb = floor?.backgroundImage;
+    if (bgFloorImage && fb) {
+      const halfW = (bgFloorImage.naturalWidth * fb.scale) / 2;
+      const halfH = (bgFloorImage.naturalHeight * fb.scale) / 2;
+      // Ảnh có xoay thì lấy bán kính ngoại tiếp cho gọn, khỏi tính lại 4 góc
+      const hw = fb.rotation ? Math.hypot(halfW, halfH) : halfW;
+      const hh = fb.rotation ? Math.hypot(halfW, halfH) : halfH;
+      grow(fb.position.x - hw, fb.position.y - hh, fb.position.x + hw, fb.position.y + hh);
+    }
+    return b;
+  }
+
+  /** Vẽ nền trong hệ toạ độ cm (ctx đã translate/scale sẵn về khung bản vẽ) */
+  function drawBackgrounds(ctx: CanvasRenderingContext2D, floor: Floor) {
+    if (bgLayoutImage && bgLayoutDims.widthCm > 0 && bgLayoutDims.heightCm > 0) {
+      ctx.save();
+      ctx.globalAlpha = BG_ALPHA;
+      ctx.drawImage(bgLayoutImage, 0, 0, bgLayoutDims.widthCm, bgLayoutDims.heightCm);
+      ctx.restore();
+    }
+
+    const fb = floor.backgroundImage;
+    if (bgFloorImage && fb) {
+      ctx.save();
+      // Giữ đúng độ mờ người dùng đã chỉnh trong editor cho ảnh nền của tầng
+      ctx.globalAlpha = fb.opacity;
+      ctx.translate(fb.position.x, fb.position.y);
+      if (fb.rotation) ctx.rotate((fb.rotation * Math.PI) / 180);
+      const w = bgFloorImage.naturalWidth * fb.scale;
+      const h = bgFloorImage.naturalHeight * fb.scale;
+      ctx.drawImage(bgFloorImage, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
   }
 
   /** Core rendering — works for screen preview (dpr>1) and PDF export (dpr=1). */
@@ -270,7 +341,8 @@
     }
 
     // ── Floor plan ───────────────────────────────────────────────
-    const planBounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
+    const contentBounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
+    const planBounds = showBackground ? boundsWithBackground(contentBounds, floor) : contentBounds;
     if (!floor || !planBounds) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = `13px ${FONT}`;
@@ -310,6 +382,9 @@
 
         ctx.translate(offsetX, offsetY);
         ctx.scale(fitScale, fitScale);
+
+        // Nền nằm dưới cùng, đúng thứ tự lớp như trên màn hình
+        if (showBackground) drawBackgrounds(ctx, floor);
 
         // Tường vẽ trước để block nằm đè lên, giống thứ tự trên màn hình
         drawWallsToCanvas(ctx, floor.walls, { x: 0, y: 0 }, 1.2 / fitScale);
@@ -467,13 +542,27 @@
     ctx.fillText(`Trang ${pageIndex} / ${pageTotal}`, cw - PAD - 10, footerY + frameH - 16);
   }
 
-  /** Tải logo về dạng data URL để vẽ lên canvas mà không làm hỏng toDataURL() */
-  async function loadLogo() {
-    logoImage = null;
-    if (!companyLogoUrl) return;
+  /** Dựng Image từ một nguồn đã nội tuyến (data URL); ảnh hỏng trả về null */
+  async function decodeImage(src: string): Promise<HTMLImageElement | null> {
+    const img = new Image();
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve(); // ảnh hỏng thì bỏ qua, đừng chặn xuất PDF
+      img.src = src;
+    });
+    return img.naturalWidth > 0 ? img : null;
+  }
+
+  /**
+   * Tải ảnh về data URL rồi mới dựng Image.
+   *
+   * Gán thẳng src của ảnh khác origin sẽ "vấy bẩn" (taint) canvas, khiến
+   * toDataURL() ném lỗi — hỏng cả bản PDF chỉ vì một cái logo hay tấm nền.
+   */
+  async function loadImageInline(url: string): Promise<HTMLImageElement | null> {
     try {
-      const res = await fetch(`${FILES_BASE}${companyLogoUrl}`, { credentials: 'include' });
-      if (!res.ok) return;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) return null;
       const blob = await res.blob();
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -481,16 +570,29 @@
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-      const img = new Image();
-      await new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-        img.onerror = () => resolve(); // logo hỏng thì rơi về chữ, đừng chặn xuất PDF
-        img.src = dataUrl;
-      });
-      if (img.naturalWidth > 0) logoImage = img;
+      return await decodeImage(dataUrl);
     } catch {
-      /* không có logo cũng in được — khung tên rơi về chữ viết tắt */
+      return null;
     }
+  }
+
+  async function loadLogo() {
+    // Không có logo cũng in được — khung tên rơi về chữ viết tắt
+    logoImage = companyLogoUrl ? await loadImageInline(`${FILES_BASE}${companyLogoUrl}`) : null;
+  }
+
+  /** Nền bản vẽ: nền layout tải từ server, ảnh nền tầng vốn đã là data URL */
+  async function loadBackgrounds() {
+    bgLayoutImage = null;
+    bgFloorImage = null;
+    bgLayoutDims = get(layoutDimsCm);
+
+    const layoutUrl = get(layoutBgFile);
+    if (layoutUrl) bgLayoutImage = await loadImageInline(layoutUrl);
+
+    const project = get(currentProject);
+    const floorBg = project ? getActiveFloor(project)?.backgroundImage : undefined;
+    if (floorBg?.dataUrl) bgFloorImage = await decodeImage(floorBg.dataUrl);
   }
 
   /** Bố cục của một ngày, lấy từ snapshot ngày đó (có nhớ lại để khỏi tải lặp) */
@@ -714,6 +816,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
       previewIndex = 0;
       exportError = null;
       void loadLogo();
+      void loadBackgrounds();
       void refreshSnapshots();
       setTimeout(renderPrintCanvas, 60);
     }
@@ -722,6 +825,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
     if (open) {
       void pageSize; void orientation; void scale; void showLegend;
       void companyName; void companyLogoText; void previewIndex; void pageDates; void logoImage;
+      void showBackground; void bgLayoutImage; void bgFloorImage; void bgLayoutDims;
       setTimeout(renderPrintCanvas, 20);
     }
   });
@@ -773,6 +877,13 @@ img:last-child { break-after: auto; page-break-after: auto; }
         <input type="checkbox" bind:checked={showLegend} class="accent-blue-400" />
         Danh sách block
       </label>
+
+      {#if hasBackground}
+        <label class="text-xs text-white/70 flex items-center gap-1.5 cursor-pointer select-none" title="In kèm bản vẽ nền DXF/ảnh đã import">
+          <input type="checkbox" bind:checked={showBackground} class="accent-blue-400" />
+          Nền bản vẽ
+        </label>
+      {/if}
 
       <label class="text-xs text-white/70 flex items-center gap-1.5">
         Công ty
