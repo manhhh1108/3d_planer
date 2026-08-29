@@ -2,10 +2,6 @@ import type { Project, Floor } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { floorPlanBounds, planHasContent, drawWallsToCanvas, wallsToSvg } from '$lib/utils/planRender';
 import type { CanvasState } from '$lib/utils/canvasInteraction';
-import { projectSettings } from '$lib/stores/settings';
-import { get } from 'svelte/store';
-import jsPDF from 'jspdf';
-import { registerFont, FONT_NAME } from '$lib/utils/pdfUtils';
 
 /** Escape text for safe SVG embedding */
 function escapeXml(s: string): string {
@@ -29,6 +25,21 @@ function fitCanvasScale(w: number, h: number, desired = 2): number {
   const bySide = Math.min(MAX_CANVAS_SIDE / w, MAX_CANVAS_SIDE / h);
   const byArea = Math.sqrt(MAX_CANVAS_AREA / (w * h));
   return Math.max(0.05, Math.min(desired, bySide, byArea));
+}
+
+/**
+ * Quy kích thước canvas về số nguyên.
+ *
+ * Làm tròn lên ở đúng ngưỡng sẽ vượt trần thêm vài trăm nghìn điểm ảnh, nên
+ * cắt xuống — thà thiếu một dòng điểm ảnh còn hơn hỏng cả tấm ảnh.
+ */
+function canvasPx(v: number): number {
+  return Math.max(1, Math.floor(v));
+}
+
+/** Bỏ ký tự không hợp lệ trong tên tệp, tránh trình duyệt chặn tải */
+function safeFileName(name: string): string {
+  return (name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'floorplan').slice(0, 80);
 }
 
 function download(blob: Blob, filename: string) {
@@ -58,8 +69,8 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
       // Gấp đôi cho nét, nhưng hạ xuống nếu bản vẽ to quá trần canvas
       const scale = fitCanvasScale(w, h);
       const offscreen = document.createElement('canvas');
-      offscreen.width = Math.round(w * scale);
-      offscreen.height = Math.round(h * scale);
+      offscreen.width = canvasPx(w * scale);
+      offscreen.height = canvasPx(h * scale);
       const ctx = offscreen.getContext('2d')!;
       ctx.scale(scale, scale);
       ctx.fillStyle = 'white';
@@ -103,7 +114,7 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
       ctx.fillText(`${name} — ${floor.name}`, 20, 24);
 
       offscreen.toBlob((blob) => {
-        if (blob) download(blob, `${name}.png`);
+        if (blob) download(blob, `${safeFileName(name)}.png`);
         else console.error('[export] Không dựng được ảnh PNG — bản vẽ quá lớn so với giới hạn canvas');
       });
       return;
@@ -112,14 +123,14 @@ export function exportAsPNG(canvas: HTMLCanvasElement, project?: Project) {
 
   // Fallback: just capture the viewport canvas
   canvas.toBlob((blob) => {
-    if (blob) download(blob, `${name}-2d.png`);
+    if (blob) download(blob, `${safeFileName(name)}-2d.png`);
   });
 }
 
 export function exportAsJSON(project: Project) {
   const json = JSON.stringify(project, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  download(blob, `${project.name || 'project'}.json`);
+  download(blob, `${safeFileName(project.name || 'project')}.json`);
 }
 
 export function exportAsSVG(project: Project) {
@@ -213,200 +224,11 @@ export function exportAsSVG(project: Project) {
 ${paths}</svg>`;
 
   const blob = new Blob([svg], { type: 'image/svg+xml' });
-  download(blob, `${project.name || 'floorplan'}.svg`);
+  download(blob, `${safeFileName(project.name || 'floorplan')}.svg`);
 }
 
 export function exportAs3DPNG(renderer: { domElement: HTMLCanvasElement }) {
   renderer.domElement.toBlob((blob: Blob | null) => {
     if (blob) download(blob, 'floorplan-3d.png');
   });
-}
-
-/**
- * Xuất bản vẽ ra PDF.
- *
- * Bất đồng bộ vì phải nạp NotoSans trước khi vẽ chữ — font mặc định của jsPDF
- * dùng bảng mã WinAnsi, không có dấu tiếng Việt nên tên dự án, tên tầng và
- * mô tả đều hỏng chữ.
- */
-export async function exportPDF(project: Project) {
-  const floor = project.floors.find(f => f.id === project.activeFloorId) ?? project.floors[0];
-  if (!floor) return;
-
-  const settings = get(projectSettings);
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  await registerFont(pdf);
-  const pw = pdf.internal.pageSize.getWidth();   // ~297
-  const ph = pdf.internal.pageSize.getHeight();   // ~210
-  const margin = 10;
-  const titleBlockH = 22;
-
-  // ── helpers ──
-  function drawPageBorder() {
-    pdf.setDrawColor(40);
-    pdf.setLineWidth(0.5);
-    pdf.rect(margin, margin, pw - margin * 2, ph - margin * 2);
-    // inner border
-    pdf.setLineWidth(0.15);
-    pdf.rect(margin + 1, margin + 1, pw - margin * 2 - 2, ph - margin * 2 - 2);
-  }
-
-  function drawTitleBlock() {
-    const tbY = ph - margin - titleBlockH;
-    const tbW = pw - margin * 2;
-    pdf.setDrawColor(40);
-    pdf.setLineWidth(0.4);
-    pdf.rect(margin, tbY, tbW, titleBlockH);
-    // vertical dividers
-    const col1 = margin + tbW * 0.45;
-    const col2 = margin + tbW * 0.7;
-    pdf.line(col1, tbY, col1, tbY + titleBlockH);
-    pdf.line(col2, tbY, col2, tbY + titleBlockH);
-
-    // Project name
-    pdf.setFontSize(12);
-    pdf.setFont(FONT_NAME, 'bold');
-    pdf.text(project.name || 'Untitled Project', margin + 4, tbY + 9);
-    pdf.setFontSize(8);
-    pdf.setFont(FONT_NAME, 'normal');
-    pdf.text(floor.name, margin + 4, tbY + 15);
-    if (project.description) {
-      pdf.setFontSize(7);
-      pdf.text(project.description.substring(0, 60), margin + 4, tbY + 19);
-    }
-
-    // Date / scale
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    pdf.setFontSize(8);
-    pdf.text(`Date: ${today}`, col1 + 4, tbY + 9);
-    pdf.text(`Units: ${settings.units}`, col1 + 4, tbY + 15);
-
-    // Branding
-    pdf.setFontSize(9);
-    pdf.setFont(FONT_NAME, 'bold');
-    pdf.text('openplan3d.com', col2 + 4, tbY + 9);
-    pdf.setFont(FONT_NAME, 'normal');
-    pdf.setFontSize(7);
-    pdf.text('Created with Open 3D Floor Planner', col2 + 4, tbY + 15);
-  }
-
-  // ── Page 1: Floor Plan ──
-  drawPageBorder();
-
-  // Render floor plan onto an offscreen canvas then embed as image
-  const bounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
-  const { minX, minY, maxX, maxY } = bounds ?? { minX: Infinity, minY: 0, maxX: 0, maxY: 0 };
-
-  if (!bounds) {
-    // No geometry to render
-    drawTitleBlock();
-    pdf.save(`${project.name || 'floorplan'}.pdf`);
-    return;
-  }
-
-  const pad = 80;
-  const planW = maxX - minX + pad * 2;
-  const planH = maxY - minY + pad * 2;
-  const scale = fitCanvasScale(planW, planH);
-  const offscreen = document.createElement('canvas');
-  offscreen.width = Math.round(planW * scale);
-  offscreen.height = Math.round(planH * scale);
-  const ctx = offscreen.getContext('2d')!;
-  ctx.scale(scale, scale);
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, planW, planH);
-
-  // Tường vẽ trước để block nằm đè lên
-  drawWallsToCanvas(ctx, floor.walls, { x: -minX + pad, y: -minY + pad }, 0.5);
-
-  // Furniture
-  for (const fi of floor.furniture) {
-    const fx = fi.position.x - minX + pad;
-    const fy = fi.position.y - minY + pad;
-    const cat = getCatalogItem(fi.catalogId);
-    const fw = fi.width ?? (cat ? cat.width : 30);
-    const fd = fi.depth ?? (cat ? cat.depth : 30);
-    const color = fi.color ?? (cat ? cat.color : '#a0c4e8');
-    const rot = (fi.rotation || 0) * Math.PI / 180;
-    ctx.save();
-    ctx.translate(fx, fy);
-    ctx.rotate(rot);
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = color;
-    ctx.fillRect(-fw / 2, -fd / 2, fw, fd);
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(-fw / 2, -fd / 2, fw, fd);
-    ctx.globalAlpha = 1;
-    if (cat) {
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(cat.name, 0, 4);
-    }
-    ctx.restore();
-  }
-
-  // Embed rendered plan into PDF
-  const imgData = offscreen.toDataURL('image/png');
-  // Canvas hỏng trả về "data:," — chặn ở đây thay vì để jsPDF báo "wrong PNG signature"
-  if (!imgData.startsWith('data:image/png')) {
-    throw new Error('Không dựng được ảnh bản vẽ (bản vẽ quá lớn so với giới hạn canvas của trình duyệt)');
-  }
-  const drawAreaW = pw - margin * 2 - 4;
-  const drawAreaH = ph - margin * 2 - titleBlockH - 6;
-  const aspect = planW / planH;
-  let imgW = drawAreaW;
-  let imgH = drawAreaW / aspect;
-  if (imgH > drawAreaH) { imgH = drawAreaH; imgW = drawAreaH * aspect; }
-  const imgX = margin + 2 + (drawAreaW - imgW) / 2;
-  const imgY = margin + 2 + (drawAreaH - imgH) / 2;
-  pdf.addImage(imgData, 'PNG', imgX, imgY, imgW, imgH);
-
-  drawTitleBlock();
-
-  // ── Page 2: 3D View (if a 3D canvas exists) ──
-  const canvases = document.querySelectorAll('canvas');
-  // Look for a WebGL canvas (the 3D renderer) — typically the second canvas or one with a webgl context
-  let threeDCanvas: HTMLCanvasElement | null = null;
-  canvases.forEach(c => {
-    try {
-      if (c.getContext('webgl2') || c.getContext('webgl')) {
-        threeDCanvas = c;
-      }
-    } catch { /* ignore */ }
-  });
-  // Alternative: grab data attribute or just use last canvas if multiple
-  if (!threeDCanvas && canvases.length > 1) {
-    threeDCanvas = canvases[canvases.length - 1];
-  }
-
-  if (threeDCanvas && (threeDCanvas as HTMLCanvasElement).width > 10 && (threeDCanvas as HTMLCanvasElement).height > 10) {
-    try {
-      const img3d = (threeDCanvas as HTMLCanvasElement).toDataURL('image/png');
-      if (img3d && img3d.length > 100) {
-        pdf.addPage('a4', 'landscape');
-        drawPageBorder();
-
-        pdf.setFontSize(14);
-        pdf.setFont(FONT_NAME, 'bold');
-        pdf.setTextColor(40);
-        pdf.text('3D Perspective View', margin + 6, margin + 12);
-
-        const da3W = pw - margin * 2 - 4;
-        const da3H = ph - margin * 2 - titleBlockH - 20;
-        const a3 = (threeDCanvas as HTMLCanvasElement).width / (threeDCanvas as HTMLCanvasElement).height;
-        let w3 = da3W;
-        let h3 = da3W / a3;
-        if (h3 > da3H) { h3 = da3H; w3 = da3H * a3; }
-        const x3 = margin + 2 + (da3W - w3) / 2;
-        const y3 = margin + 18 + (da3H - h3) / 2;
-        pdf.addImage(img3d, 'PNG', x3, y3, w3, h3);
-
-        drawTitleBlock();
-      }
-    } catch { /* 3D canvas tainted or unavailable — skip */ }
-  }
-
-  pdf.save(`${project.name || 'floorplan'}.pdf`);
 }

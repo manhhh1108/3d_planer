@@ -1,7 +1,7 @@
 <script lang="ts">
   import { furnitureCatalog } from '$lib/utils/furnitureCatalog';
   import { selectedTool, snapEnabled, placingFurnitureId, undo, redo, currentProject, viewMode } from '$lib/stores/project';
-  import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
+  import { exportAsPNG, exportAsJSON, exportAsSVG } from '$lib/utils/export';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -33,7 +33,8 @@
 
   const actions: ResultItem[] = [
     { id: 'a-export-svg', name: 'Export SVG', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { const p = get(currentProject); if (p) exportAsSVG(p); } },
-    { id: 'a-export-pdf', name: 'Export PDF', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { const p = get(currentProject); if (p) exportPDF(p).catch((err) => console.error('Xuất PDF thất bại:', err)); } },
+    // PDF đi qua hộp thoại Xuất mặt bằng — bộ xuất thẳng cũ thiếu khung tên công ty
+    { id: 'a-export-pdf', name: 'Export PDF', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true })); } },
     { id: 'a-export-png', name: 'Export PNG', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { const canvas = document.querySelector('canvas'); const p = get(currentProject); if (canvas && p) exportAsPNG(canvas, p); } },
     { id: 'a-export-json', name: 'Export JSON', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { const p = get(currentProject); if (p) exportAsJSON(p); } },
     { id: 'a-toggle-grid', name: 'Toggle Grid', icon: '⚡', category: 'action', categoryLabel: '⚡ Action', action: () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true })); } },

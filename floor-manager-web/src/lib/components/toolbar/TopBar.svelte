@@ -5,7 +5,7 @@
   import { localStore } from '$lib/services/datastore';
   import { get } from 'svelte/store';
   import type { Floor, Project } from '$lib/models/types';
-  import { exportAsPNG, exportAsJSON, exportAsSVG, exportPDF } from '$lib/utils/export';
+  import { exportAsPNG, exportAsJSON, exportAsSVG } from '$lib/utils/export';
   import SettingsDialog from './SettingsDialog.svelte';
   import SaveModal from '$lib/components/editor/SaveModal.svelte';
   import { saveState, lastSavedAt, manualSave, initAutoSave, autoSaveEnabled, workingDate, markDirty, saveBlockedReason } from '$lib/stores/saveStatus';
@@ -175,10 +175,15 @@
     exportOpen = false;
   }
 
-  function onExportPDF() {
-    const p = get(currentProject);
-    if (p) exportPDF(p).catch((err) => console.error('Xuất PDF thất bại:', err));
+  /**
+   * PDF đi qua hộp thoại Xuất mặt bằng, không xuất thẳng nữa.
+   *
+   * Bộ xuất cũ dựng khung tên riêng, thiếu tên công ty, logo và tên mặt bằng,
+   * lại in kèm nhãn openplan3d.com của phần mềm gốc lên bản vẽ của khách.
+   */
+  function onPrintLayout() {
     exportOpen = false;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true }));
   }
 
   function onShareProject() {
@@ -454,7 +459,7 @@
     </button>
     {#if exportOpen}
       <div class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 w-48 z-50">
-        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left flex items-center gap-2" onclick={() => { exportOpen = false; window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true })); }}>
+        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left flex items-center gap-2" onclick={onPrintLayout}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           Print Layout
         </button>
@@ -471,7 +476,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
           Export as SVG
         </button>
-        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left flex items-center gap-2" onclick={onExportPDF}>
+        <button class="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left flex items-center gap-2" onclick={onPrintLayout} title="Mở hộp thoại Xuất mặt bằng — có khung tên đầy đủ, chọn nhiều ngày và nền bản vẽ">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 11v6"/><path d="M8 11v6"/><path d="M12 11v6"/></svg>
           Export as PDF
         </button>
