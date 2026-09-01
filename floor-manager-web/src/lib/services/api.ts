@@ -136,6 +136,8 @@ export interface ApiLayout {
 	gridSize: number;
 	/** Block DXF nào ứng với sản phẩm nào: { "<tên block>": "<productId>" } */
 	dxfBlockMap?: Record<string, string> | null;
+	/** Căn ảnh nền với bản vẽ — xem LayoutBgTransform ở utils/layoutBackground */
+	bgTransform?: unknown;
 	/** Chỉ có trong GET /layouts/:id — danh sách layout không kèm tường */
 	walls?: ApiWall[];
 	snapshots?: ApiSnapshot[];

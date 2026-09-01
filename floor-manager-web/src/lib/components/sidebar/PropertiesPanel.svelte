@@ -6,7 +6,14 @@
   import { orientedDims } from '$lib/services/mapping';
   import { api } from '$lib/services/api';
   import { loadProductCatalog } from '$lib/stores/productCatalog';
-  import { propertiesPanelOpen, backgroundPanelOpen } from '$lib/stores/ui';
+  import { propertiesPanelOpen, backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
+  import { layoutBgFile, layoutBgTransform } from '$lib/stores/project';
+  import { DEFAULT_LAYOUT_BG_TRANSFORM } from '$lib/utils/layoutBackground';
+
+  /** Chỉnh nền của layout — chỉ có nghĩa khi layout thực sự có nền */
+  function setBgT(patch: Partial<typeof $layoutBgTransform>) {
+    layoutBgTransform.update((t) => ({ ...t, ...patch }));
+  }
 
   /** Khớp danh sách công đoạn ở trang quản lý sản phẩm */
   const STAGES = ['Hàn', 'Sơn', 'Lắp ráp', 'Cắt', 'Khác'];
@@ -148,7 +155,12 @@
     );
   }
 
-  let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage));
+  // Nền layout ăn theo cùng cơ chế với ảnh nền của tầng: có cờ mở thì bảng hiện,
+  // vì bản thân nền không phải phần tử chọn được. Không loại trừ 3D — phép căn
+  // nền áp cho cả 3D nên chỉnh ở đó cũng có nghĩa.
+  let hasLayoutBg = $derived(!!$layoutBgFile && $layoutBgPanelOpen);
+
+  let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage) || hasLayoutBg);
 
   // Bảng fixed nên nó đè lên mép phải khung 3D — báo để các nút nổi ở đó né ra
   $effect(() => {
@@ -483,6 +495,64 @@
           onclick={() => setBackgroundImage(undefined)}
           class="w-full px-2 py-1.5 border border-red-300 rounded text-sm text-red-600 hover:bg-red-50"
         >Remove Image</button>
+      </div>
+    </div>
+  {/if}
+
+  {#if hasLayoutBg}
+    <div class="mt-4 pt-3 border-t border-gray-200">
+      <h3 class="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+        <span class="w-6 h-6 bg-emerald-100 rounded flex items-center justify-center text-xs">🗺️</span>
+        Nền mặt bằng
+        <button
+          onclick={() => { layoutBgPanelOpen.set(false); layoutBgAlignMode.set(false); }}
+          class="ml-auto w-6 h-6 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex items-center justify-center text-base leading-none"
+          title="Đóng bảng — bấm vào nền trên bản vẽ để mở lại"
+          aria-label="Đóng bảng nền mặt bằng"
+        >✕</button>
+      </h3>
+      <p class="text-xs text-gray-400 mb-3">Căn nền cho khớp block. Áp dụng cho cả 2D, 3D và bản in.</p>
+
+      <button
+        onclick={() => layoutBgAlignMode.update((v) => !v)}
+        class="w-full mb-3 px-2 py-1.5 border rounded text-sm {$layoutBgAlignMode ? 'bg-emerald-100 border-emerald-400 text-emerald-700' : 'border-gray-200 hover:bg-gray-50'}"
+      >{$layoutBgAlignMode ? '✋ Đang căn nền — kéo trên bản vẽ' : '✋ Bật kéo nền'}</button>
+
+      <div class="space-y-3">
+        <label class="block">
+          <span class="text-xs text-gray-500">Độ mờ · {Math.round($layoutBgTransform.opacity * 100)}%</span>
+          <input type="range" min="0.05" max="1" step="0.05" value={$layoutBgTransform.opacity}
+            oninput={(e) => setBgT({ opacity: Number((e.target as HTMLInputElement).value) })} class="w-full" />
+        </label>
+        <label class="block">
+          <span class="text-xs text-gray-500">Tỉ lệ · {$layoutBgTransform.scale.toFixed(2)}×</span>
+          <input type="range" min="0.2" max="3" step="0.01" value={$layoutBgTransform.scale}
+            oninput={(e) => setBgT({ scale: Number((e.target as HTMLInputElement).value) })} class="w-full" />
+        </label>
+        <label class="block">
+          <span class="text-xs text-gray-500">Xoay (độ)</span>
+          <input type="number" step="0.5" value={$layoutBgTransform.rotationDeg}
+            oninput={(e) => setBgT({ rotationDeg: Number((e.target as HTMLInputElement).value) })}
+            class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+        </label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-xs text-gray-500">Dịch X (cm)</span>
+            <input type="number" step="10" value={Math.round($layoutBgTransform.offsetXCm)}
+              oninput={(e) => setBgT({ offsetXCm: Number((e.target as HTMLInputElement).value) })}
+              class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-xs text-gray-500">Dịch Y (cm)</span>
+            <input type="number" step="10" value={Math.round($layoutBgTransform.offsetYCm)}
+              oninput={(e) => setBgT({ offsetYCm: Number((e.target as HTMLInputElement).value) })}
+              class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+          </label>
+        </div>
+        <button
+          onclick={() => layoutBgTransform.set({ ...DEFAULT_LAYOUT_BG_TRANSFORM })}
+          class="w-full px-2 py-1.5 border border-gray-200 rounded text-sm hover:bg-gray-50"
+        >Đặt lại về khung layout</button>
       </div>
     </div>
   {/if}

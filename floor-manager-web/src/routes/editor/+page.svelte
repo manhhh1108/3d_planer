@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
-  import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
+  import { currentProject, viewMode, selectedElementId, selectedRoomId, createDefaultProject, loadProject, selectedTool, placingFurnitureId, elevationWallId, elevationPickMode, layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
   import { localStore, backendStore, setActiveStore } from '$lib/services/datastore';
   import { api, FILES_BASE, type ApiPlan, type ApiPlanItem, type ApiConflictResult, type ApiComment } from '$lib/services/api';
   import { currentUser, canEdit } from '$lib/stores/auth';
@@ -15,6 +15,7 @@
   import { dxfImportOpen } from '$lib/stores/ui';
   import { startEditLock, stopEditLock, editLock, lockedByOther } from '$lib/stores/editLock';
   import { todayStr } from '$lib/services/mapping';
+  import { normalizeLayoutBgTransform } from '$lib/utils/layoutBackground';
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
   import PropertiesPanel from '$lib/components/sidebar/PropertiesPanel.svelte';
@@ -31,6 +32,30 @@
   import DxfImportPanel from '$lib/components/editor/DxfImportPanel.svelte';
   import OnboardingTooltip from '$lib/components/OnboardingTooltip.svelte';
   import { triggerTip } from '$lib/stores/onboarding.svelte';
+
+  // Căn nền: người dùng kéo/chỉnh liên tục nên gom lại rồi mới ghi, khỏi bắn
+  // một request mỗi lần nhích chuột. Chỉ ghi sau khi đã nạp xong giá trị của
+  // layout, không thì lần set đầu tiên lúc load lại ghi ngược lên server.
+  let bgTransformReady = false;
+  let lastSavedBgTransform = '';
+  let bgSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const t = $layoutBgTransform;
+    if (!backendLayoutId || !bgTransformReady) return;
+    const json = JSON.stringify(t);
+    if (json === lastSavedBgTransform) return;
+    if (bgSaveTimer) clearTimeout(bgSaveTimer);
+    const id = backendLayoutId;
+    bgSaveTimer = setTimeout(async () => {
+      try {
+        await api.layouts.update(id, { bgTransform: t });
+        lastSavedBgTransform = json;
+      } catch (e) {
+        console.error('[editor] Không lưu được căn ảnh nền:', e);
+      }
+    }, 500);
+  });
 
   let commandPaletteOpen = $state(false);
   let printOpen = $state(false);
@@ -125,6 +150,8 @@
         // Reset background stores so stale data from a previous layout never leaks in
         layoutBgFile.set(null);
         layoutDimsCm.set({ widthCm: 0, heightCm: 0 });
+        bgTransformReady = false;
+        layoutBgTransform.set(normalizeLayoutBgTransform(null));
         try {
           const project = await backendStore.load(layoutId);
           if (!project) throw new Error('Không tìm thấy layout');
@@ -135,6 +162,10 @@
             printLayoutName = layout.name;
             layoutBgFile.set(layout.backgroundFile ? `${FILES_BASE}${layout.backgroundFile}` : null);
             layoutDimsCm.set({ widthCm: layout.widthM * 100, heightCm: layout.heightM * 100 });
+            const bgT = normalizeLayoutBgTransform(layout.bgTransform);
+            lastSavedBgTransform = JSON.stringify(bgT);
+            layoutBgTransform.set(bgT);
+            bgTransformReady = true;
             if (layout.siteId) {
               backHref = `${base}/site/${layout.siteId}`;
               try {
@@ -254,7 +285,7 @@
             ></div>
           {/if}
           <div class="h-full max-md:fixed max-md:left-0 max-md:top-12 max-md:bottom-0 max-md:h-auto max-md:z-50 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 {buildPanelOpen ? '' : 'max-md:-translate-x-full'}">
-            <BuildPanel />
+            <BuildPanel layoutId={backendLayoutId ?? ''} />
           </div>
         <div class="flex-1 min-w-0 relative">
           {#if mode === '2d'}

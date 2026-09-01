@@ -19,6 +19,23 @@ export const propertiesPanelOpen = writable(false);
 export const backgroundPanelOpen = writable(true);
 
 /**
+ * Đang căn ảnh nền của layout.
+ *
+ * Nền phủ kín bản vẽ nên không thể cho kéo bất cứ lúc nào — bật chế độ này thì
+ * cú bấm mới rơi vào nền, tắt đi thì nền trơ như trước.
+ */
+export const layoutBgAlignMode = writable(false);
+
+/**
+ * Bảng chỉnh nền layout đang mở.
+ *
+ * Bảng thuộc tính bên phải chỉ hiện khi có thứ gì được chọn, nên nền — vốn
+ * không phải "phần tử" chọn được — cần cờ riêng để bật bảng, giống
+ * backgroundPanelOpen của ảnh nền theo tầng.
+ */
+export const layoutBgPanelOpen = writable(false);
+
+/**
  * Yêu cầu mở hộp thoại "Nhập sản phẩm từ DXF".
  *
  * Nút nằm ở mục IMPORT của thanh công cụ, còn hộp thoại lại do trang editor

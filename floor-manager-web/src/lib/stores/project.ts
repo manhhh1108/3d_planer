@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Project, Floor, Wall, Door, Window as Win, FurnitureItem, Point, Stair, Column, BackgroundImage, GuideLine, ElementGroup, EntourageItem } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
+import { DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
 
 
 function uid(): string {
@@ -1062,4 +1063,6 @@ export const canvasCamY = writable<number>(0);
 // Layout background — set by editor page after loading; read by FloorPlanCanvas
 export const layoutBgFile = writable<string | null>(null);
 export const layoutDimsCm = writable<{ widthCm: number; heightCm: number }>({ widthCm: 0, heightCm: 0 });
+/** Căn ảnh nền: dịch/xoay/phóng/độ mờ. Dùng chung cho canvas 2D, 3D và bản in. */
+export const layoutBgTransform = writable<LayoutBgTransform>({ ...DEFAULT_LAYOUT_BG_TRANSFORM });
 

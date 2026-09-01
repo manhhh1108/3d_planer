@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { currentProject, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
+  import { currentProject, layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
+  import { drawLayoutBgImage, layoutBgBounds, layoutBgCenter, DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
   import { get } from 'svelte/store';
   import { tick } from 'svelte';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
@@ -32,6 +33,10 @@
   let scale = $state('1:50');
   let showLegend = $state(true);
   let showBackground = $state(true);
+  /** Kèm một trang phối cảnh 3D để thấy hình khối thật của sản phẩm */
+  let include3D = $state(false);
+  /** Ảnh 3D đã chụp — null khi chưa vào chế độ 3D lần nào */
+  let photo3D = $state<HTMLImageElement | null>(null);
   let printCanvas: HTMLCanvasElement;
   let exporting = $state(false);
   let printing = $state(false);
@@ -55,6 +60,7 @@
   /** Nền layout (bản vẽ DXF/ảnh đã import) — trải từ gốc toạ độ theo layoutDimsCm */
   let bgLayoutImage = $state<HTMLImageElement | null>(null);
   let bgLayoutDims = $state({ widthCm: 0, heightCm: 0 });
+  let bgLayoutT = $state<LayoutBgTransform>({ ...DEFAULT_LAYOUT_BG_TRANSFORM });
   /** Ảnh nền riêng của tầng — có vị trí, xoay, tỉ lệ và độ mờ riêng */
   let bgFloorImage = $state<HTMLImageElement | null>(null);
   let hasBackground = $derived(bgLayoutImage !== null || bgFloorImage !== null);
@@ -66,18 +72,19 @@
   let loadingPreview = $state(false);
 
   let pageDates = $derived(selectedDates.length > 0 ? [...selectedDates].sort() : [todayStr()]);
+  /** Trang 3D nối vào cuối, nên tổng số trang không còn bằng số ngày */
+  let has3DPage = $derived(include3D && photo3D !== null);
+  let pageCount = $derived(pageDates.length + (has3DPage ? 1 : 0));
+  let previewIsPhoto = $derived(has3DPage && previewIndex >= pageDates.length);
   let previewDate = $derived(pageDates[Math.min(previewIndex, pageDates.length - 1)] ?? todayStr());
 
   const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
   const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
-  const TITLE_H = 86;
-  const FOOTER_H = 92;
+  const TITLE_H = 94;
+  const FOOTER_H = 100;
   const PAD = 36;
-  /**
-   * Độ mờ của nền khi in. Trên màn hình nền để 0.4, nhưng in ra giấy mức đó
-   * nhạt gần như mất; 0.55 vẫn đủ chìm để block nổi lên trên.
-   */
-  const BG_ALPHA = 0.55;
+  /** Khoảng lùi của khung bao so với mép giấy */
+  const FRAME_M = 14;
   /** Bội số độ phân giải khi xuất — 3× khổ 96dpi ≈ 288dpi, đủ nét khi in giấy */
   const EXPORT_SCALE = 3;
 
@@ -190,7 +197,8 @@
     };
 
     if (bgLayoutImage && bgLayoutDims.widthCm > 0 && bgLayoutDims.heightCm > 0) {
-      grow(0, 0, bgLayoutDims.widthCm, bgLayoutDims.heightCm);
+      const bb = layoutBgBounds(bgLayoutDims.widthCm, bgLayoutDims.heightCm, bgLayoutT);
+      grow(bb.minX, bb.minY, bb.maxX, bb.maxY);
     }
 
     const fb = floor?.backgroundImage;
@@ -208,10 +216,12 @@
   /** Vẽ nền trong hệ toạ độ cm (ctx đã translate/scale sẵn về khung bản vẽ) */
   function drawBackgrounds(ctx: CanvasRenderingContext2D, floor: Floor) {
     if (bgLayoutImage && bgLayoutDims.widthCm > 0 && bgLayoutDims.heightCm > 0) {
-      ctx.save();
-      ctx.globalAlpha = BG_ALPHA;
-      ctx.drawImage(bgLayoutImage, 0, 0, bgLayoutDims.widthCm, bgLayoutDims.heightCm);
-      ctx.restore();
+      const { widthCm, heightCm } = bgLayoutDims;
+      // ctx đã ở hệ cm nên 1cm = 1 đơn vị; độ mờ lấy đúng mức người dùng đã canh
+      drawLayoutBgImage(
+        ctx, bgLayoutImage, widthCm, heightCm, bgLayoutT,
+        layoutBgCenter(widthCm, heightCm, bgLayoutT), 1,
+      );
     }
 
     const fb = floor.backgroundImage;
@@ -238,6 +248,7 @@
     snapshotDate = todayStr(),
     pageIndex = 1,
     pageTotal = 1,
+    photo: HTMLImageElement | null = null,
   ) {
     const project = renderProject;
     if (!project) return;
@@ -253,6 +264,15 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, cw, ch);
 
+    // ── Khung bao bản vẽ ─────────────────────────────────────────
+    // Hai nét: nét ngoài đậm làm biên, nét trong mảnh cho ra dáng bản vẽ kỹ
+    // thuật. Vẽ trước mọi thứ khác để không đè lên nội dung.
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(FRAME_M, FRAME_M, cw - FRAME_M * 2, ch - FRAME_M * 2);
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(FRAME_M + 4, FRAME_M + 4, cw - (FRAME_M + 4) * 2, ch - (FRAME_M + 4) * 2);
+
     // ── Title block ──────────────────────────────────────────────
     ctx.fillStyle = '#0f172a';
     ctx.font = `bold 23px ${FONT}`;
@@ -260,19 +280,19 @@
     ctx.textBaseline = 'top';
     // Dòng 1 là công ty, không phải project.name: ở chế độ backend project.name
     // chính là tên layout, in ra thành "Layout / Mặt bằng · Layout" lặp vô nghĩa.
-    ctx.fillText(resolvedCompany, PAD, 14);
+    ctx.fillText(resolvedCompany, PAD, 22);
 
     ctx.font = `16px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 46);
+    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 54);
 
     ctx.textAlign = 'right';
     ctx.font = `bold 15px ${FONT}`;
     ctx.fillStyle = '#0f172a';
-    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 15);
+    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 23);
     ctx.font = `14px ${FONT}`;
     ctx.fillStyle = '#475569';
-    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 42);
+    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 50);
 
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1.5;
@@ -282,13 +302,14 @@
     ctx.stroke();
 
     // ── Legend column (right side) ───────────────────────────────
-    const legendW = showLegend ? 215 : 0;
+    const showLegendHere = showLegend && !photo;
+    const legendW = showLegendHere ? 215 : 0;
     const planAreaX = PAD;
     const planAreaY = TITLE_H + 4;
     const planAreaW = cw - PAD * 2 - legendW - (legendW > 0 ? 12 : 0);
     const planAreaH = ch - TITLE_H - FOOTER_H - 8;
 
-    if (showLegend && floor?.furniture?.length) {
+    if (showLegendHere && floor?.furniture?.length) {
       const lx = planAreaX + planAreaW + 12;
       const ly = planAreaY + 4;
       ctx.font = `bold 13px ${FONT}`;
@@ -343,7 +364,22 @@
     // ── Floor plan ───────────────────────────────────────────────
     const contentBounds = planHasContent(floor) ? floorPlanBounds(floor) : null;
     const planBounds = showBackground ? boundsWithBackground(contentBounds, floor) : contentBounds;
-    if (!floor || !planBounds) {
+    if (photo) {
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `bold 14px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('PHỐI CẢNH 3D', planAreaX, planAreaY);
+
+      const capH = 22;
+      const boxY = planAreaY + capH;
+      const boxH = planAreaH - capH;
+      const ratio = photo.naturalWidth / photo.naturalHeight;
+      let dw = planAreaW;
+      let dh = dw / ratio;
+      if (dh > boxH) { dh = boxH; dw = dh * ratio; }
+      ctx.drawImage(photo, planAreaX + (planAreaW - dw) / 2, boxY + (boxH - dh) / 2, dw, dh);
+    } else if (!floor || !planBounds) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = `13px ${FONT}`;
       ctx.textAlign = 'center';
@@ -464,35 +500,18 @@
         ctx.textAlign = 'right';
         ctx.fillText(`${barM}m`, bx + barPx, by - 6);
 
-        // North arrow (bottom-right of plan area)
-        const ax = planAreaX + planAreaW - 20;
-        const ay = planAreaY + planAreaH - 16;
-        const aw = 12;
-        ctx.fillStyle = '#0f172a';
-        ctx.beginPath();
-        ctx.moveTo(ax, ay - aw); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay - aw * 0.35); ctx.lineTo(ax - aw * 0.55, ay);
-        ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#94a3b8';
-        ctx.beginPath();
-        ctx.moveTo(ax, ay - aw * 0.35); ctx.lineTo(ax + aw * 0.55, ay); ctx.lineTo(ax, ay + aw); ctx.lineTo(ax - aw * 0.55, ay);
-        ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#0f172a';
-        ctx.font = `bold 11px ${FONT}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText('N', ax, ay - aw - 2);
       }
     }
 
     // ── Footer ───────────────────────────────────────────────────
-    const footerY = ch - FOOTER_H + 6;
+    const footerY = ch - FOOTER_H + 2;
     const footerX = PAD;
     const footerW = cw - PAD * 2;
     const col1W = footerW * 0.44;
     const col2W = footerW * 0.25;
     const col3W = footerW - col1W - col2W;
 
-    const frameH = FOOTER_H - 14;
+    const frameH = FOOTER_H - 22;
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1.2;
     ctx.strokeRect(footerX, footerY, footerW, frameH);
@@ -517,24 +536,42 @@
     ctx.fillText(`Ngày: ${shortDate(snapshotDate)}`, footerX + col1W + 12, footerY + 14, col2W - 24);
     ctx.fillText(`Tỉ lệ: ${scale}`, footerX + col1W + 12, footerY + 38, col2W - 24);
 
+    // Logo và tên công ty nằm cùng một hàng, căn giữa theo chiều cao khung tên
     const logoX = footerX + col1W + col2W + 14;
+    const midY = footerY + frameH / 2;
+    let nameX = logoX;
+    ctx.textBaseline = 'middle';
+
     if (logoImage?.complete && logoImage.naturalWidth > 0) {
       // Vừa khung, giữ nguyên tỉ lệ — logo méo còn tệ hơn không có logo
-      const logoBoxH = 34;
-      const logoBoxW = Math.min(col3W - 28, 150);
+      const logoBoxH = 40;
+      const logoBoxW = Math.min(col3W * 0.45, 110);
       const ratio = logoImage.naturalWidth / logoImage.naturalHeight;
       let dw = logoBoxW;
       let dh = dw / ratio;
       if (dh > logoBoxH) { dh = logoBoxH; dw = dh * ratio; }
-      ctx.drawImage(logoImage, logoX, footerY + 9, dw, dh);
+      ctx.drawImage(logoImage, logoX, midY - dh / 2, dw, dh);
+      nameX = logoX + dw + 10;
     } else {
       ctx.fillStyle = '#0f172a';
       ctx.font = `bold 20px ${FONT}`;
-      ctx.fillText(resolvedLogo, logoX, footerY + 13, col3W - 28);
+      ctx.fillText(resolvedLogo, logoX, midY);
+      nameX = logoX + ctx.measureText(resolvedLogo).width + 10;
     }
+
+    // Cắt bớt tên dài thay vì ép co ngang — fillText có maxWidth sẽ bóp chữ dẹp
     ctx.font = `13px ${FONT}`;
     ctx.fillStyle = '#ef4444';
-    ctx.fillText(resolvedCompany, logoX, footerY + 50, col3W - 28);
+    const nameMaxW = footerX + footerW - nameX - 12;
+    let companyLabel = resolvedCompany;
+    if (ctx.measureText(companyLabel).width > nameMaxW) {
+      while (companyLabel.length > 1 && ctx.measureText(`${companyLabel}…`).width > nameMaxW) {
+        companyLabel = companyLabel.slice(0, -1);
+      }
+      companyLabel = `${companyLabel}…`;
+    }
+    ctx.fillText(companyLabel, nameX, midY);
+    ctx.textBaseline = 'top';
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#64748b';
@@ -581,11 +618,44 @@
     logoImage = companyLogoUrl ? await loadImageInline(`${FILES_BASE}${companyLogoUrl}`) : null;
   }
 
+  /**
+   * Chụp khung nhìn 3D đang mở.
+   *
+   * ThreeViewer chỉ được gắn khi editor ở chế độ 3D, nên hàm này chỉ có ảnh khi
+   * người dùng đang đứng ở 3D. Renderer bật preserveDrawingBuffer nên khung
+   * hình cuối vẫn đọc được dù hộp thoại đang che lên trên.
+   */
+  async function capture3DView(): Promise<HTMLImageElement | null> {
+    for (const c of Array.from(document.querySelectorAll('canvas'))) {
+      // Bỏ qua canvas xem trước của chính hộp thoại này. Gọi getContext('webgl')
+      // lên nó trước khi nó kịp lấy ngữ cảnh 2d sẽ khoá nó thành canvas WebGL
+      // vĩnh viễn, và getContext('2d') sau đó trả về null — hỏng cả bản xem trước.
+      if (c.closest('[data-print-preview]')) continue;
+      if (c.width < 32 || c.height < 32) continue;
+      let isWebgl = false;
+      try {
+        isWebgl = !!(c.getContext('webgl2') || c.getContext('webgl'));
+      } catch {
+        continue;
+      }
+      if (!isWebgl) continue;
+      try {
+        const url = c.toDataURL('image/png');
+        if (url.length < 128) continue;
+        return await decodeImage(url);
+      } catch {
+        // canvas bị vấy bẩn -> bỏ qua, các trang còn lại vẫn xuất được
+      }
+    }
+    return null;
+  }
+
   /** Nền bản vẽ: nền layout tải từ server, ảnh nền tầng vốn đã là data URL */
   async function loadBackgrounds() {
     bgLayoutImage = null;
     bgFloorImage = null;
     bgLayoutDims = get(layoutDimsCm);
+    bgLayoutT = get(layoutBgTransform);
 
     const layoutUrl = get(layoutBgFile);
     if (layoutUrl) bgLayoutImage = await loadImageInline(layoutUrl);
@@ -624,8 +694,9 @@
         cw, ch, dpr,
         project,
         previewDate,
-        Math.min(previewIndex, pageDates.length - 1) + 1,
-        pageDates.length,
+        Math.min(previewIndex, pageCount - 1) + 1,
+        pageCount,
+        previewIsPhoto ? photo3D : null,
       );
     } catch (e) {
       // Nạp snapshot hỏng thì khung xem trước đứng im — nói ra thay vì để trắng
@@ -662,14 +733,23 @@
     if (!base) return [];
     const { W, H } = pageDims();
     const out: { date: string; src: string }[] = [];
-    for (let i = 0; i < pageDates.length; i++) {
-      const date = pageDates[i];
-      const project = (await projectForDate(date)) ?? base;
+    const total = pageCount;
+    const draw = (project: Project, date: string, index: number, photo: HTMLImageElement | null) => {
       const off = document.createElement('canvas');
       off.width = Math.round(W * EXPORT_SCALE);
       off.height = Math.round(H * EXPORT_SCALE);
-      renderToCanvas(off.getContext('2d')!, W, H, EXPORT_SCALE, project, date, i + 1, pageDates.length);
+      renderToCanvas(off.getContext('2d')!, W, H, EXPORT_SCALE, project, date, index, total, photo);
       out.push({ date, src: off.toDataURL('image/jpeg', 0.95) });
+    };
+
+    for (let i = 0; i < pageDates.length; i++) {
+      const date = pageDates[i];
+      draw((await projectForDate(date)) ?? base, date, i + 1, null);
+    }
+    // Trang phối cảnh nối cuối, dùng bố cục của ngày cuối cùng cho khung tên
+    if (has3DPage && photo3D) {
+      const lastDate = pageDates[pageDates.length - 1] ?? todayStr();
+      draw((await projectForDate(lastDate)) ?? base, lastDate, total, photo3D);
     }
     return out;
   }
@@ -817,6 +897,11 @@ img:last-child { break-after: auto; page-break-after: auto; }
       exportError = null;
       void loadLogo();
       void loadBackgrounds();
+      void capture3DView().then((img) => {
+        photo3D = img;
+        // Không có ảnh thì đừng bật sẵn, tránh xuất ra một trang trắng
+        if (!img) include3D = false;
+      });
       void refreshSnapshots();
       setTimeout(renderPrintCanvas, 60);
     }
@@ -826,6 +911,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
       void pageSize; void orientation; void scale; void showLegend;
       void companyName; void companyLogoText; void previewIndex; void pageDates; void logoImage;
       void showBackground; void bgLayoutImage; void bgFloorImage; void bgLayoutDims;
+      void include3D; void photo3D;
       setTimeout(renderPrintCanvas, 20);
     }
   });
@@ -885,6 +971,16 @@ img:last-child { break-after: auto; page-break-after: auto; }
         </label>
       {/if}
 
+      <label
+        class="text-xs flex items-center gap-1.5 select-none {photo3D ? 'text-white/70 cursor-pointer' : 'text-white/30 cursor-not-allowed'}"
+        title={photo3D
+          ? 'Thêm một trang phối cảnh 3D để thấy hình khối thật của sản phẩm'
+          : 'Chuyển editor sang chế độ 3D rồi mở lại hộp thoại này để chụp được khung nhìn'}
+      >
+        <input type="checkbox" bind:checked={include3D} disabled={!photo3D} class="accent-blue-400" />
+        Trang 3D
+      </label>
+
       <label class="text-xs text-white/70 flex items-center gap-1.5">
         Công ty
         <input bind:value={companyName} class="w-28 bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600" />
@@ -926,7 +1022,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
         </div>
       {/if}
 
-      {#if pageDates.length > 1}
+      {#if pageCount > 1}
         <div class="flex items-center gap-1 text-xs text-white/70">
           <button
             onclick={() => previewIndex = Math.max(0, previewIndex - 1)}
@@ -935,12 +1031,12 @@ img:last-child { break-after: auto; page-break-after: auto; }
             aria-label="Trang trước"
           >‹</button>
           <span class="whitespace-nowrap">
-            Trang {Math.min(previewIndex, pageDates.length - 1) + 1}/{pageDates.length}
+            Trang {Math.min(previewIndex, pageCount - 1) + 1}/{pageCount}
             {#if loadingPreview}<span class="text-white/40">…</span>{/if}
           </span>
           <button
-            onclick={() => previewIndex = Math.min(pageDates.length - 1, previewIndex + 1)}
-            disabled={previewIndex >= pageDates.length - 1}
+            onclick={() => previewIndex = Math.min(pageCount - 1, previewIndex + 1)}
+            disabled={previewIndex >= pageCount - 1}
             class="w-6 h-6 rounded bg-white/10 hover:bg-white/20 disabled:opacity-30"
             aria-label="Trang sau"
           >›</button>
@@ -974,7 +1070,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
       <button
         onclick={doPrint}
         disabled={printing}
-        title={pageDates.length > 1 ? `In ${pageDates.length} trang (mỗi ngày một trang)` : 'In'}
+        title={pageCount > 1 ? `In ${pageCount} trang` : 'In'}
         class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
       >
         {#if printing}
@@ -986,7 +1082,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 0 2 2v5a2 2 0 0 1-2 2h-2"/>
             <rect x="6" y="14" width="12" height="8"/>
           </svg>
-          In{pageDates.length > 1 ? ` (${pageDates.length})` : ''}
+          In{pageCount > 1 ? ` (${pageCount})` : ''}
         {/if}
       </button>
 
@@ -1004,7 +1100,7 @@ img:last-child { break-after: auto; page-break-after: auto; }
       onclick={(e) => e.stopPropagation()}
       onkeydown={() => {}}
     >
-      <canvas bind:this={printCanvas} class="w-full h-full block"></canvas>
+      <canvas bind:this={printCanvas} data-print-preview class="w-full h-full block"></canvas>
     </div>
   </div>
 {/if}

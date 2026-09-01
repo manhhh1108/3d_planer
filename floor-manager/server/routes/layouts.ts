@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../db.js';
 import { requireRole } from '../middleware/auth.js';
 import multer from 'multer';
@@ -14,6 +15,9 @@ const TMP_DIR = path.resolve(process.env.STORAGE_DIR || './storage', 'tmp');
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
 const upload = multer({ dest: TMP_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
+
+/** Ảnh dùng làm nền mặt bằng — lưu nguyên bản, không qua bước dựng SVG như DXF */
+const IMAGE_BG_EXTS = ['png', 'jpg', 'jpeg', 'webp'];
 
 const WALLS_PATH = /^\/[^/]+\/walls\/?$/;
 const LOCK_PATH = /^\/[^/]+\/lock\/?$/;
@@ -374,11 +378,32 @@ router.post('/:id/background', upload.single('file'), async (req: Request, res: 
   try {
     if (!req.file) return res.status(400).json({ error: 'file is required' });
     const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
-    if (!['dxf', 'dwg'].includes(ext)) {
-      return res.status(400).json({ error: 'Only DXF and DWG files are supported' });
+    const isImage = IMAGE_BG_EXTS.includes(ext);
+    if (!isImage && !['dxf', 'dwg'].includes(ext)) {
+      return res.status(400).json({ error: 'Chỉ nhận file DXF, DWG hoặc ảnh PNG/JPG/WEBP' });
     }
     const layout = await prisma.layout.findUnique({ where: { id: String(req.params.id) } });
     if (!layout) return res.status(404).json({ error: 'Layout not found' });
+
+    // Ảnh scan/chụp không mang tỉ lệ như bản vẽ CAD, nên không suy ra được kích
+    // thước thật. Giữ nguyên widthM/heightM của layout và trải ảnh vừa khung đó
+    // — lệch tỉ lệ thì người dùng sửa kích thước layout, còn hơn đoán bừa.
+    if (isImage) {
+      const p = layoutBgPaths(String(req.params.id));
+      if (layout.backgroundFile) {
+        fs.rmSync(p.artifactDir, { recursive: true, force: true });
+        fs.rmSync(p.sourceDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(p.artifactDir, { recursive: true });
+      fs.copyFileSync(req.file.path, p.bgImageFile(ext));
+
+      const updated = await prisma.layout.update({
+        where: { id: String(req.params.id) },
+        // Ảnh mới thì cách căn cũ vô nghĩa — trả về mặc định để canh lại từ đầu
+        data: { backgroundFile: p.bgImageUrl(ext), bgTransform: Prisma.DbNull },
+      });
+      return res.json(updated);
+    }
 
     if (ext === 'dwg') {
       if (!process.env.ODA_CONVERTER_PATH) {
@@ -403,7 +428,7 @@ router.post('/:id/background', upload.single('file'), async (req: Request, res: 
 
     const updated = await prisma.layout.update({
       where: { id: String(req.params.id) },
-      data: { backgroundFile: p.bgUrl, widthM, heightM },
+      data: { backgroundFile: p.bgUrl, widthM, heightM, bgTransform: Prisma.DbNull },
     });
     res.json(updated);
   } catch (err) {
@@ -424,7 +449,7 @@ router.delete('/:id/background', async (req: Request, res: Response) => {
 
     const updated = await prisma.layout.update({
       where: { id: String(req.params.id) },
-      data: { backgroundFile: null },
+      data: { backgroundFile: null, bgTransform: Prisma.DbNull },
     });
     res.json(updated);
   } catch (err) {

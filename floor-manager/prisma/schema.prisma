@@ -82,6 +82,10 @@ model Layout {
   // Thuộc về nội dung bản vẽ chứ không phải sở thích cá nhân, nên để ở server
   // cho cả nhóm dùng chung thay vì mỗi máy map lại từ đầu.
   dxfBlockMap    Json?      @map("dxf_block_map")
+  // Căn ảnh nền với bản vẽ: { offsetXCm, offsetYCm, scale, rotationDeg, opacity }.
+  // Nền dựng từ DXF thì khớp sẵn, nhưng ảnh scan/chụp không mang tỉ lệ nên phải
+  // canh tay. Để ở server cho cả nhóm dùng chung, giống dxfBlockMap.
+  bgTransform    Json?      @map("bg_transform")
   createdAt      DateTime   @default(now()) @map("created_at")
   site           Site       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   snapshots      Snapshot[]

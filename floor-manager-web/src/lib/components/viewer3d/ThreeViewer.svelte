@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { activeFloor, currentProject, selectedElementId, draggingCatalogId, layoutBgFile, layoutDimsCm } from '$lib/stores/project';
+  import { activeFloor, currentProject, selectedElementId, draggingCatalogId, layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
   import type { Floor } from '$lib/models/types';
   import { projectSettings } from '$lib/stores/settings';
   import * as THREE from 'three';
+  import { DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
   import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
   import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
   import { getCatalogItem, furnitureCatalog, furnitureCategories } from '$lib/utils/furnitureCatalog';
@@ -44,6 +45,9 @@
   let bgPlane: THREE.Mesh | null = null;
   let bgUrl = $state<string | null>(null);
   let bgDimsCm = { widthCm: 0, heightCm: 0 };
+  let bgT: LayoutBgTransform = { ...DEFAULT_LAYOUT_BG_TRANSFORM };
+  /** Hiện tên block trong 3D — nhãn dày quá thì che mất bản thân khối */
+  let showBlockLabels = $state(true);
   let showBgPlane = $state(true);
 
   // Raycasting for furniture/floor interaction in 3D
@@ -447,8 +451,22 @@
   function setSpritesVisible(visible: boolean) {
     if (!scene) return;
     scene.traverse((obj) => {
-      if (obj instanceof THREE.Sprite) obj.visible = visible;
+      if (!(obj instanceof THREE.Sprite)) return;
+      // Bật lại thì nhãn block phải theo đúng công tắc người dùng đang đặt —
+      // không thì chụp ảnh xong nhãn tự hiện lại dù đã tắt.
+      obj.visible = visible && (obj.name !== 'block_name_label' || showBlockLabels);
     });
+  }
+
+  /** Áp công tắc hiện/ẩn tên block cho các nhãn đang có trong cảnh */
+  function applyBlockLabelVisibility() {
+    if (!scene) return;
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.Sprite && obj.name === 'block_name_label') {
+        obj.visible = showBlockLabels;
+      }
+    });
+    markSceneDirty();
   }
 
   function captureInteriorPhoto() {
@@ -1181,6 +1199,8 @@
     const sprite = new THREE.Sprite(mat);
     sprite.name = 'block_name_label';
     sprite.renderOrder = 999;
+    // Block dựng lại sau khi đã tắt nhãn thì không được tự hiện lên
+    sprite.visible = showBlockLabels;
     const baseW = width * 0.9;
     const baseH = height * 0.9;
     sprite.scale.set(baseW, baseH, 1);
@@ -1203,6 +1223,7 @@
     const halfFovTan = Math.tan(((camera.fov * Math.PI) / 180) / 2);
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Sprite) || obj.name !== 'block_name_label') return;
+      if (!obj.visible) return;
       const base = obj.userData.baseScale as { x: number; y: number } | undefined;
       if (!base) return;
       obj.getWorldPosition(labelWorldPos);
@@ -1244,7 +1265,7 @@
       const mat = new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
-        opacity: 0.85,
+        opacity: bgT.opacity,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
@@ -1253,8 +1274,13 @@
       mat.polygonOffsetUnits = -1;
       const plane = new THREE.Mesh(geo, mat);
       plane.rotation.x = -Math.PI / 2;
+      // Sau khi lật nằm, trục z cục bộ của plane trùng trục Y thế giới, nên
+      // rotateZ chính là xoay trong mặt phẳng sàn. Dấu âm vì 2D quay theo chiều
+      // kim đồng hồ (trục y hướng xuống) còn three.js quay ngược lại.
+      if (bgT.rotationDeg) plane.rotateZ((-bgT.rotationDeg * Math.PI) / 180);
+      plane.scale.set(bgT.scale, bgT.scale, 1);
       // Plane tâm ở gốc; layout kéo dài +x, +z từ (0,0) -> dịch tâm về (w/2, h/2)
-      plane.position.set(widthCm / 2, 1.0, heightCm / 2);
+      plane.position.set(widthCm / 2 + bgT.offsetXCm, 1.0, heightCm / 2 + bgT.offsetYCm);
       plane.renderOrder = -1;
       bgPlane = plane;
       scene.add(plane);
@@ -1566,6 +1592,10 @@
       bgUrl = url;
       if (scene) buildLayoutBackground();
     });
+    const unsubBgT = layoutBgTransform.subscribe((t) => {
+      bgT = t;
+      if (scene) buildLayoutBackground();
+    });
     const unsubDims = layoutDimsCm.subscribe((d) => {
       bgDimsCm = d;
       if (scene) buildLayoutBackground();
@@ -1575,6 +1605,7 @@
       resizeObs.disconnect();
       unsub();
       unsubBg();
+      unsubBgT();
       unsubDims();
       removeLayoutBackground();
       cancelAnimationFrame(animId);
@@ -1647,6 +1678,20 @@
         </svg>
       </button>
     {/if}
+
+    <!-- Block Name Labels Toggle -->
+    <button
+      onclick={() => { showBlockLabels = !showBlockLabels; applyBlockLabelVisibility(); }}
+      class="p-2 rounded-lg transition-colors {showBlockLabels ? 'bg-indigo-600 text-white ring-2 ring-indigo-300' : 'bg-black/70 text-white hover:bg-black/80'}"
+      title={showBlockLabels ? 'Ẩn tên block' : 'Hiện tên block'}
+      aria-label="Bật/tắt tên block"
+      aria-pressed={showBlockLabels}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+        <line x1="7" y1="7" x2="7.01" y2="7"/>
+      </svg>
+    </button>
 
     <!-- Edit Mode Toggle -->
     <button

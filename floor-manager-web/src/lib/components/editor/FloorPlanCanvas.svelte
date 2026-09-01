@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, beginDrag, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
-  import { layoutBgFile, layoutDimsCm } from '$lib/stores/project';
+  import { layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
+  import { hitLayoutBg, layoutBgBounds, layoutBgCenter, DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
   import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
   import { handleGlobalShortcut } from '$lib/utils/shortcuts';
   import { timelineReadonly } from '$lib/stores/timeline';
-  import { backgroundPanelOpen } from '$lib/stores/ui';
+  import { backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
   import { hitTestBackgroundImage } from '$lib/utils/backgroundImageHit';
   import ContextMenu from './ContextMenu.svelte';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
@@ -193,6 +194,11 @@
   let bgImage: HTMLImageElement | null = $state(null);
   let bgLayoutImage = $state<HTMLImageElement | null>(null);
   let _bgLayoutDimsCm = { widthCm: 0, heightCm: 0 };
+  let _bgLayoutT: LayoutBgTransform = { ...DEFAULT_LAYOUT_BG_TRANSFORM };
+  let bgAlign = $state(false);
+  layoutBgAlignMode.subscribe((v) => { bgAlign = v; markDirty(); });
+  let draggingLayoutBg = $state(false);
+  let layoutBgDragOffset: Point = { x: 0, y: 0 };
 
   // Kéo ảnh nền: model đã có position + locked từ đầu nhưng canvas chưa bao giờ
   // xử lý, nên ảnh nhập vào là dính cứng một chỗ.
@@ -1022,6 +1028,21 @@
     ctx.restore();
   }
 
+  /**
+   * Có được kéo nền của layout không.
+   *
+   * Chỉ khi đang bật chế độ căn nền — nếu không, tấm nền phủ kín bản vẽ sẽ nuốt
+   * mọi cú bấm vào chỗ trống, hỏng cả chọn vùng lẫn vẽ tường.
+   */
+  function overLayoutBg(wp: Point): boolean {
+    if (!bgLayoutImage) return false;
+    return hitLayoutBg(wp, _bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm, _bgLayoutT);
+  }
+
+  function canDragLayoutBg(wp: Point): boolean {
+    return bgAlign && overLayoutBg(wp);
+  }
+
   /** Bấm trúng ảnh nền chưa khoá không? Phép biến đổi ở utils, dùng chung với test. */
   function hitBackgroundImage(wp: Point): boolean {
     const bg = currentFloor?.backgroundImage;
@@ -1061,7 +1082,7 @@
     ctx.fillRect(0, 0, width, height);
     drawGrid();
     if (bgLayoutImage && _bgLayoutDimsCm.widthCm > 0) {
-      _drawLayoutBackground(getCS(), bgLayoutImage, _bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm);
+      _drawLayoutBackground(getCS(), bgLayoutImage, _bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm, _bgLayoutT);
     }
     if (layerVis.guides) drawGuides();
     drawBackgroundImage();
@@ -1494,6 +1515,10 @@
       _bgLayoutDimsCm = dims;
       markDirty();
     });
+    const unsub_layoutbgt = layoutBgTransform.subscribe((t) => {
+      _bgLayoutT = t;
+      markDirty();
+    });
 
     // Clipboard image paste handler — only if no internal furniture clipboard
     function handlePaste(e: ClipboardEvent) {
@@ -1529,7 +1554,7 @@
     canvas.addEventListener('touchend', onTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
-    return () => { resizeObs.disconnect(); unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub8(); unsub9(); unsub10(); unsub11(); unsub12(); unsub13(); unsub_multi(); unsub_elevopen(); unsub_elevpick(); unsub14(); unsub_col(); unsub_cols(); unsub_layers(); unsub_snapgrid(); unsub_layoutbg(); unsub_layoutdims(); document.removeEventListener('paste', handlePaste); canvas.removeEventListener('touchstart', onTouchStart); canvas.removeEventListener('touchmove', onTouchMove); canvas.removeEventListener('touchend', onTouchEnd); canvas.removeEventListener('touchcancel', onTouchEnd); };
+    return () => { resizeObs.disconnect(); unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub8(); unsub9(); unsub10(); unsub11(); unsub12(); unsub13(); unsub_multi(); unsub_elevopen(); unsub_elevpick(); unsub14(); unsub_col(); unsub_cols(); unsub_layers(); unsub_snapgrid(); unsub_layoutbg(); unsub_layoutdims(); unsub_layoutbgt(); document.removeEventListener('paste', handlePaste); canvas.removeEventListener('touchstart', onTouchStart); canvas.removeEventListener('touchmove', onTouchMove); canvas.removeEventListener('touchend', onTouchEnd); canvas.removeEventListener('touchcancel', onTouchEnd); };
   });
 
   /** Compute world bounding box of all elements */
@@ -1544,8 +1569,9 @@
     if (currentFloor.columns) for (const col of currentFloor.columns) { const r = col.diameter / 2; expand(col.position.x - r, col.position.y - r); expand(col.position.x + r, col.position.y + r); }
     // Include layout background bounds
     if (bgLayoutImage && _bgLayoutDimsCm.widthCm > 0) {
-      expand(0, 0);
-      expand(_bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm);
+      const b = layoutBgBounds(_bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm, _bgLayoutT);
+      expand(b.minX, b.minY);
+      expand(b.maxX, b.maxY);
     }
     if (!found) return null;
     const pad = 50;
@@ -2161,6 +2187,16 @@
             const w = currentFloor!.walls.find(wall => wall.id === wid);
             if (w) roomDragStartPositions.set(wid, { start: { ...w.start }, end: { ...w.end } });
           }
+        } else if (canDragLayoutBg(wp)) {
+          // Chế độ căn nền: kéo cả tấm nền của layout. Phải đứng trước mọi
+          // nhánh khác vì nền phủ kín bản vẽ, để lẫn vào là chặn hết thao tác.
+          draggingLayoutBg = true;
+          layoutBgPanelOpen.set(true);
+          const c = layoutBgCenter(_bgLayoutDimsCm.widthCm, _bgLayoutDimsCm.heightCm, _bgLayoutT);
+          layoutBgDragOffset = { x: wp.x - c.x, y: wp.y - c.y };
+          selectedElementId.set(null);
+          selectedElementIds.set(new Set());
+          selectedRoomId.set(null);
         } else if (hitBackgroundImage(wp)) {
           // Ảnh nền chưa khoá — kéo để căn ảnh, và mở lại bảng điều khiển ảnh
           draggingBgImage = true;
@@ -2172,6 +2208,9 @@
           selectedElementIds.set(new Set());
           selectedRoomId.set(null);
         } else {
+          // Bấm trúng nền thì mở bảng chỉnh nền, giống hệt ảnh nền theo tầng.
+          // Không nuốt cú bấm: nền phủ kín bản vẽ nên vẫn phải cho chọn vùng.
+          if (overLayoutBg(wp)) layoutBgPanelOpen.set(true);
           // Empty space — start marquee selection
           marqueeStart = { ...wp };
           marqueeEnd = { ...wp };
@@ -2444,6 +2483,15 @@
         editingTextAnnotationPos = { x: sp.x, y: sp.y };
       }
     }
+    if (draggingLayoutBg) {
+      const { widthCm, heightCm } = _bgLayoutDimsCm;
+      layoutBgTransform.update((t) => ({
+        ...t,
+        offsetXCm: mousePos.x - layoutBgDragOffset.x - widthCm / 2,
+        offsetYCm: mousePos.y - layoutBgDragOffset.y - heightCm / 2,
+      }));
+      return;
+    }
     if (draggingBgImage) {
       updateBackgroundImage({
         position: { x: mousePos.x - bgDragOffset.x, y: mousePos.y - bgDragOffset.y },
@@ -2539,6 +2587,7 @@
     isPanning = false;
     draggingGuideId = null;
     draggingBgImage = false;
+    draggingLayoutBg = false;
 
     // Finalize room label drag
     if (draggingRoomLabelId) {
@@ -3405,7 +3454,7 @@
     spaceDown || isPanning || $panMode || (shiftDown && currentTool === 'select') ? 'grab' :
     pickingElevation ? 'crosshair' :
     draggingFurnitureId ? 'move' :
-    draggingBgImage ? 'move' :
+    draggingLayoutBg || draggingBgImage ? 'move' :
     draggingRoomId ? 'move' :
     draggingMultiSelect ? 'move' :
     draggingDoorId ? 'move' :

@@ -4,6 +4,7 @@
  * Extracted from FloorPlanCanvas.svelte.
  */
 import type { Point, FurnitureItem, Floor, Annotation, Wall } from '$lib/models/types';
+import { drawLayoutBgImage, layoutBgCenter, type LayoutBgTransform } from '$lib/utils/layoutBackground';
 import type { CanvasState } from '$lib/utils/canvasInteraction';
 import type { ProjectSettings } from '$lib/stores/settings';
 import { formatLength } from '$lib/stores/settings';
@@ -651,12 +652,11 @@ export function drawLayoutBackground(
   cs: CanvasState,
   img: HTMLImageElement,
   widthCm: number,
-  heightCm: number
+  heightCm: number,
+  t: LayoutBgTransform
 ): void {
-  const origin = wts(cs, 0, 0);
-  cs.ctx.save();
-  cs.ctx.globalAlpha = 0.4;
-  cs.ctx.drawImage(img, origin.x, origin.y, widthCm * cs.zoom, heightCm * cs.zoom);
-  cs.ctx.restore();
+  const c = layoutBgCenter(widthCm, heightCm, t);
+  // Canvas editor vẽ ở hệ px màn hình nên quy tâm ảnh về px, và 1cm = zoom px
+  drawLayoutBgImage(cs.ctx, img, widthCm, heightCm, t, wts(cs, c.x, c.y), cs.zoom);
 }
 

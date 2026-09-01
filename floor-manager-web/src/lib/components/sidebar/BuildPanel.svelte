@@ -6,6 +6,28 @@
   import type { FurnitureDef } from '$lib/utils/furnitureCatalog';
   import { getModelFile, getThumbnail } from '$lib/utils/furnitureThumbnails';
   import { productCatalog } from '$lib/stores/productCatalog';
+  import { api, FILES_BASE } from '$lib/services/api';
+  import { isAdmin } from '$lib/stores/auth';
+
+  /** Rỗng nghĩa là editor đang chạy chế độ local (demo/offline) */
+  let { layoutId = '' }: { layoutId?: string } = $props();
+
+  let bgUploading = $state(false);
+  let bgError = $state<string | null>(null);
+  let confirmRemoveBg = $state(false);
+
+  // Backend chỉ cho ADMIN đổi nền layout. Khoá luôn ở giao diện, chứ để bấm
+  // được rồi nhận 403 thì người dùng tưởng chức năng hỏng.
+  let canEditBg = $derived(!layoutId || $isAdmin);
+
+  /**
+   * Nền hiện tại có phải bản vẽ CAD không.
+   *
+   * Nền dựng từ DXF được lưu thành .svg; nền ảnh thì giữ đuôi gốc. Chỉ bản vẽ
+   * CAD mới đọc được danh sách block, nên nút nhập sản phẩm phải theo cờ này —
+   * nếu không, nền ảnh sẽ bật nút lên rồi API trả 404.
+   */
+  let bgIsCad = $derived(!!$layoutBgFile && $layoutBgFile.split('?')[0].toLowerCase().endsWith('.svg'));
 
   let activeTab = $state<'draw' | 'objects'>('objects');
   let selectedCategory = $state<string>('All');
@@ -145,13 +167,57 @@
     })()
   );
 
+  /**
+   * Ở chế độ server, ảnh nền thuộc về layout chứ không thuộc về tầng.
+   *
+   * Trước đây ảnh chỉ được nhét vào floor.backgroundImage, mà backendStore.save()
+   * chỉ gửi vị trí block và tường — nên tải xong là mất khi tải lại trang, và
+   * 3D cũng không vẽ vì nó chỉ đọc nền cấp layout. Đẩy lên server thì cả 2D,
+   * 3D lẫn PDF đều lấy chung một nguồn.
+   */
+  async function uploadLayoutBackground(file: File) {
+    bgUploading = true;
+    bgError = null;
+    try {
+      const layout = await api.layouts.uploadBackground(layoutId, file);
+      // Đường dẫn không đổi khi thay nền (background.png), nên phải phá bộ nhớ
+      // đệm của trình duyệt, không thì vẫn hiện ảnh cũ.
+      layoutBgFile.set(
+        layout.backgroundFile ? `${FILES_BASE}${layout.backgroundFile}?v=${Date.now()}` : null
+      );
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : 'Tải ảnh nền thất bại';
+    } finally {
+      bgUploading = false;
+    }
+  }
+
+  /** Gỡ nền của layout — file trên server bị xoá, kích thước layout giữ nguyên */
+  async function removeLayoutBackground() {
+    bgUploading = true;
+    bgError = null;
+    try {
+      await api.layouts.deleteBackground(layoutId);
+      layoutBgFile.set(null);
+      confirmRemoveBg = false;
+    } catch (e) {
+      bgError = e instanceof Error ? e.message : 'Xóa ảnh nền thất bại';
+    } finally {
+      bgUploading = false;
+    }
+  }
+
   function onImportImage() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = layoutId ? 'image/png,image/jpeg,image/webp' : 'image/*';
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      if (layoutId) {
+        await uploadLayoutBackground(file);
+        return;
+      }
       if (file.size > 5 * 1024 * 1024) {
         alert('Warning: Image is larger than 5MB. This may slow down the application.');
       }
@@ -298,37 +364,59 @@
 
         <h3 class="text-xs font-semibold text-gray-400 uppercase mb-2 mt-3">Import</h3>
         <button
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-gray-50 text-gray-700"
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={bgUploading || !canEditBg}
+          title={canEditBg ? undefined : 'Chỉ quản trị viên đổi được nền mặt bằng'}
           onclick={onImportImage}
         >
           <div class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
           </div>
           <div class="text-left">
-            <div class="font-medium">Import Image</div>
-            <div class="text-xs text-gray-400">Floor plan background</div>
+            <div class="font-medium">{layoutId && $layoutBgFile ? 'Thay ảnh nền' : 'Import Image'}</div>
+            <div class="text-xs text-gray-400">
+              {#if bgUploading}Đang tải lên…{:else if layoutId}Ảnh nền mặt bằng (lưu trên server){:else}Floor plan background{/if}
+            </div>
           </div>
         </button>
+
+        {#if layoutId && $layoutBgFile && canEditBg}
+          <div class="px-3 -mt-1 flex items-center gap-3">
+            {#if confirmRemoveBg}
+              <span class="text-xs text-gray-500">Xóa nền mặt bằng?</span>
+              <button onclick={removeLayoutBackground} disabled={bgUploading} class="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50">Xóa</button>
+              <button onclick={() => (confirmRemoveBg = false)} class="text-xs text-gray-400 hover:text-gray-600">Hủy</button>
+            {:else}
+              <button onclick={() => (confirmRemoveBg = true)} class="text-xs text-gray-400 hover:text-red-600 transition-colors">Xóa nền</button>
+            {/if}
+          </div>
+        {/if}
+
+        {#if bgError}
+          <p class="px-3 text-xs text-red-600" role="alert">{bgError}</p>
+        {/if}
 
         <!-- Nhập sản phẩm từ DXF. Trước đây là nút tròn không nhãn ở góc dưới
              trái canvas và biến mất hẳn khi layout chưa có bản vẽ nền, nên
              không ai biết tính năng tồn tại. Giờ luôn hiện, chưa dùng được thì
              mờ đi và nói rõ lý do. -->
         <button
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {$layoutBgFile ? 'hover:bg-gray-50 text-gray-700' : 'text-gray-400 cursor-not-allowed'}"
-          disabled={!$layoutBgFile}
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {bgIsCad ? 'hover:bg-gray-50 text-gray-700' : 'text-gray-400 cursor-not-allowed'}"
+          disabled={!bgIsCad}
           onclick={() => dxfImportOpen.set(true)}
-          title={$layoutBgFile
+          title={bgIsCad
             ? 'Đọc các block trong bản vẽ nền và đặt sản phẩm theo đúng vị trí trong CAD'
-            : 'Layout chưa có bản vẽ nền DXF/DWG — tải lên ở trang mặt bằng trước'}
+            : $layoutBgFile
+              ? 'Nền hiện tại là ảnh — chỉ bản vẽ DXF/DWG mới đọc được block'
+              : 'Layout chưa có bản vẽ nền DXF/DWG — tải lên ở trang mặt bằng trước'}
         >
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center {$layoutBgFile ? 'bg-gray-100' : 'bg-gray-50'}">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center {bgIsCad ? 'bg-gray-100' : 'bg-gray-50'}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
           </div>
           <div class="text-left">
             <div class="font-medium">Nhập sản phẩm từ DXF</div>
-            <div class="text-xs {$layoutBgFile ? 'text-gray-400' : 'text-gray-300'}">
-              {$layoutBgFile ? 'Đặt block theo bản vẽ CAD' : 'Cần bản vẽ nền DXF/DWG'}
+            <div class="text-xs {bgIsCad ? 'text-gray-400' : 'text-gray-300'}">
+              {bgIsCad ? 'Đặt block theo bản vẽ CAD' : 'Cần bản vẽ nền DXF/DWG'}
             </div>
           </div>
         </button>

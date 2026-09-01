@@ -52,5 +52,8 @@ export function layoutBgPaths(layoutId: string) {
     artifactDir,
     bgFile: path.join(artifactDir, 'background.svg'),
     bgUrl: `/uploads/layouts/${layoutId}/background.svg`,
+    // Nền tải lên dạng ảnh thì giữ nguyên định dạng gốc, không qua bước dựng SVG
+    bgImageFile: (ext: string) => path.join(artifactDir, `background.${ext}`),
+    bgImageUrl: (ext: string) => `/uploads/layouts/${layoutId}/background.${ext}`,
   };
 }
