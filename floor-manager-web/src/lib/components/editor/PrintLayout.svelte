@@ -80,11 +80,13 @@
 
   const SCALE_OPTIONS = ['1:25', '1:50', '1:100', '1:200'];
   const FONT = "'Noto Sans', Arial, 'Segoe UI', system-ui, sans-serif";
-  const TITLE_H = 94;
-  const FOOTER_H = 100;
   const PAD = 36;
-  /** Khoảng lùi của khung bao so với mép giấy */
+  /** Khoảng lùi của nét khung ngoài so với mép giấy */
   const FRAME_M = 14;
+  /** Nét khung trong — khung tên bám đúng vào đây cho liền một khối */
+  const INNER = FRAME_M + 4;
+  /** Chừa trên cùng: không còn dải tiêu đề, chỉ cần thoát khỏi nét khung */
+  const TITLE_H = INNER + 6;
   /** Bội số độ phân giải khi xuất — 3× khổ 96dpi ≈ 288dpi, đủ nét khi in giấy */
   const EXPORT_SCALE = 3;
 
@@ -98,15 +100,6 @@
 
   function isoDate(d: string): string {
     return d.slice(0, 10);
-  }
-
-  function todayViVN(date = todayStr()): string {
-    const [y, m, d] = date.split('-').map(Number);
-    return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString('vi-VN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   }
 
   function shortDate(date: string): string {
@@ -273,33 +266,14 @@
     ctx.lineWidth = 0.5;
     ctx.strokeRect(FRAME_M + 4, FRAME_M + 4, cw - (FRAME_M + 4) * 2, ch - (FRAME_M + 4) * 2);
 
-    // ── Title block ──────────────────────────────────────────────
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 23px ${FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    // Dòng 1 là công ty, không phải project.name: ở chế độ backend project.name
-    // chính là tên layout, in ra thành "Layout / Mặt bằng · Layout" lặp vô nghĩa.
-    ctx.fillText(resolvedCompany, PAD, 22);
+    // Không còn dải tiêu đề trên cùng: tên công ty, mặt bằng, layout, tỉ lệ và
+    // ngày đều đã nằm trong khung tên phía dưới — in hai lần chỉ tốn chỗ vẽ.
 
-    ctx.font = `16px ${FONT}`;
-    ctx.fillStyle = '#475569';
-    ctx.fillText(`${resolvedSiteName} · ${resolvedLayoutName}`, PAD, 54);
-
-    ctx.textAlign = 'right';
-    ctx.font = `bold 15px ${FONT}`;
-    ctx.fillStyle = '#0f172a';
-    ctx.fillText(`Tỉ lệ: ${scale}`, cw - PAD, 23);
-    ctx.font = `14px ${FONT}`;
-    ctx.fillStyle = '#475569';
-    ctx.fillText(`Ngày snapshot: ${todayViVN(snapshotDate)}`, cw - PAD, 50);
-
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(PAD, TITLE_H - 4);
-    ctx.lineTo(cw - PAD, TITLE_H - 4);
-    ctx.stroke();
+    // ── Khung tên: bám sát nét khung trong, dưới cùng trang ───────
+    const footerX = INNER;
+    const footerW = cw - INNER * 2;
+    const frameH = 78;
+    const footerY = ch - INNER - frameH;
 
     // ── Legend column (right side) ───────────────────────────────
     const showLegendHere = showLegend && !photo;
@@ -307,7 +281,7 @@
     const planAreaX = PAD;
     const planAreaY = TITLE_H + 4;
     const planAreaW = cw - PAD * 2 - legendW - (legendW > 0 ? 12 : 0);
-    const planAreaH = ch - TITLE_H - FOOTER_H - 8;
+    const planAreaH = footerY - planAreaY - 10;
 
     if (showLegendHere && floor?.furniture?.length) {
       const lx = planAreaX + planAreaW + 12;
@@ -336,7 +310,7 @@
       for (const [cid, cnt] of counts) {
         const cat = getCatalogItem(cid);
         if (!cat) continue;
-        if (rowY + rowH > ch - FOOTER_H - 14) break;
+        if (rowY + rowH > footerY - 10) break;
 
         // Color dot
         ctx.fillStyle = cat.color ?? '#3b82f6';
@@ -504,14 +478,10 @@
     }
 
     // ── Footer ───────────────────────────────────────────────────
-    const footerY = ch - FOOTER_H + 2;
-    const footerX = PAD;
-    const footerW = cw - PAD * 2;
     const col1W = footerW * 0.44;
     const col2W = footerW * 0.25;
     const col3W = footerW - col1W - col2W;
 
-    const frameH = FOOTER_H - 22;
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 1.2;
     ctx.strokeRect(footerX, footerY, footerW, frameH);
