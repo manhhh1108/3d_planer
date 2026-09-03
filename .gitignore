@@ -5,3 +5,4 @@ floor-manager/storage/
 .env
 *.log
 .vite/
+docs/
