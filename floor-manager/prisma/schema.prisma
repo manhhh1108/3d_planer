@@ -232,3 +232,25 @@ model Comment {
   @@index([layoutId])
   @@index([snapshotId])
 }
+
+/// Công đoạn sản xuất dùng chung toàn hệ thống (gá, hàn, sơn…). Màu để tô block
+/// theo công đoạn đang làm. Xoá là soft-delete (active=false) để giữ lịch sử.
+model Stage {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("stages")
+}
+
+/// Cấu hình toàn hệ thống dạng key-value. Hiện dùng cho key "outsideZonePolicy"
+/// ('block' | 'warn' | 'silent') — cách xử lý sản phẩm đặt ngoài mọi vùng.
+model AppSetting {
+  key   String @id
+  value Json
+
+  @@map("app_settings")
+}
