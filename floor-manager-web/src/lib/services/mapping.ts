@@ -1,6 +1,6 @@
-import type { BlockOrientation, Floor, FurnitureItem, Project, Wall } from '$lib/models/types';
+import type { BlockOrientation, Floor, FurnitureItem, Project, Wall, WorkingZone } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
-import type { ApiLayout, ApiPosition, ApiSnapshot, ApiWall } from './api';
+import type { ApiLayout, ApiPosition, ApiSnapshot, ApiWall, ApiZone } from './api';
 
 /** Editor dùng cm, backend dùng mét */
 export const M_TO_CM = 100;
@@ -129,6 +129,32 @@ export function wallToApiWall(w: Wall): ApiWall {
 	return out;
 }
 
+/** Zone (mét, backend) -> WorkingZone (cm, editor). */
+export function apiZoneToZone(z: ApiZone): WorkingZone {
+	return {
+		id: z.id,
+		name: z.name,
+		points: z.points.map((p) => ({ x: p.x * M_TO_CM, y: p.y * M_TO_CM })),
+		allowedStageIds: z.allowedStageIds ?? [],
+	};
+}
+
+/** WorkingZone (cm, editor) -> Zone (mét, backend). */
+export function zoneToApiZone(z: WorkingZone): ApiZone {
+	return {
+		id: z.id,
+		name: z.name,
+		points: z.points.map((p) => ({ x: p.x / M_TO_CM, y: p.y / M_TO_CM })),
+		allowedStageIds: z.allowedStageIds ?? [],
+	};
+}
+
+/** Lấy zones từ floor đang active. */
+export function projectToZones(project: Project): ApiZone[] {
+	const floor = project.floors.find((f) => f.id === project.activeFloorId) ?? project.floors[0];
+	return (floor?.zones ?? []).map(zoneToApiZone);
+}
+
 /** Lấy tường từ floor đang active của project */
 export function projectToWalls(project: Project): ApiWall[] {
 	const floor = project.floors.find((f) => f.id === project.activeFloorId) ?? project.floors[0];
@@ -145,7 +171,7 @@ export function layoutToProject(layout: ApiLayout, snapshot: ApiSnapshot | null)
 		level: 0,
 		walls: (layout.walls ?? []).map(apiWallToWall),
 		rooms: [],
-		zones: [],
+		zones: (snapshot?.zones ?? []).map(apiZoneToZone),
 		doors: [],
 		windows: [],
 		furniture,

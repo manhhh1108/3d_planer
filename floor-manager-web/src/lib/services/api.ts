@@ -126,6 +126,14 @@ export interface ApiWall {
 	curvePoint?: { x: number; y: number };
 }
 
+/** Vùng như backend lưu — toạ độ theo mét */
+export interface ApiZone {
+	id: string;
+	name?: string;
+	points: { x: number; y: number }[];
+	allowedStageIds: string[];
+}
+
 export interface ApiLayout {
 	id: string;
 	siteId: string;
@@ -168,6 +176,7 @@ export interface ApiSnapshot {
 	/** Ảnh xem trước mặt bằng, đường dẫn tương đối backend */
 	thumbnail?: string | null;
 	positions?: ApiPosition[];
+	zones?: ApiZone[] | null;
 }
 
 export const api = {
@@ -406,6 +415,7 @@ export const api = {
 				orientation?: string;
 				elevationM?: number;
 			}[];
+			zones?: ApiZone[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
 		uploadThumbnail: async (id: string, image: Blob): Promise<ApiSnapshot> => {
 			const fd = new FormData();

@@ -1,6 +1,6 @@
 import type { Project } from '$lib/models/types';
 import { api } from './api';
-import { layoutToProject, projectToPositions, projectToWalls, todayStr } from './mapping';
+import { layoutToProject, projectToPositions, projectToWalls, projectToZones, todayStr } from './mapping';
 import { pickSnapshotForDate } from './snapshotPick';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
 import { loadStages } from '$lib/stores/stages';
@@ -148,6 +148,7 @@ export const backendStore: DataStore = {
       layoutId: project.id,
       date: date ?? todayStr(),
       positions: projectToPositions(project),
+      zones: projectToZones(project),
     });
     lastSnapshotId = snapshot.id;
 
