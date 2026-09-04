@@ -93,8 +93,6 @@ export interface FurnitureItem {
   outOfZone?: boolean;
   /** Khoảng cách yêu cầu quanh block, cm. Ghi đè global. */
   marginCm?: number;
-  /** Cờ tạm (không persist): item đang va chạm/quá gần item khác. */
-  colliding?: boolean;
   width?: number;   // cm
   depth?: number;   // cm
   height?: number;  // cm

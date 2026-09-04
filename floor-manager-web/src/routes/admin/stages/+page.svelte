@@ -50,7 +50,10 @@
     }
   }
 
-  let marginCm = $state<number>(Number(data.defaultMarginCm) || 50);
+  let marginCm = $state<number>(
+    typeof data.defaultMarginCm === 'number' && Number.isFinite(data.defaultMarginCm)
+      ? data.defaultMarginCm : 50
+  );
   async function saveMargin() {
     try { await api.settings.put<number>('defaultMarginCm', Number(marginCm)); }
     catch { err = 'Không lưu được margin'; }

@@ -2695,7 +2695,6 @@
           }
           wallSnapInfo = null;
         }
-        recomputeCollisions();
       }
     }
     if (draggingDoorId && currentFloor) {
