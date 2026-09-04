@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { Project, Floor, Wall, Door, Window as Win, FurnitureItem, Point, Stair, Column, BackgroundImage, GuideLine, ElementGroup, EntourageItem } from '$lib/models/types';
+import type { Project, Floor, Wall, Door, Window as Win, FurnitureItem, Point, Stair, Column, BackgroundImage, GuideLine, ElementGroup, EntourageItem, WorkingZone } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
 
@@ -33,13 +33,14 @@ export const activeFloor = derived(currentProject, ($p) => {
   return $p.floors.find((f) => f.id === $p.activeFloorId) ?? $p.floors[0] ?? null;
 });
 
-export type Tool = 'select' | 'wall' | 'door' | 'window' | 'furniture' | 'text' | 'annotate' | 'measure';
+export type Tool = 'select' | 'wall' | 'door' | 'window' | 'furniture' | 'text' | 'annotate' | 'measure' | 'zone';
 export const selectedTool = writable<Tool>('select');
 export const snapEnabled = writable<boolean>(true);
 /** When true, left-click drag pans the canvas instead of selecting */
 export const panMode = writable<boolean>(false);
 export const showFurnitureStore = writable<boolean>(true);
 export const selectedElementId = writable<string | null>(null);
+export const selectedZoneId = writable<string | null>(null);
 /** Multi-select: set of element IDs currently selected (used alongside selectedElementId for marquee/shift-click) */
 export const selectedElementIds = writable<Set<string>>(new Set());
 export const viewMode = writable<'2d' | '3d'>('2d');
@@ -993,9 +994,59 @@ export function moveTextAnnotation(id: string, position: { x: number; y: number 
   currentProject.set({ ...p });
 }
 
+// --- Working Zones ---
+/** Thêm vùng mới từ danh sách đỉnh (world cm). Trả id vùng. */
+export function addZone(points: Point[], allowedStageIds: string[] = []): string {
+  const id = uid();
+  mutate((f) => {
+    if (!f.zones) f.zones = [];
+    f.zones.push({ id, points, allowedStageIds });
+  }, 'Thêm vùng');
+  return id;
+}
+
+/** Cập nhật thuộc tính vùng (tên, công đoạn cho phép, điểm). */
+export function updateZone(id: string, patch: Partial<Pick<WorkingZone, 'name' | 'allowedStageIds' | 'points'>>) {
+  mutate((f) => {
+    const z = f.zones?.find((z) => z.id === id);
+    if (z) Object.assign(z, patch);
+  }, 'Sửa vùng');
+}
+
+/** Xoá vùng. */
+export function removeZone(id: string) {
+  mutate((f) => {
+    if (f.zones) f.zones = f.zones.filter((z) => z.id !== id);
+  }, 'Xoá vùng');
+}
+
+/** Dời cả vùng theo delta (world cm). Dùng trong lúc kéo — không snapshot mỗi lần. */
+export function moveZone(id: string, dx: number, dy: number) {
+  const p = get(currentProject);
+  if (!p) return;
+  const floor = p.floors.find((f) => f.id === p.activeFloorId);
+  const z = floor?.zones?.find((z) => z.id === id);
+  if (!z) return;
+  z.points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  p.updatedAt = new Date();
+  currentProject.set({ ...p });
+}
+
+/** Dời một đỉnh của vùng tới vị trí mới (world cm). Dùng trong lúc kéo đỉnh. */
+export function moveZoneVertex(id: string, index: number, pos: Point) {
+  const p = get(currentProject);
+  if (!p) return;
+  const floor = p.floors.find((f) => f.id === p.activeFloorId);
+  const z = floor?.zones?.find((z) => z.id === id);
+  if (!z || index < 0 || index >= z.points.length) return;
+  z.points[index] = pos;
+  p.updatedAt = new Date();
+  currentProject.set({ ...p });
+}
+
 // Layer visibility store (used by LayersPanel and FloorPlanCanvas)
-export const layerVisibility = writable<{ walls: boolean; doors: boolean; windows: boolean; furniture: boolean; stairs: boolean; columns: boolean; guides: boolean; measurements: boolean; annotations: boolean; entourage: boolean }>({
-  walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true, entourage: true,
+export const layerVisibility = writable<{ walls: boolean; doors: boolean; windows: boolean; furniture: boolean; stairs: boolean; columns: boolean; guides: boolean; measurements: boolean; annotations: boolean; entourage: boolean; zones: boolean }>({
+  walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true, entourage: true, zones: true,
 });
 
 // --- Lock ---
