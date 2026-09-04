@@ -35,4 +35,15 @@ describe('/api/settings/outsideZonePolicy', () => {
       .send({ value: 'silent' });
     expect(res.status).toBe(403);
   });
+
+  it('defaultMarginCm: GET mặc định 50, ADMIN set số hợp lệ, chặn số âm/không phải số', async () => {
+    const def = await request(app).get('/api/settings/defaultMarginCm').set('Cookie', viewer());
+    expect(def.body.value).toBe(50);
+    const ok = await request(app).put('/api/settings/defaultMarginCm').set('Cookie', admin()).send({ value: 40 });
+    expect(ok.status).toBe(200); expect(ok.body.value).toBe(40);
+    const bad = await request(app).put('/api/settings/defaultMarginCm').set('Cookie', admin()).send({ value: -5 });
+    expect(bad.status).toBe(400);
+    const bad2 = await request(app).put('/api/settings/defaultMarginCm').set('Cookie', admin()).send({ value: 'x' });
+    expect(bad2.status).toBe(400);
+  });
 });
