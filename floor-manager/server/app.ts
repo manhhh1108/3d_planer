@@ -12,6 +12,7 @@ import filesRouter from './routes/files.js';
 import sitesRouter from './routes/sites.js';
 import assetsRouter from './routes/assets.js';
 import stagesRouter from './routes/stages.js';
+import settingsRouter from './routes/settings.js';
 import usersRouter from './routes/users.js';
 import dashboardRouter from './routes/dashboard.js';
 import plansRouter from './routes/plans.js';
@@ -48,5 +49,6 @@ app.use('/api/reports', requireAuth, blockPending, reportsRouter);
 app.use('/api/files', requireAuth, blockPending, filesRouter);
 app.use('/api/assets', requireAuth, blockPending, assetsRouter);
 app.use('/api/stages', requireAuth, blockPending, stagesRouter);
+app.use('/api/settings', requireAuth, blockPending, settingsRouter);
 
 export default app;
