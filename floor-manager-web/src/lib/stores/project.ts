@@ -4,7 +4,9 @@ import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
 import { itemFootprint } from '$lib/utils/furnitureFootprint';
 import { resolveZoneForItem } from '$lib/utils/zoneAssignment';
-import { getOutsideZonePolicy } from '$lib/stores/appSettings';
+import { getOutsideZonePolicy, getDefaultMarginCm } from '$lib/stores/appSettings';
+import { pointInPolygon } from '$lib/utils/zoneGeometry';
+import { arrangeZone } from '$lib/utils/autoArrange';
 
 
 function uid(): string {
@@ -1056,6 +1058,29 @@ export function moveZoneVertex(id: string, index: number, pos: Point) {
   z.points[index] = pos;
   p.updatedAt = new Date();
   currentProject.set({ ...p });
+}
+
+/** Tự động xếp lại item trong từng vùng (hoặc chỉ các zoneIds cho trước). */
+export function autoArrangeZones(zoneIds?: string[]) {
+  const margin = getDefaultMarginCm();
+  mutate((f) => {
+    const zones = (f.zones ?? []).filter((z) => !zoneIds || zoneIds.includes(z.id));
+    for (const zone of zones) {
+      if (zone.points.length < 3) continue;
+      const inZone = f.furniture.filter((it) => pointInPolygon(it.position, zone.points));
+      if (inZone.length === 0) continue;
+      const arrangeItems = inZone.map((it) => {
+        const cat = getCatalogItem(it.catalogId);
+        return { id: it.id, width: it.width ?? cat?.width ?? 50, depth: it.depth ?? cat?.depth ?? 50 };
+      });
+      const results = arrangeZone(zone.points, arrangeItems, margin);
+      for (const r of results) {
+        if (!r.placed) continue;
+        const item = f.furniture.find((i) => i.id === r.id);
+        if (item) { item.position = r.position; item.rotation = r.rotationDeg; }
+      }
+    }
+  }, 'Tự động sắp xếp');
 }
 
 export type ZoneAssignResult =
