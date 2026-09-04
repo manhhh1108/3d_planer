@@ -21,7 +21,7 @@ export function drawZones(
   const stageColor = (id: string) => stages.find((s) => s.id === id)?.color;
 
   for (const z of floor.zones ?? []) {
-    if (z.points.length < 2) continue;
+    if (z.points.length < 3) continue;
     const selected = z.id === selectedZoneId;
     ctx.beginPath();
     z.points.forEach((p, i) => {

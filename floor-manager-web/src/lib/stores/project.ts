@@ -746,6 +746,13 @@ export function importFloorIntoCurrentProject(floor: import('$lib/models/types')
 }
 
 export const selectedRoomId = writable<string | null>(null);
+
+// Chọn phần tử/phòng thì bỏ chọn vùng (và ngược lại canvas đã tự xử lý) — tránh
+// sidebar hiển thị nhầm panel và Delete xoá nhầm vùng khi bấm block trong vùng.
+selectedElementId.subscribe((id) => { if (id) selectedZoneId.set(null); });
+selectedRoomId.subscribe((id) => { if (id) selectedZoneId.set(null); });
+selectedElementIds.subscribe((ids) => { if (ids && ids.size > 0) selectedZoneId.set(null); });
+
 /** Detected rooms (synced from canvas room detection) */
 export const detectedRoomsStore = writable<import('$lib/models/types').Room[]>([]);
 /** catalogId currently being placed (null = not placing) */
