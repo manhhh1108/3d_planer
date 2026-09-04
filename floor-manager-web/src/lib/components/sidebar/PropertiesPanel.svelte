@@ -9,14 +9,15 @@
   import { propertiesPanelOpen, backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
   import { layoutBgFile, layoutBgTransform } from '$lib/stores/project';
   import { DEFAULT_LAYOUT_BG_TRANSFORM } from '$lib/utils/layoutBackground';
+  import { stages, loadStages } from '$lib/stores/stages';
+
+  loadStages();
 
   /** Chỉnh nền của layout — chỉ có nghĩa khi layout thực sự có nền */
   function setBgT(patch: Partial<typeof $layoutBgTransform>) {
     layoutBgTransform.update((t) => ({ ...t, ...patch }));
   }
 
-  /** Khớp danh sách công đoạn ở trang quản lý sản phẩm */
-  const STAGES = ['Hàn', 'Sơn', 'Lắp ráp', 'Cắt', 'Khác'];
   let stageSaving = $state(false);
   let stageError = $state<string | null>(null);
   import { wallLength } from '$lib/utils/canvasRenderer';
@@ -329,7 +330,7 @@
           onchange={onProcessStage}
           class="w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white disabled:opacity-50"
         >
-          {#each STAGES as st}<option value={st}>{st}</option>{/each}
+          {#each $stages as st (st.id)}<option value={st.name}>{st.name}</option>{/each}
         </select>
         <span class="text-[11px] text-gray-400">
           Áp dụng cho cả sản phẩm — mọi mặt bằng đang dùng đều đổi theo.
