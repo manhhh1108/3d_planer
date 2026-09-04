@@ -49,3 +49,31 @@ export function polygonCentroid(points: Point[]): Point {
   a *= 0.5;
   return { x: cx / (6 * a), y: cy / (6 * a) };
 }
+
+/** Hai đoạn thẳng AB và CD có cắt nhau (giao thực sự, không tính chạm đầu mút)? */
+export function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const cross = (o: Point, p: Point, q: Point) =>
+    (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/** inner nằm TRỌN trong outer: mọi đỉnh inner ở trong VÀ không cạnh nào cắt biên outer. */
+export function polygonFullyInside(inner: Point[], outer: Point[]): boolean {
+  if (inner.length < 3 || outer.length < 3) return false;
+  for (const p of inner) {
+    if (!pointInPolygon(p, outer)) return false;
+  }
+  for (let i = 0; i < inner.length; i++) {
+    const a = inner[i], b = inner[(i + 1) % inner.length];
+    for (let j = 0; j < outer.length; j++) {
+      const c = outer[j], d = outer[(j + 1) % outer.length];
+      if (segmentsIntersect(a, b, c, d)) return false;
+    }
+  }
+  return true;
+}

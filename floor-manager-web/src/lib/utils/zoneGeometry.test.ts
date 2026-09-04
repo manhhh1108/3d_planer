@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { polygonArea, pointInPolygon, polygonCentroid } from './zoneGeometry';
+import { polygonArea, pointInPolygon, polygonCentroid, polygonFullyInside } from './zoneGeometry';
 
 const square = [
   { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
@@ -32,5 +32,24 @@ describe('zoneGeometry', () => {
     const c = polygonCentroid(square);
     expect(c.x).toBeCloseTo(50, 5);
     expect(c.y).toBeCloseTo(50, 5);
+  });
+});
+
+const bigSquare = [
+  { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
+];
+
+describe('polygonFullyInside', () => {
+  it('hình nhỏ nằm trọn trong hình lớn', () => {
+    const small = [{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }];
+    expect(polygonFullyInside(small, bigSquare)).toBe(true);
+  });
+  it('hình vắt qua biên -> false', () => {
+    const crossing = [{ x: 90, y: 20 }, { x: 120, y: 20 }, { x: 120, y: 40 }, { x: 90, y: 40 }];
+    expect(polygonFullyInside(crossing, bigSquare)).toBe(false);
+  });
+  it('hình hoàn toàn bên ngoài -> false', () => {
+    const outside = [{ x: 200, y: 200 }, { x: 220, y: 200 }, { x: 220, y: 220 }, { x: 200, y: 220 }];
+    expect(polygonFullyInside(outside, bigSquare)).toBe(false);
   });
 });
