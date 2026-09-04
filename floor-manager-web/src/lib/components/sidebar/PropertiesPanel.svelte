@@ -312,7 +312,9 @@
             { o: 'bottom', label: '⬓ Đáy', hint: 'Đặt đáy xuống sàn (mặc định)' },
             { o: 'top', label: '⬒ Úp', hint: 'Lật úp — mặt trên chạm sàn' },
             { o: 'side', label: '◨ Nghiêng', hint: 'Lật nằm nghiêng — mặt bên chạm sàn' },
+            { o: 'side2', label: '◧ Nghiêng 2', hint: 'Lật nghiêng — mặt bên đối diện chạm sàn' },
             { o: 'end', label: '▯ Dựng', hint: 'Dựng đứng — mặt đầu chạm sàn' },
+            { o: 'end2', label: '▮ Dựng 2', hint: 'Dựng đứng — mặt đầu đối diện chạm sàn' },
           ] as opt}
             <button
               onclick={() => setBlockOrientation(opt.o as BlockOrientation)}
