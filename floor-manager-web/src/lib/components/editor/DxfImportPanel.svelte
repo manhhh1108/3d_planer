@@ -3,7 +3,7 @@
   import { api } from '$lib/services/api';
   import type { DxfInsertData } from '$lib/services/api';
   import { furnitureCatalog } from '$lib/utils/furnitureCatalog';
-  import { addFurniture, activeFloor, layoutDimsCm } from '$lib/stores/project';
+  import { addFurniture, activeFloor, layoutDimsCm, revalidateZones } from '$lib/stores/project';
 
   let { layoutId, onClose }: { layoutId: string; onClose: () => void } = $props();
 
@@ -135,6 +135,11 @@
         skipped.set(ins.blockName, (skipped.get(ins.blockName) ?? 0) + 1);
       }
     }
+
+    // Nhập DXF là đường không thủ công (Q7): chỉ đặt cờ outOfZone cho các block
+    // vừa thêm, để người dùng tự gán công đoạn. Gọi revalidate một lần cho cả lô
+    // thay vì assignZoneToItem từng item (rẻ hơn, không bật popup).
+    if (placed > 0) revalidateZones();
 
     // Nhớ mapping cho lần sau. Hỏng thì thôi — không được làm hỏng lần nhập vừa xong.
     try {

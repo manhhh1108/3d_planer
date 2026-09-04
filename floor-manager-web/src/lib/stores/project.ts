@@ -816,6 +816,10 @@ export function duplicateFurniture(id: string): string | null {
   mutate(f => {
     f.furniture.push({ ...fi, id: newId, position: { x: fi.position.x + 30, y: fi.position.y + 30 } });
   });
+  // Nhân bản/dán là đường không thủ công (Q7): chỉ cảnh báo (enforce=false),
+  // không bao giờ chặn và không bật popup chọn công đoạn. Item đã nằm trong
+  // floor sau mutate nên footprint tính được.
+  assignZoneToItem(newId, false);
   return newId;
 }
 
