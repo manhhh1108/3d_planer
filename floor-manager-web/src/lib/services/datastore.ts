@@ -3,6 +3,7 @@ import { api } from './api';
 import { layoutToProject, projectToPositions, projectToWalls, todayStr } from './mapping';
 import { pickSnapshotForDate } from './snapshotPick';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
+import { loadStages } from '$lib/stores/stages';
 import { externalPlacements } from '$lib/stores/project';
 
 export interface DataStore {
@@ -162,6 +163,7 @@ export const backendStore: DataStore = {
     if (!layout) return null;
     // Catalog sản phẩm phải sẵn sàng trước khi canvas render các block
     await loadProductCatalog();
+    await loadStages();
     const snapshots = await api.snapshots.list(layoutId);
     // Bản MỚI NHẤT có thể là bố trí trước cho ngày mai. Nạp nó vào coi như
     // hôm nay là lần lưu sau đè bố cục tương lai lên hôm nay, nên chỉ lấy bản
