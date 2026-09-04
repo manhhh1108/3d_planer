@@ -49,6 +49,12 @@
       err = 'Không lưu được cài đặt';
     }
   }
+
+  let marginCm = $state<number>(Number(data.defaultMarginCm) || 50);
+  async function saveMargin() {
+    try { await api.settings.put<number>('defaultMarginCm', Number(marginCm)); }
+    catch { err = 'Không lưu được margin'; }
+  }
 </script>
 
 <h1>Công đoạn sản xuất</h1>
@@ -89,4 +95,10 @@
     <option value="block">Chặn hoàn toàn</option>
     <option value="silent">Cho đặt, không cảnh báo</option>
   </select>
+</label>
+
+<h2 style="margin-top:24px">Khoảng cách mặc định</h2>
+<label>
+  Margin mặc định quanh sản phẩm (cm):
+  <input type="number" min="0" bind:value={marginCm} onchange={saveMargin} style="width:90px" />
 </label>
