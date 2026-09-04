@@ -2,6 +2,9 @@ import { writable, derived, get } from 'svelte/store';
 import type { Project, Floor, Wall, Door, Window as Win, FurnitureItem, Point, Stair, Column, BackgroundImage, GuideLine, ElementGroup, EntourageItem, WorkingZone } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
+import { itemFootprint } from '$lib/utils/furnitureFootprint';
+import { resolveZoneForItem } from '$lib/utils/zoneAssignment';
+import { getOutsideZonePolicy } from '$lib/stores/appSettings';
 
 
 function uid(): string {
@@ -1048,6 +1051,83 @@ export function moveZoneVertex(id: string, index: number, pos: Point) {
   if (!z || index < 0 || index >= z.points.length) return;
   z.points[index] = pos;
   p.updatedAt = new Date();
+  currentProject.set({ ...p });
+}
+
+export type ZoneAssignResult =
+  | { status: 'assigned'; zoneId: string; stageId: string }
+  | { status: 'choose'; zoneId: string; stageIds: string[] }
+  | { status: 'outside'; policy: 'block' | 'warn' | 'silent' }
+  | { status: 'no-zones' };
+
+/**
+ * Gán vùng/công đoạn cho item sau khi đặt/di chuyển.
+ * enforce=true (đặt/kéo tay): trả 'outside' + policy để canvas xử lý (policy 'block' => canvas huỷ).
+ * enforce=false (nhân bản/dán/DXF): luôn chỉ cảnh báo, không chặn (policy 'block' hạ thành 'warn').
+ */
+export function assignZoneToItem(itemId: string, enforce: boolean): ZoneAssignResult {
+  const p = get(currentProject);
+  const floor = p?.floors.find((f) => f.id === p.activeFloorId);
+  const item = floor?.furniture.find((f) => f.id === itemId);
+  if (!p || !floor || !item) return { status: 'no-zones' };
+
+  const zones = floor.zones ?? [];
+  if (zones.length === 0) {
+    setItemZone(itemId, undefined, false);
+    return { status: 'no-zones' };
+  }
+
+  const zone = resolveZoneForItem(itemFootprint(item), zones);
+  if (!zone) {
+    const policy = getOutsideZonePolicy();
+    const effective = enforce ? policy : (policy === 'block' ? 'warn' : policy);
+    setItemZone(itemId, undefined, effective !== 'silent');
+    return { status: 'outside', policy: effective };
+  }
+
+  if (zone.allowedStageIds.length === 1) {
+    setItemZone(itemId, zone.allowedStageIds[0], false);
+    return { status: 'assigned', zoneId: zone.id, stageId: zone.allowedStageIds[0] };
+  }
+  if (zone.allowedStageIds.length >= 2) {
+    if (enforce) return { status: 'choose', zoneId: zone.id, stageIds: zone.allowedStageIds };
+    setItemZone(itemId, undefined, false);
+    return { status: 'choose', zoneId: zone.id, stageIds: zone.allowedStageIds };
+  }
+  setItemZone(itemId, undefined, false);
+  return { status: 'assigned', zoneId: zone.id, stageId: '' };
+}
+
+/** Ghi stageId + outOfZone cho item (không tạo undo riêng — đi kèm thao tác đặt). */
+export function setItemZone(itemId: string, stageId: string | undefined, outOfZone: boolean) {
+  const p = get(currentProject);
+  const floor = p?.floors.find((f) => f.id === p.activeFloorId);
+  const item = floor?.furniture.find((f) => f.id === itemId);
+  if (!p || !item) return;
+  item.stageId = stageId;
+  item.outOfZone = outOfZone;
+  currentProject.set({ ...p });
+}
+
+/** Người dùng chọn công đoạn ở popup vùng ≥2. */
+export function setItemStage(itemId: string, stageId: string) {
+  mutate((f) => {
+    const item = f.furniture.find((i) => i.id === itemId);
+    if (item) { item.stageId = stageId; item.outOfZone = false; }
+  }, 'Chọn công đoạn');
+}
+
+/** Tính lại vùng/màu cho toàn bộ item (sau khi nạp layout hoặc sửa vùng). */
+export function revalidateZones() {
+  const p = get(currentProject);
+  const floor = p?.floors.find((f) => f.id === p.activeFloorId);
+  if (!p || !floor) return;
+  const zones = floor.zones ?? [];
+  for (const item of floor.furniture) {
+    if (zones.length === 0) { item.outOfZone = false; continue; }
+    const zone = resolveZoneForItem(itemFootprint(item), zones);
+    item.outOfZone = !zone && !item.stageId;
+  }
   currentProject.set({ ...p });
 }
 
