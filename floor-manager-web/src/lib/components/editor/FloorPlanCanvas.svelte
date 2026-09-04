@@ -1479,6 +1479,7 @@
     requestAnimationFrame(draw);
 
     let initialFitDone = false;
+    let zonesRevalidated = false;
     const unsub1 = activeFloor.subscribe((f) => {
       currentFloor = f;
       markDirty();
@@ -1486,6 +1487,12 @@
         initialFitDone = true;
         // Delay slightly to ensure canvas is sized
         requestAnimationFrame(() => { zoomToFit(); });
+      }
+      // Sau khi nạp layout có sẵn item, tính lại cờ outOfZone một lần duy nhất.
+      // revalidateZones() gọi currentProject.set nên guard bên dưới ngăn lặp vô hạn.
+      if (!zonesRevalidated && f && f.furniture.length > 0) {
+        zonesRevalidated = true;
+        revalidateZones();
       }
     });
     const unsub2 = selectedElementId.subscribe((id) => { currentSelectedId = id; markDirty(); });
@@ -2050,10 +2057,27 @@
       if (rot !== 0) {
         rotateFurniture(id, rot);
       }
+      // Gán vùng/công đoạn ngay khi đặt tay (enforce). Nếu chính sách 'block'
+      // và item nằm ngoài vùng cho phép thì gỡ luôn item vừa đặt.
+      {
+        const sc = worldToScreen(pos.x, pos.y);
+        const res = assignZoneToItem(id, true);
+        if (res.status === 'outside' && res.policy === 'block') {
+          removeElement(id);
+          quantityLimitMsg = 'Chỉ được đặt trong vùng cho phép';
+          setTimeout(() => { quantityLimitMsg = null; markDirty(); }, 3000);
+          if (remainingQuantity(placingId) <= 0) exitPlacingOnQuantityLimit(placingId);
+          markDirty();
+          return;
+        } else if (res.status === 'choose') {
+          stagePopup = { itemId: id, stageIds: res.stageIds, x: sc.x, y: sc.y };
+        }
+      }
       selectedElementId.set(id);
       // Đặt nốt bản cuối thì thoát lệnh ngay, không để người dùng kẹt trong
       // chế độ đặt mà click nào cũng bị từ chối.
       if (remainingQuantity(placingId) <= 0) exitPlacingOnQuantityLimit(placingId);
+      markDirty();
       return;
     }
 
@@ -2791,7 +2815,18 @@
 
     if (draggingZoneVertex) { draggingZoneVertex = null; endUndoGroup('Sửa đỉnh vùng'); markDirty(); }
     if (draggingZoneId) { draggingZoneId = null; endUndoGroup('Dời vùng'); markDirty(); }
+    const movedId = draggingFurnitureId;
     if (draggingFurnitureId) commitFurnitureMove();
+    if (movedId) {
+      // Gán lại vùng/công đoạn sau khi dời tay (enforce). Với chính sách 'block'
+      // ta KHÔNG gỡ item; assignZoneToItem đã đặt cờ outOfZone để hiển thị cảnh báo.
+      const sc = worldToScreen(mousePos.x, mousePos.y);
+      const res = assignZoneToItem(movedId, true);
+      if (res.status === 'choose') {
+        stagePopup = { itemId: movedId, stageIds: res.stageIds, x: sc.x, y: sc.y };
+      }
+      markDirty();
+    }
     if (draggingHandle) commitFurnitureMove();
     if (draggingWallEndpoint) commitFurnitureMove();
     if (draggingWallParallel) commitFurnitureMove();
@@ -3324,9 +3359,26 @@
       }
       const id = addFurniture(itemId, pos);
       if (!id) { exitPlacingOnQuantityLimit(itemId); return; }
+      // Gán vùng/công đoạn ngay khi thả từ sidebar (enforce). Dùng toạ độ thả
+      // thực tế để định vị popup chọn công đoạn.
+      {
+        const sc = worldToScreen(pos.x, pos.y);
+        const res = assignZoneToItem(id, true);
+        if (res.status === 'outside' && res.policy === 'block') {
+          removeElement(id);
+          quantityLimitMsg = 'Chỉ được đặt trong vùng cho phép';
+          setTimeout(() => { quantityLimitMsg = null; markDirty(); }, 3000);
+          placingFurnitureId.set(null);
+          markDirty();
+          return;
+        } else if (res.status === 'choose') {
+          stagePopup = { itemId: id, stageIds: res.stageIds, x: sc.x, y: sc.y };
+        }
+      }
       selectedElementId.set(id);
       selectedTool.set('select');
       placingFurnitureId.set(null);
+      markDirty();
     } else if (itemType === 'door') {
       // Find nearest wall to drop point and add door there
       const floor = currentFloor;
