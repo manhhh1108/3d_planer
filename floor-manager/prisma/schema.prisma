@@ -160,6 +160,8 @@ model Position {
   elevationM  Float    @default(0) @map("elevation_m")
   /// Công đoạn đang làm với block tại vị trí này (Stage.id). Null = chưa gán.
   stageId     String?  @map("stage_id")
+  /// Khoảng cách (margin) yêu cầu quanh block này, cm. Null = dùng mặc định global.
+  marginCm    Float?   @map("margin_cm")
   // Email nguoi cuoi cung dat/di chuyen block nay. Server tu suy ra bang cach
   // so sanh voi ban luu truoc, khong tin gia tri client gui len.
   updatedBy   String?  @map("updated_by")

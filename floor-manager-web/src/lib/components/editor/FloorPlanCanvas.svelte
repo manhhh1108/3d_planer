@@ -25,6 +25,8 @@
   import { selectedZoneId, addZone, removeZone, moveZone, moveZoneVertex } from '$lib/stores/project';
   import { stages } from '$lib/stores/stages';
   import type { ApiStage } from '$lib/services/api';
+  import { collisionsForFurniture } from '$lib/utils/collision';
+  import { defaultMarginCm } from '$lib/stores/appSettings';
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -80,6 +82,13 @@
   let dragWasWallSnapped: boolean = false;
   let draggingDoorId: string | null = $state(null);
   let draggingWindowId: string | null = $state(null);
+
+  // Va chạm giữa các item (bao gồm margin) — dùng để tô đỏ cảnh báo trên canvas
+  let collidingIds = $state<Set<string>>(new Set());
+  function recomputeCollisions() {
+    collidingIds = currentFloor ? collisionsForFurniture(currentFloor.furniture) : new Set();
+    markDirty();
+  }
 
   // Zone drag state (di chuyển cả vùng / kéo đỉnh vùng)
   let draggingZoneId: string | null = $state(null);
@@ -221,6 +230,8 @@
   let _bgLayoutT: LayoutBgTransform = { ...DEFAULT_LAYOUT_BG_TRANSFORM };
   let bgAlign = $state(false);
   layoutBgAlignMode.subscribe((v) => { bgAlign = v; markDirty(); });
+  // Tính lại va chạm khi margin toàn cục thay đổi (đặt sau khi currentFloor đã khai báo)
+  defaultMarginCm.subscribe(() => recomputeCollisions());
   let draggingLayoutBg = $state(false);
   let layoutBgDragOffset: Point = { x: 0, y: 0 };
 
@@ -537,7 +548,7 @@
 
   function drawFurniture(item: FurnitureItem, selected: boolean) {
     const col = item.stageId ? currentStages.find((s) => s.id === item.stageId)?.color : undefined;
-    drawFurnitureItem(getCS(), item, selected, col, item.outOfZone);
+    drawFurnitureItem(getCS(), item, selected, col, item.outOfZone, collidingIds.has(item.id));
   }
 
   function drawWall(w: Wall, selected: boolean) {
@@ -1476,6 +1487,7 @@
     let zonesRevalidated = false;
     const unsub1 = activeFloor.subscribe((f) => {
       currentFloor = f;
+      recomputeCollisions();
       markDirty();
       if (!initialFitDone && f && f.walls.length > 0) {
         initialFitDone = true;

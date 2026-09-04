@@ -74,6 +74,7 @@ export function positionToItem(p: ApiPosition): FurnitureItem {
 		orientation,
 		elevation: (p.elevationM ?? 0) * M_TO_CM,
 		stageId: p.stageId ?? undefined,
+		marginCm: p.marginCm ?? undefined,
 		updatedBy: p.updatedBy ?? null,
 		updatedAt: p.updatedAt ?? null,
 	};
@@ -100,6 +101,7 @@ export function itemToPosition(it: FurnitureItem) {
 		orientation: it.orientation ?? 'bottom',
 		elevationM: (it.elevation ?? 0) / M_TO_CM,
 		stageId: it.stageId ?? null,
+		marginCm: it.marginCm ?? null,
 	};
 }
 

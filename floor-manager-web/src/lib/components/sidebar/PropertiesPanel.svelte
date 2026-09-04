@@ -347,6 +347,18 @@
         {/if}
       </label>
 
+      <!-- Khoảng cách (margin) riêng của block; trống = dùng mặc định toàn hệ -->
+      <label class="block">
+        <span class="text-xs text-gray-500">Khoảng cách (margin, cm) — trống = mặc định</span>
+        <input type="number" min="0"
+          value={selectedFurniture.marginCm ?? ''}
+          onchange={(e) => {
+            const v = (e.currentTarget as HTMLInputElement).value;
+            updateFurniture(selectedFurniture.id, { marginCm: v === '' ? undefined : Number(v) });
+          }}
+          class="w-full px-2 py-1 border border-gray-200 rounded text-sm" />
+      </label>
+
       <!-- Rotate controls. Flip H/V đã bỏ: soi gương một khối thép không có
            nghĩa vật lý, và với block hộp đối xứng thì bấm xong không đổi gì. -->
       <div class="flex gap-1">

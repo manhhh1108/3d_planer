@@ -285,6 +285,7 @@ export function drawFurnitureItem(
   selected: boolean,
   stageColorOverride?: string,
   outOfZone?: boolean,
+  colliding?: boolean,
 ): void {
   const { ctx, zoom } = cs;
   const cat = getCatalogItem(item.catalogId);
@@ -399,7 +400,11 @@ export function drawFurnitureItem(
     ctx.stroke();
   }
 
-  if (outOfZone) {
+  if (outOfZone || colliding) {
+    if (colliding) {
+      ctx.fillStyle = 'rgba(220,38,38,0.25)';
+      ctx.fillRect(-w / 2, -d / 2, w, d);
+    }
     ctx.strokeStyle = '#dc2626';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 3]);

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { selectedTool, placingFurnitureId, setBackgroundImage, draggingCatalogId, currentProject, externalPlacements } from '$lib/stores/project';
+  import { autoArrangeZones, revalidateZones, selectedZoneId } from '$lib/stores/project';
   import { backgroundPanelOpen, dxfImportOpen } from '$lib/stores/ui';
   import { layoutBgFile } from '$lib/stores/project';
   import type { Tool } from '$lib/stores/project';
@@ -342,6 +343,11 @@
           </div>
         </button>
         <p class="px-3 text-xs text-gray-500">Diện tích layout: <strong>{totalAreaM2.toFixed(2)} m²</strong></p>
+
+        <button
+          class="w-full mt-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500"
+          onclick={() => { autoArrangeZones($selectedZoneId ? [$selectedZoneId] : undefined); revalidateZones(); }}
+        >Tự động sắp xếp{$selectedZoneId ? ' (vùng đang chọn)' : ' (tất cả vùng)'}</button>
 
         <h3 class="text-xs font-semibold text-gray-400 uppercase mb-2 mt-3">Annotate</h3>
         <button
