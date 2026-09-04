@@ -136,6 +136,9 @@ model Snapshot {
   version   Int        @default(1)
   // Ảnh xem trước mặt bằng (chụp từ canvas editor khi autosave)
   thumbnail String?
+  /// Vùng được phép đặt sản phẩm của snapshot (WorkingZone[], toạ độ mét).
+  /// Theo ngày như positions, nên nằm trong snapshot chứ không ở Layout.
+  zones     Json?
   layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
   positions Position[]
   comments  Comment[]
