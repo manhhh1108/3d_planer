@@ -15,6 +15,7 @@
   import { currentUser } from '$lib/stores/auth';
   import { goto } from '$app/navigation';
   import { authApi } from '$lib/services/api';
+  import StagesAdminPanel from '$lib/components/admin/StagesAdminPanel.svelte';
 
   let {
     saveLabel = 'Save',
@@ -24,6 +25,7 @@
 
   let settingsOpen = $state(false);
   let showSaveModal = $state(false);
+  let stagesOpen = $state(false);
 
   let projectName = $state('');
   let mode = $state<'2d' | '3d'>('2d');
@@ -503,7 +505,7 @@
       <span class="text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/70 hidden sm:block">{user.role}</span>
       {#if user.role === 'ADMIN'}
         <a href="/admin/users" class="text-xs text-white/70 hover:text-white hidden sm:block">Users</a>
-        <a href="/admin/stages" class="text-xs text-white/70 hover:text-white hidden sm:block">Công đoạn</a>
+        <button type="button" onclick={() => stagesOpen = true} class="text-xs text-white/70 hover:text-white hidden sm:block">Công đoạn</button>
       {/if}
       <button onclick={handleLogout} class="text-xs text-white/70 hover:text-red-400 px-2 py-1 rounded hover:bg-white/10">
         Đăng xuất
@@ -574,4 +576,22 @@
     onConfirm={confirmSave}
     onCancel={() => { showSaveModal = false; saveError = null; }}
   />
+{/if}
+
+{#if stagesOpen}
+  <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+       role="dialog" tabindex="-1" aria-label="Quản lý công đoạn"
+       onclick={() => stagesOpen = false}
+       onkeydown={(e) => { if (e.key === 'Escape') stagesOpen = false; }}>
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+         role="document" onclick={(e) => e.stopPropagation()}>
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 sticky top-0 bg-white">
+        <h2 class="text-base font-semibold text-gray-800">Quản lý công đoạn</h2>
+        <button onclick={() => stagesOpen = false} class="text-gray-400 hover:text-gray-600 text-xl leading-none" aria-label="Đóng">✕</button>
+      </div>
+      <div class="p-4">
+        <StagesAdminPanel />
+      </div>
+    </div>
+  </div>
 {/if}
