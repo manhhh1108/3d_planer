@@ -10,7 +10,7 @@ function uid(): string {
 
 export function createDefaultFloor(level = 0): Floor {
   const id = uid();
-  return { id, name: level === 0 ? 'Ground Floor' : `Floor ${level}`, level, walls: [], rooms: [], doors: [], windows: [], furniture: [], stairs: [], columns: [], guides: [], measurements: [], annotations: [], textAnnotations: [], groups: [] };
+  return { id, name: level === 0 ? 'Ground Floor' : `Floor ${level}`, level, walls: [], rooms: [], zones: [], doors: [], windows: [], furniture: [], stairs: [], columns: [], guides: [], measurements: [], annotations: [], textAnnotations: [], groups: [] };
 }
 
 export function createDefaultProject(name = 'Untitled Project'): Project {
@@ -675,7 +675,7 @@ export function addFloor(name?: string, copyCurrentLayout = false) {
   if (!p) return;
   snapshot('Added floor');
   const level = p.floors.length;
-  const floor: Floor = { id: uid(), name: name ?? `Floor ${level}`, level, walls: [], rooms: [], doors: [], windows: [], furniture: [], stairs: [], columns: [], guides: [], measurements: [], annotations: [], textAnnotations: [], groups: [] };
+  const floor: Floor = { id: uid(), name: name ?? `Floor ${level}`, level, walls: [], rooms: [], zones: [], doors: [], windows: [], furniture: [], stairs: [], columns: [], guides: [], measurements: [], annotations: [], textAnnotations: [], groups: [] };
   if (copyCurrentLayout) {
     const cur = p.floors.find(f => f.id === p.activeFloorId);
     if (cur) {

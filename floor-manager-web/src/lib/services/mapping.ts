@@ -145,6 +145,7 @@ export function layoutToProject(layout: ApiLayout, snapshot: ApiSnapshot | null)
 		level: 0,
 		walls: (layout.walls ?? []).map(apiWallToWall),
 		rooms: [],
+		zones: [],
 		doors: [],
 		windows: [],
 		furniture,

@@ -60,6 +60,7 @@ export const localStore: DataStore = {
     // Migrate floors: ensure all array fields exist
     for (const floor of (p.floors ?? [])) {
       if (!floor.rooms) floor.rooms = [];
+      if (!floor.zones) floor.zones = [];
       if (!floor.doors) floor.doors = [];
       if (!floor.windows) floor.windows = [];
       if (!floor.furniture) floor.furniture = [];

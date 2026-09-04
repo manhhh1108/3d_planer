@@ -32,6 +32,15 @@ export interface Room {
   labelOffset?: Point;
 }
 
+export interface WorkingZone {
+  id: string;
+  name?: string;
+  /** Đa giác, world cm, >= 3 điểm */
+  points: Point[];
+  /** Id các công đoạn được phép làm trong vùng (1..n) */
+  allowedStageIds: string[];
+}
+
 export interface Door {
   id: string;
   wallId: string;
@@ -181,6 +190,7 @@ export interface Floor {
   level: number;
   walls: Wall[];
   rooms: Room[];
+  zones: WorkingZone[];
   doors: Door[];
   windows: Window[];
   furniture: FurnitureItem[];
