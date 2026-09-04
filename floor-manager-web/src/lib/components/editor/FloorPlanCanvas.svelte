@@ -12,6 +12,8 @@
   import { backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
   import { hitTestBackgroundImage } from '$lib/utils/backgroundImageHit';
   import ContextMenu from './ContextMenu.svelte';
+  import StageChoicePopup from './StageChoicePopup.svelte';
+  import { assignZoneToItem, setItemStage, revalidateZones } from '$lib/stores/project';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
   import type { CanvasState } from '$lib/utils/canvasInteraction';
@@ -81,6 +83,17 @@
   let draggingZoneId: string | null = $state(null);
   let zoneDragLast: Point = { x: 0, y: 0 };
   let draggingZoneVertex: { zoneId: string; index: number } | null = $state(null);
+
+  // Popup chọn công đoạn khi item rơi vào vùng có ≥2 công đoạn cho phép
+  let stagePopup = $state<{ itemId: string; stageIds: string[]; x: number; y: number } | null>(null);
+
+  function handleAssign(itemId: string, screenX: number, screenY: number) {
+    const res = assignZoneToItem(itemId, true);
+    if (res.status === 'choose') {
+      stagePopup = { itemId, stageIds: res.stageIds, x: screenX, y: screenY };
+    }
+    markDirty();
+  }
 
   // Guide lines
   let selectedGuideId: string | null = $state(null);
@@ -3627,6 +3640,15 @@
     ondragleave={onDragLeave}
     ondrop={onDrop}
   ></canvas>
+  {#if stagePopup}
+    <StageChoicePopup
+      stageIds={stagePopup.stageIds}
+      x={stagePopup.x}
+      y={stagePopup.y}
+      onPick={(id) => { setItemStage(stagePopup!.itemId, id); stagePopup = null; markDirty(); }}
+      onCancel={() => { stagePopup = null; }}
+    />
+  {/if}
   <!-- Elevation pick mode hint chip -->
   {#if pickingElevation}
     <div class="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-slate-800/90 text-white text-xs font-medium px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">
