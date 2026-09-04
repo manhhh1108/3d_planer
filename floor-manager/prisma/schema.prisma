@@ -158,6 +158,8 @@ model Position {
   orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
   // Cao do dat block so voi san, tinh bang met (0 = dat truc tiep xuong san)
   elevationM  Float    @default(0) @map("elevation_m")
+  /// Công đoạn đang làm với block tại vị trí này (Stage.id). Null = chưa gán.
+  stageId     String?  @map("stage_id")
   // Email nguoi cuoi cung dat/di chuyen block nay. Server tu suy ra bang cach
   // so sanh voi ban luu truoc, khong tin gia tri client gui len.
   updatedBy   String?  @map("updated_by")

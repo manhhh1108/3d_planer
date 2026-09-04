@@ -88,6 +88,7 @@ type IncomingPosition = {
   scale?: number;
   orientation?: string;
   elevationM?: number;
+  stageId?: string | null;
 };
 
 /**
@@ -127,6 +128,7 @@ router.post('/', async (req: Request, res: Response) => {
         scale?: number;
         orientation?: string;
         elevationM?: number;
+        stageId?: string | null;
       }>;
     };
 
@@ -169,6 +171,7 @@ router.post('/', async (req: Request, res: Response) => {
         scale: p.scale ?? 1.0,
         orientation: p.orientation ?? 'bottom',
         elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
+        stageId: p.stageId ?? null,
         updatedBy: before?.updatedBy ?? me.email,
         updatedAt: before?.updatedAt ?? now,
       };
