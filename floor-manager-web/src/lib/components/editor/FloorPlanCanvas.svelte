@@ -17,6 +17,10 @@
   import type { CanvasState } from '$lib/utils/canvasInteraction';
   import { drawWall as _drawWall, wallLength, wallPointAt, wallTangentAt, wallThicknessScreen as _wallThicknessScreen, drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
+  import { drawZones } from '$lib/utils/zoneRenderer';
+  import { selectedZoneId, addZone, removeZone } from '$lib/stores/project';
+  import { stages } from '$lib/stores/stages';
+  import type { ApiStage } from '$lib/services/api';
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -44,6 +48,13 @@
   let typedWallLength = $state('');
   let wallSequenceFirst: Point | null = $state(null);
   let mousePos: Point = $state({ x: 0, y: 0 });
+
+  // Vẽ vùng: danh sách đỉnh đang đặt (world cm)
+  let zonePoints: Point[] = $state([]);
+  let currentSelectedZoneId: string | null = $state(null);
+  selectedZoneId.subscribe((v) => { currentSelectedZoneId = v; markDirty(); });
+  let currentStages = $state<ApiStage[]>([]);
+  stages.subscribe((v) => { currentStages = v; markDirty(); });
 
   // Inline room name editing
   let editingRoomId: string | null = $state(null);
@@ -96,7 +107,7 @@
   let showRulers = $state(true);
 
   // Layer visibility toggles
-  let layerVis = $state({ walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true });
+  let layerVis = $state({ walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true, zones: true });
   // Sync showFurnitureStore ↔ layerVisibility.furniture
   let showFurniture = $derived(layerVis.furniture);
   $effect(() => { showFurnitureStore.set(layerVis.furniture); });
@@ -1089,8 +1100,14 @@
 
     const floor = currentFloor;
     if (!floor) { requestAnimationFrame(draw); return; }
+
+    if (layerVis.zones && currentFloor) {
+      drawZones(getCS(), currentFloor, currentSelectedZoneId, currentStages,
+        currentTool === 'zone' && zonePoints.length ? zonePoints : null,
+        mousePos);
+    }
     // Mark dirty whenever active interactions are happening (wall drawing, dragging, etc.)
-    if (wallStart || draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
+    if (zonePoints.length || wallStart || draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
         draggingColumnId || draggingWallEndpoint || draggingWallParallel || draggingCurveHandle ||
         draggingHandle || draggingMultiSelect || draggingRoomId || draggingRoomLabelId ||
         draggingTextAnnotationId || draggingGuideId || measuring || annotating ||
@@ -1469,6 +1486,8 @@
       if (!annotating) { annotationStart = null; }
       // Bỏ tool wall mà còn wallStart thì draw() giữ cờ dirty và redraw mãi
       if (t !== 'wall') cancelWallDrawing();
+      if (t !== 'zone') { zonePoints = []; }
+      if (t !== 'select') { selectedZoneId.set(null); }
       markDirty();
     });
     const unsub8 = placingDoorType.subscribe((t) => { currentDoorType = t; markDirty(); });
@@ -1992,6 +2011,23 @@
       return;
     }
 
+    if (tool === 'zone') {
+      const pt = { x: snap(wp.x), y: snap(wp.y) };
+      if (zonePoints.length >= 3) {
+        const first = zonePoints[0];
+        if (Math.hypot(pt.x - first.x, pt.y - first.y) < 15 / zoom) {
+          const id = addZone(zonePoints.slice());
+          zonePoints = [];
+          selectedTool.set('select');
+          selectedZoneId.set(id);
+          markDirty();
+          return;
+        }
+      }
+      zonePoints = [...zonePoints, pt];
+      markDirty();
+      return;
+    }
     if (tool === 'wall') {
       let endPt = snapWallEndPoint(wp);
       if (wallStart) endPt = applyTypedWallLength(endPt);
@@ -2291,6 +2327,14 @@
           }
         }
       }
+    }
+    if (currentTool === 'zone' && zonePoints.length >= 3) {
+      const id = addZone(zonePoints.slice());
+      zonePoints = [];
+      selectedTool.set('select');
+      selectedZoneId.set(id);
+      markDirty();
+      return;
     }
     if (currentTool === 'wall' && wallStart && wallSequenceFirst) {
       // Auto-close the wall loop back to the first point if we have at least 2 walls
@@ -2893,6 +2937,12 @@
     // type a number, then Enter places the wall at exactly that length.
     const keyTargetTag = (e.target as HTMLElement)?.tagName;
     const inFormField = keyTargetTag === 'INPUT' || keyTargetTag === 'TEXTAREA' || keyTargetTag === 'SELECT';
+    if (currentTool === 'zone' && zonePoints.length && e.key === 'Escape') {
+      zonePoints = [];
+      markDirty();
+      e.preventDefault();
+      return;
+    }
     if (currentTool === 'wall' && wallStart && !editingTextAnnotationId && !inFormField && !e.metaKey && !e.ctrlKey) {
       // Esc nhát đầu chỉ bỏ đoạn đang vẽ; nhát thứ hai rơi xuống shortcut
       // global và thoát hẳn về tool select.
@@ -2924,6 +2974,14 @@
         e.preventDefault();
         return;
       }
+    }
+
+    // Delete selected zone
+    if ((e.key === 'Delete' || e.key === 'Backspace') && currentSelectedZoneId && !inFormField) {
+      removeZone(currentSelectedZoneId);
+      selectedZoneId.set(null);
+      e.preventDefault();
+      return;
     }
 
     // Delete selected guide line
@@ -2963,6 +3021,7 @@
     if (e.code === 'Escape') {
       elevationPickMode.set(false);
       wallStart = null; wallSequenceFirst = null; typedWallLength = '';
+      zonePoints = [];
       placingFurnitureId.set(null);
       placingRotation.set(0);
       editingTextAnnotationId = null;
