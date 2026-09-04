@@ -503,6 +503,7 @@
       <span class="text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/70 hidden sm:block">{user.role}</span>
       {#if user.role === 'ADMIN'}
         <a href="/admin/users" class="text-xs text-white/70 hover:text-white hidden sm:block">Users</a>
+        <a href="/admin/stages" class="text-xs text-white/70 hover:text-white hidden sm:block">Công đoạn</a>
       {/if}
       <button onclick={handleLogout} class="text-xs text-white/70 hover:text-red-400 px-2 py-1 rounded hover:bg-white/10">
         Đăng xuất

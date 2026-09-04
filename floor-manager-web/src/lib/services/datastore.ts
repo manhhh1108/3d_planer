@@ -1,8 +1,10 @@
 import type { Project } from '$lib/models/types';
 import { api } from './api';
-import { layoutToProject, projectToPositions, projectToWalls, todayStr } from './mapping';
+import { layoutToProject, projectToPositions, projectToWalls, projectToZones, todayStr } from './mapping';
 import { pickSnapshotForDate } from './snapshotPick';
 import { loadProductCatalog } from '$lib/stores/productCatalog';
+import { loadStages } from '$lib/stores/stages';
+import { loadAppSettings } from '$lib/stores/appSettings';
 import { externalPlacements } from '$lib/stores/project';
 
 export interface DataStore {
@@ -59,6 +61,7 @@ export const localStore: DataStore = {
     // Migrate floors: ensure all array fields exist
     for (const floor of (p.floors ?? [])) {
       if (!floor.rooms) floor.rooms = [];
+      if (!floor.zones) floor.zones = [];
       if (!floor.doors) floor.doors = [];
       if (!floor.windows) floor.windows = [];
       if (!floor.furniture) floor.furniture = [];
@@ -146,6 +149,7 @@ export const backendStore: DataStore = {
       layoutId: project.id,
       date: date ?? todayStr(),
       positions: projectToPositions(project),
+      zones: projectToZones(project),
     });
     lastSnapshotId = snapshot.id;
 
@@ -162,6 +166,8 @@ export const backendStore: DataStore = {
     if (!layout) return null;
     // Catalog sản phẩm phải sẵn sàng trước khi canvas render các block
     await loadProductCatalog();
+    await loadStages();
+    await loadAppSettings();
     const snapshots = await api.snapshots.list(layoutId);
     // Bản MỚI NHẤT có thể là bố trí trước cho ngày mai. Nạp nó vào coi như
     // hôm nay là lần lưu sau đè bố cục tương lai lên hôm nay, nên chỉ lấy bản

@@ -126,6 +126,14 @@ export interface ApiWall {
 	curvePoint?: { x: number; y: number };
 }
 
+/** Vùng như backend lưu — toạ độ theo mét */
+export interface ApiZone {
+	id: string;
+	name?: string;
+	points: { x: number; y: number }[];
+	allowedStageIds: string[];
+}
+
 export interface ApiLayout {
 	id: string;
 	siteId: string;
@@ -154,6 +162,7 @@ export interface ApiPosition {
 	orientation: string;
 	/** Cao độ đáy block so với sàn, mét */
 	elevationM?: number;
+	stageId?: string | null;
 	/** Email người thao tác cuối với block này */
 	updatedBy?: string | null;
 	updatedAt?: string | null;
@@ -168,6 +177,7 @@ export interface ApiSnapshot {
 	/** Ảnh xem trước mặt bằng, đường dẫn tương đối backend */
 	thumbnail?: string | null;
 	positions?: ApiPosition[];
+	zones?: ApiZone[] | null;
 }
 
 export const api = {
@@ -405,7 +415,9 @@ export const api = {
 				scale?: number;
 				orientation?: string;
 				elevationM?: number;
+				stageId?: string | null;
 			}[];
+			zones?: ApiZone[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
 		uploadThumbnail: async (id: string, image: Blob): Promise<ApiSnapshot> => {
 			const fd = new FormData();
@@ -464,6 +476,22 @@ export const api = {
 			}),
 		remove: (id: string) =>
 			http<void>(`/comments/${id}`, { method: 'DELETE' }),
+	},
+	stages: {
+		list: (all = false) => http<ApiStage[]>(`/stages${all ? '?all=1' : ''}`),
+		create: (data: { name: string; color: string; order?: number }) =>
+			http<ApiStage>('/stages', { method: 'POST', body: JSON.stringify(data) }),
+		update: (id: string, data: { name?: string; color?: string; order?: number; active?: boolean }) =>
+			http<ApiStage>(`/stages/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+		remove: (id: string) => http<ApiStage>(`/stages/${id}`, { method: 'DELETE' }),
+	},
+	settings: {
+		get: <T = unknown>(key: string) => http<{ key: string; value: T }>(`/settings/${key}`),
+		put: <T = unknown>(key: string, value: T) =>
+			http<{ key: string; value: T }>(`/settings/${key}`, {
+				method: 'PUT',
+				body: JSON.stringify({ value }),
+			}),
 	},
 };
 
@@ -543,6 +571,17 @@ export interface ApiComment {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ApiStage {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export type OutsideZonePolicy = 'block' | 'warn' | 'silent';
 
 export interface ApiConflict {
   itemA: { id: string; productName: string; startDate: string; endDate: string };

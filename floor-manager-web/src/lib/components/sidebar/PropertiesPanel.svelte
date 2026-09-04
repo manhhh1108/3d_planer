@@ -9,14 +9,15 @@
   import { propertiesPanelOpen, backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
   import { layoutBgFile, layoutBgTransform } from '$lib/stores/project';
   import { DEFAULT_LAYOUT_BG_TRANSFORM } from '$lib/utils/layoutBackground';
+  import { stages, loadStages } from '$lib/stores/stages';
+
+  loadStages();
 
   /** Chỉnh nền của layout — chỉ có nghĩa khi layout thực sự có nền */
   function setBgT(patch: Partial<typeof $layoutBgTransform>) {
     layoutBgTransform.update((t) => ({ ...t, ...patch }));
   }
 
-  /** Khớp danh sách công đoạn ở trang quản lý sản phẩm */
-  const STAGES = ['Hàn', 'Sơn', 'Lắp ráp', 'Cắt', 'Khác'];
   let stageSaving = $state(false);
   let stageError = $state<string | null>(null);
   import { wallLength } from '$lib/utils/canvasRenderer';
@@ -53,6 +54,8 @@
   let selectedWall = $derived(floor?.walls?.find(w => w.id === selId) ?? null);
   let selectedTextAnnotation = $derived(floor?.textAnnotations?.find(t => t.id === selId) ?? null);
   let selectedEntourage = $derived(floor?.entourage?.find(en => en.id === selId) ?? null);
+  // Công đoạn hiện tại của sản phẩm; giữ giá trị cũ/không có trong $stages để select không bị trắng.
+  let currentStage = $derived(selectedFurniture ? (getCatalogItem(selectedFurniture.catalogId)?.processStage ?? 'Khác') : '');
   // Có ảnh nền là bảng tự bật; phải đóng được, không thì nó che bản vẽ vĩnh viễn.
   // Bấm lại vào ảnh trên canvas (hoặc nhập ảnh mới) sẽ mở lại.
   let hasBgImage = $derived(!!floor?.backgroundImage && $backgroundPanelOpen);
@@ -324,12 +327,15 @@
       <label class="block">
         <span class="text-xs text-gray-500">Công đoạn sản xuất</span>
         <select
-          value={getCatalogItem(selectedFurniture.catalogId)?.processStage ?? 'Khác'}
+          value={currentStage}
           disabled={stageSaving}
           onchange={onProcessStage}
           class="w-full px-2 py-1 border border-gray-200 rounded text-sm bg-white disabled:opacity-50"
         >
-          {#each STAGES as st}<option value={st}>{st}</option>{/each}
+          {#if currentStage && !$stages.some((s) => s.name === currentStage)}
+            <option value={currentStage}>{currentStage} (cũ)</option>
+          {/if}
+          {#each $stages as st (st.id)}<option value={st.name}>{st.name}</option>{/each}
         </select>
         <span class="text-[11px] text-gray-400">
           Áp dụng cho cả sản phẩm — mọi mặt bằng đang dùng đều đổi theo.

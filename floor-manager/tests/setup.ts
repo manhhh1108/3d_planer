@@ -21,7 +21,7 @@ export function viewerToken() { return _viewerToken; }
 
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "comments","plan_items","plans","positions","snapshots","layouts","sites","products","projects","assets","users" CASCADE'
+    'TRUNCATE TABLE "comments","plan_items","plans","positions","snapshots","layouts","sites","products","projects","assets","users","stages","app_settings" CASCADE'
   );
   const hash = await bcrypt.hash('pass', 1); // cost=1 for test speed
   const [admin, planning, viewer] = await prisma.$transaction([

@@ -136,6 +136,9 @@ model Snapshot {
   version   Int        @default(1)
   // Ảnh xem trước mặt bằng (chụp từ canvas editor khi autosave)
   thumbnail String?
+  /// Vùng được phép đặt sản phẩm của snapshot (WorkingZone[], toạ độ mét).
+  /// Theo ngày như positions, nên nằm trong snapshot chứ không ở Layout.
+  zones     Json?
   layout    Layout     @relation(fields: [layoutId], references: [id], onDelete: Cascade)
   positions Position[]
   comments  Comment[]
@@ -155,6 +158,8 @@ model Position {
   orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
   // Cao do dat block so voi san, tinh bang met (0 = dat truc tiep xuong san)
   elevationM  Float    @default(0) @map("elevation_m")
+  /// Công đoạn đang làm với block tại vị trí này (Stage.id). Null = chưa gán.
+  stageId     String?  @map("stage_id")
   // Email nguoi cuoi cung dat/di chuyen block nay. Server tu suy ra bang cach
   // so sanh voi ban luu truoc, khong tin gia tri client gui len.
   updatedBy   String?  @map("updated_by")
@@ -231,4 +236,26 @@ model Comment {
   @@map("comments")
   @@index([layoutId])
   @@index([snapshotId])
+}
+
+/// Công đoạn sản xuất dùng chung toàn hệ thống (gá, hàn, sơn…). Màu để tô block
+/// theo công đoạn đang làm. Xoá là soft-delete (active=false) để giữ lịch sử.
+model Stage {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("stages")
+}
+
+/// Cấu hình toàn hệ thống dạng key-value. Hiện dùng cho key "outsideZonePolicy"
+/// ('block' | 'warn' | 'silent') — cách xử lý sản phẩm đặt ngoài mọi vùng.
+model AppSetting {
+  key   String @id
+  value Json
+
+  @@map("app_settings")
 }

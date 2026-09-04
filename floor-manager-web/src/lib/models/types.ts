@@ -32,6 +32,15 @@ export interface Room {
   labelOffset?: Point;
 }
 
+export interface WorkingZone {
+  id: string;
+  name?: string;
+  /** Đa giác, world cm, >= 3 điểm */
+  points: Point[];
+  /** Id các công đoạn được phép làm trong vùng (1..n) */
+  allowedStageIds: string[];
+}
+
 export interface Door {
   id: string;
   wallId: string;
@@ -78,6 +87,10 @@ export interface FurnitureItem {
   updatedAt?: string | null;
   // Per-item overrides (optional — falls back to catalog defaults)
   color?: string;
+  /** Công đoạn đang làm tại vị trí này (Stage.id). Chi phối màu hiển thị. */
+  stageId?: string;
+  /** Cờ tạm (không persist): đặt ngoài mọi vùng khi layout đã có vùng. */
+  outOfZone?: boolean;
   width?: number;   // cm
   depth?: number;   // cm
   height?: number;  // cm
@@ -181,6 +194,7 @@ export interface Floor {
   level: number;
   walls: Wall[];
   rooms: Room[];
+  zones: WorkingZone[];
   doors: Door[];
   windows: Window[];
   furniture: FurnitureItem[];

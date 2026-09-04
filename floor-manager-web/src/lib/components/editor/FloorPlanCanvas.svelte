@@ -3,7 +3,7 @@
   import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, beginDrag, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
   import { layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
   import { hitLayoutBg, layoutBgBounds, layoutBgCenter, DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
-  import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
+  import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation, WorkingZone } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
@@ -12,11 +12,19 @@
   import { backgroundPanelOpen, layoutBgAlignMode, layoutBgPanelOpen } from '$lib/stores/ui';
   import { hitTestBackgroundImage } from '$lib/utils/backgroundImageHit';
   import ContextMenu from './ContextMenu.svelte';
+  import StageChoicePopup from './StageChoicePopup.svelte';
+  import { assignZoneToItem, setItemStage, revalidateZones } from '$lib/stores/project';
+  import { applyWithoutDirty } from '$lib/stores/saveStatus';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
   import type { CanvasState } from '$lib/utils/canvasInteraction';
   import { drawWall as _drawWall, wallLength, wallPointAt, wallTangentAt, wallThicknessScreen as _wallThicknessScreen, drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
+  import { drawZones } from '$lib/utils/zoneRenderer';
+  import { pointInPolygon as zonePointInPolygon, polygonArea } from '$lib/utils/zoneGeometry';
+  import { selectedZoneId, addZone, removeZone, moveZone, moveZoneVertex } from '$lib/stores/project';
+  import { stages } from '$lib/stores/stages';
+  import type { ApiStage } from '$lib/services/api';
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -45,6 +53,13 @@
   let wallSequenceFirst: Point | null = $state(null);
   let mousePos: Point = $state({ x: 0, y: 0 });
 
+  // Vẽ vùng: danh sách đỉnh đang đặt (world cm)
+  let zonePoints: Point[] = $state([]);
+  let currentSelectedZoneId: string | null = $state(null);
+  selectedZoneId.subscribe((v) => { currentSelectedZoneId = v; markDirty(); });
+  let currentStages = $state<ApiStage[]>([]);
+  stages.subscribe((v) => { currentStages = v; markDirty(); });
+
   // Inline room name editing
   let editingRoomId: string | null = $state(null);
   let editingRoomPos: { x: number; y: number } = $state({ x: 0, y: 0 });
@@ -59,11 +74,20 @@
 
   // Furniture drag state
   let draggingFurnitureId: string | null = $state(null);
+  let furnitureDidMove = $state(false);
   let dragOffset: Point = { x: 0, y: 0 };
   let dragStartRotation: number = 0;
   let dragWasWallSnapped: boolean = false;
   let draggingDoorId: string | null = $state(null);
   let draggingWindowId: string | null = $state(null);
+
+  // Zone drag state (di chuyển cả vùng / kéo đỉnh vùng)
+  let draggingZoneId: string | null = $state(null);
+  let zoneDragLast: Point = { x: 0, y: 0 };
+  let draggingZoneVertex: { zoneId: string; index: number } | null = $state(null);
+
+  // Popup chọn công đoạn khi item rơi vào vùng có ≥2 công đoạn cho phép
+  let stagePopup = $state<{ itemId: string; stageIds: string[]; x: number; y: number } | null>(null);
 
   // Guide lines
   let selectedGuideId: string | null = $state(null);
@@ -96,7 +120,7 @@
   let showRulers = $state(true);
 
   // Layer visibility toggles
-  let layerVis = $state({ walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true });
+  let layerVis = $state({ walls: true, doors: true, windows: true, furniture: true, stairs: true, columns: true, guides: true, measurements: true, annotations: true, zones: true });
   // Sync showFurnitureStore ↔ layerVisibility.furniture
   let showFurniture = $derived(layerVis.furniture);
   $effect(() => { showFurnitureStore.set(layerVis.furniture); });
@@ -512,7 +536,8 @@
   // ── Delegating wrappers to extracted modules ──────────────────────────
 
   function drawFurniture(item: FurnitureItem, selected: boolean) {
-    drawFurnitureItem(getCS(), item, selected);
+    const col = item.stageId ? currentStages.find((s) => s.id === item.stageId)?.color : undefined;
+    drawFurnitureItem(getCS(), item, selected, col, item.outOfZone);
   }
 
   function drawWall(w: Wall, selected: boolean) {
@@ -1089,8 +1114,14 @@
 
     const floor = currentFloor;
     if (!floor) { requestAnimationFrame(draw); return; }
+
+    if (layerVis.zones && currentFloor) {
+      drawZones(getCS(), currentFloor, currentSelectedZoneId, currentStages,
+        currentTool === 'zone' && zonePoints.length ? zonePoints : null,
+        mousePos);
+    }
     // Mark dirty whenever active interactions are happening (wall drawing, dragging, etc.)
-    if (wallStart || draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
+    if (zonePoints.length || wallStart || draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
         draggingColumnId || draggingWallEndpoint || draggingWallParallel || draggingCurveHandle ||
         draggingHandle || draggingMultiSelect || draggingRoomId || draggingRoomLabelId ||
         draggingTextAnnotationId || draggingGuideId || measuring || annotating ||
@@ -1442,6 +1473,7 @@
     requestAnimationFrame(draw);
 
     let initialFitDone = false;
+    let zonesRevalidated = false;
     const unsub1 = activeFloor.subscribe((f) => {
       currentFloor = f;
       markDirty();
@@ -1449,6 +1481,12 @@
         initialFitDone = true;
         // Delay slightly to ensure canvas is sized
         requestAnimationFrame(() => { zoomToFit(); });
+      }
+      // Sau khi nạp layout có sẵn item, tính lại cờ outOfZone một lần duy nhất.
+      // revalidateZones() gọi currentProject.set nên guard bên dưới ngăn lặp vô hạn.
+      if (!zonesRevalidated && f && f.furniture.length > 0) {
+        zonesRevalidated = true;
+        applyWithoutDirty(() => revalidateZones());
       }
     });
     const unsub2 = selectedElementId.subscribe((id) => { currentSelectedId = id; markDirty(); });
@@ -1469,6 +1507,8 @@
       if (!annotating) { annotationStart = null; }
       // Bỏ tool wall mà còn wallStart thì draw() giữ cờ dirty và redraw mãi
       if (t !== 'wall') cancelWallDrawing();
+      if (t !== 'zone') { zonePoints = []; }
+      if (t !== 'select') { selectedZoneId.set(null); }
       markDirty();
     });
     const unsub8 = placingDoorType.subscribe((t) => { currentDoorType = t; markDirty(); });
@@ -1710,6 +1750,32 @@
   function findFurnitureAt(p: Point): FurnitureItem | null {
     if (!currentFloor) return null;
     return _findFurnitureAt(p, currentFloor.furniture);
+  }
+
+  /** Vùng đang chứa điểm (ưu tiên diện tích nhỏ nhất khi chồng). */
+  function findZoneAt(p: Point): WorkingZone | null {
+    if (!currentFloor?.zones) return null;
+    let best: WorkingZone | null = null;
+    let bestArea = Infinity;
+    for (const z of currentFloor.zones) {
+      if (zonePointInPolygon(p, z.points)) {
+        const a = polygonArea(z.points);
+        if (a < bestArea) { bestArea = a; best = z; }
+      }
+    }
+    return best;
+  }
+
+  /** Đỉnh vùng đang chọn gần con trỏ (để kéo). */
+  function findZoneVertexAt(p: Point): { zoneId: string; index: number } | null {
+    if (!currentFloor?.zones || !currentSelectedZoneId) return null;
+    const z = currentFloor.zones.find((z) => z.id === currentSelectedZoneId);
+    if (!z) return null;
+    const r = 8 / zoom;
+    for (let i = 0; i < z.points.length; i++) {
+      if (Math.hypot(p.x - z.points[i].x, p.y - z.points[i].y) < r) return { zoneId: z.id, index: i };
+    }
+    return null;
   }
 
   function findColumnAt(p: Point): Column | null {
@@ -1985,13 +2051,49 @@
       if (rot !== 0) {
         rotateFurniture(id, rot);
       }
+      // Gán vùng/công đoạn ngay khi đặt tay (enforce). Nếu chính sách 'block'
+      // và item nằm ngoài vùng cho phép thì gỡ luôn item vừa đặt.
+      {
+        const sc = worldToScreen(pos.x, pos.y);
+        const res = assignZoneToItem(id, true);
+        if (res.status === 'outside' && res.policy === 'block') {
+          removeElement(id);
+          quantityLimitMsg = 'Chỉ được đặt trong vùng cho phép';
+          setTimeout(() => { quantityLimitMsg = null; markDirty(); }, 3000);
+          if (remainingQuantity(placingId) <= 0) exitPlacingOnQuantityLimit(placingId);
+          markDirty();
+          return;
+        } else if (res.status === 'choose') {
+          stagePopup = { itemId: id, stageIds: res.stageIds, x: sc.x, y: sc.y };
+        }
+      }
       selectedElementId.set(id);
       // Đặt nốt bản cuối thì thoát lệnh ngay, không để người dùng kẹt trong
       // chế độ đặt mà click nào cũng bị từ chối.
       if (remainingQuantity(placingId) <= 0) exitPlacingOnQuantityLimit(placingId);
+      markDirty();
       return;
     }
 
+    if (tool === 'zone') {
+      const pt = { x: snap(wp.x), y: snap(wp.y) };
+      if (zonePoints.length >= 3) {
+        const first = zonePoints[0];
+        if (Math.hypot(pt.x - first.x, pt.y - first.y) < 15 / zoom) {
+          const id = addZone(zonePoints.slice());
+          zonePoints = [];
+          selectedTool.set('select');
+          selectedZoneId.set(id);
+          markDirty();
+          return;
+        }
+      }
+      const last = zonePoints[zonePoints.length - 1];
+      if (last && last.x === pt.x && last.y === pt.y) { return; }
+      zonePoints = [...zonePoints, pt];
+      markDirty();
+      return;
+    }
     if (tool === 'wall') {
       let endPt = snapWallEndPoint(wp);
       if (wallStart) endPt = applyTypedWallLength(endPt);
@@ -2152,6 +2254,7 @@
         selectElement(fi.id, e.shiftKey, e.ctrlKey || e.metaKey);
         if (!e.shiftKey && !fi.locked) {
           draggingFurnitureId = fi.id;
+          furnitureDidMove = false;
           commitFurnitureMove(); // snapshot before drag for undo
           dragOffset = { x: wp.x - fi.position.x, y: wp.y - fi.position.y };
           dragStartRotation = fi.rotation;
@@ -2208,6 +2311,26 @@
           selectedElementIds.set(new Set());
           selectedRoomId.set(null);
         } else {
+          // Kéo đỉnh của vùng đang chọn trước, rồi tới chọn/kéo cả vùng.
+          // Đặt sau khi mọi phần tử (furniture/wall/door/window) đã trượt,
+          // ngay trước marquee, nên phần tử nằm trên vùng vẫn được chọn trước.
+          const zv = findZoneVertexAt(wp);
+          if (zv) {
+            draggingZoneVertex = zv;
+            beginUndoGroup();
+            return;
+          }
+          const zone = findZoneAt(wp);
+          if (zone) {
+            selectedElementId.set(null);
+            selectedElementIds.set(new Set());
+            selectedRoomId.set(null);
+            selectedZoneId.set(zone.id);
+            draggingZoneId = zone.id;
+            zoneDragLast = wp;
+            beginUndoGroup();
+            return;
+          }
           // Bấm trúng nền thì mở bảng chỉnh nền, giống hệt ảnh nền theo tầng.
           // Không nuốt cú bấm: nền phủ kín bản vẽ nên vẫn phải cho chọn vùng.
           if (overLayoutBg(wp)) layoutBgPanelOpen.set(true);
@@ -2291,6 +2414,14 @@
           }
         }
       }
+    }
+    if (currentTool === 'zone' && zonePoints.length >= 3) {
+      const id = addZone(zonePoints.slice());
+      zonePoints = [];
+      selectedTool.set('select');
+      selectedZoneId.set(id);
+      markDirty();
+      return;
     }
     if (currentTool === 'wall' && wallStart && wallSequenceFirst) {
       // Auto-close the wall loop back to the first point if we have at least 2 walls
@@ -2506,7 +2637,21 @@
       const basePos = { x: mousePos.x - stairDragOffset.x, y: mousePos.y - stairDragOffset.y };
       moveStair(draggingStairId, { x: snap(basePos.x), y: snap(basePos.y) });
     }
+    if (draggingZoneVertex) {
+      moveZoneVertex(draggingZoneVertex.zoneId, draggingZoneVertex.index, { x: snap(mousePos.x), y: snap(mousePos.y) });
+      markDirty();
+      return;
+    }
+    if (draggingZoneId) {
+      const dx = mousePos.x - zoneDragLast.x;
+      const dy = mousePos.y - zoneDragLast.y;
+      moveZone(draggingZoneId, dx, dy);
+      zoneDragLast = mousePos;
+      markDirty();
+      return;
+    }
     if (draggingFurnitureId) {
+      furnitureDidMove = true;
       const basePos = { x: mousePos.x - dragOffset.x, y: mousePos.y - dragOffset.y };
       const fi = currentFloor?.furniture.find(f => f.id === draggingFurnitureId);
       if (fi) {
@@ -2664,7 +2809,20 @@
       marqueeEnd = null;
     }
 
+    if (draggingZoneVertex) { draggingZoneVertex = null; endUndoGroup('Sửa đỉnh vùng'); markDirty(); }
+    if (draggingZoneId) { draggingZoneId = null; endUndoGroup('Dời vùng'); markDirty(); }
+    const movedId = draggingFurnitureId;
     if (draggingFurnitureId) commitFurnitureMove();
+    if (movedId && furnitureDidMove) {
+      // Gán lại vùng/công đoạn sau khi dời tay (enforce). Với chính sách 'block'
+      // ta KHÔNG gỡ item; assignZoneToItem đã đặt cờ outOfZone để hiển thị cảnh báo.
+      const sc = worldToScreen(mousePos.x, mousePos.y);
+      const res = assignZoneToItem(movedId, true);
+      if (res.status === 'choose') {
+        stagePopup = { itemId: movedId, stageIds: res.stageIds, x: sc.x, y: sc.y };
+      }
+      markDirty();
+    }
     if (draggingHandle) commitFurnitureMove();
     if (draggingWallEndpoint) commitFurnitureMove();
     if (draggingWallParallel) commitFurnitureMove();
@@ -2893,6 +3051,12 @@
     // type a number, then Enter places the wall at exactly that length.
     const keyTargetTag = (e.target as HTMLElement)?.tagName;
     const inFormField = keyTargetTag === 'INPUT' || keyTargetTag === 'TEXTAREA' || keyTargetTag === 'SELECT';
+    if (currentTool === 'zone' && zonePoints.length && e.key === 'Escape') {
+      zonePoints = [];
+      markDirty();
+      e.preventDefault();
+      return;
+    }
     if (currentTool === 'wall' && wallStart && !editingTextAnnotationId && !inFormField && !e.metaKey && !e.ctrlKey) {
       // Esc nhát đầu chỉ bỏ đoạn đang vẽ; nhát thứ hai rơi xuống shortcut
       // global và thoát hẳn về tool select.
@@ -2924,6 +3088,14 @@
         e.preventDefault();
         return;
       }
+    }
+
+    // Delete selected zone
+    if ((e.key === 'Delete' || e.key === 'Backspace') && currentSelectedZoneId && !inFormField) {
+      removeZone(currentSelectedZoneId);
+      selectedZoneId.set(null);
+      e.preventDefault();
+      return;
     }
 
     // Delete selected guide line
@@ -2963,6 +3135,7 @@
     if (e.code === 'Escape') {
       elevationPickMode.set(false);
       wallStart = null; wallSequenceFirst = null; typedWallLength = '';
+      zonePoints = [];
       placingFurnitureId.set(null);
       placingRotation.set(0);
       editingTextAnnotationId = null;
@@ -3182,9 +3355,26 @@
       }
       const id = addFurniture(itemId, pos);
       if (!id) { exitPlacingOnQuantityLimit(itemId); return; }
+      // Gán vùng/công đoạn ngay khi thả từ sidebar (enforce). Dùng toạ độ thả
+      // thực tế để định vị popup chọn công đoạn.
+      {
+        const sc = worldToScreen(pos.x, pos.y);
+        const res = assignZoneToItem(id, true);
+        if (res.status === 'outside' && res.policy === 'block') {
+          removeElement(id);
+          quantityLimitMsg = 'Chỉ được đặt trong vùng cho phép';
+          setTimeout(() => { quantityLimitMsg = null; markDirty(); }, 3000);
+          placingFurnitureId.set(null);
+          markDirty();
+          return;
+        } else if (res.status === 'choose') {
+          stagePopup = { itemId: id, stageIds: res.stageIds, x: sc.x, y: sc.y };
+        }
+      }
       selectedElementId.set(id);
       selectedTool.set('select');
       placingFurnitureId.set(null);
+      markDirty();
     } else if (itemType === 'door') {
       // Find nearest wall to drop point and add door there
       const floor = currentFloor;
@@ -3498,6 +3688,15 @@
     ondragleave={onDragLeave}
     ondrop={onDrop}
   ></canvas>
+  {#if stagePopup}
+    <StageChoicePopup
+      stageIds={stagePopup.stageIds}
+      x={stagePopup.x}
+      y={stagePopup.y}
+      onPick={(id) => { setItemStage(stagePopup!.itemId, id); stagePopup = null; markDirty(); }}
+      onCancel={() => { stagePopup = null; }}
+    />
+  {/if}
   <!-- Elevation pick mode hint chip -->
   {#if pickingElevation}
     <div class="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-slate-800/90 text-white text-xs font-medium px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none flex items-center gap-1.5">

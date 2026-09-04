@@ -88,6 +88,7 @@ type IncomingPosition = {
   scale?: number;
   orientation?: string;
   elevationM?: number;
+  stageId?: string | null;
 };
 
 /**
@@ -113,11 +114,12 @@ function positionKey(p: {
 // POST / — upsert snapshot by layoutId+date, manage positions
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { layoutId, date, note, positions, version } = req.body as {
+    const { layoutId, date, note, positions, version, zones } = req.body as {
       layoutId: string;
       date: string;
       note?: string;
       version?: number;
+      zones?: unknown;
       positions?: Array<{
         productId: string;
         x: number;
@@ -126,6 +128,7 @@ router.post('/', async (req: Request, res: Response) => {
         scale?: number;
         orientation?: string;
         elevationM?: number;
+        stageId?: string | null;
       }>;
     };
 
@@ -168,6 +171,7 @@ router.post('/', async (req: Request, res: Response) => {
         scale: p.scale ?? 1.0,
         orientation: p.orientation ?? 'bottom',
         elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
+        stageId: p.stageId ?? null,
         updatedBy: before?.updatedBy ?? me.email,
         updatedAt: before?.updatedAt ?? now,
       };
@@ -179,6 +183,7 @@ router.post('/', async (req: Request, res: Response) => {
       },
       update: {
         note,
+        zones: (zones ?? undefined) as any,
         version: { increment: 1 },
         positions: { deleteMany: {}, create: withAuthor },
       },
@@ -186,6 +191,7 @@ router.post('/', async (req: Request, res: Response) => {
         layoutId,
         date: parsedDate,
         note,
+        zones: (zones ?? undefined) as any,
         createdBy: req.user!.email,
         positions: { create: withAuthor },
       },
