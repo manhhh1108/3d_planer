@@ -73,6 +73,7 @@
 
   // Furniture drag state
   let draggingFurnitureId: string | null = $state(null);
+  let furnitureDidMove = $state(false);
   let dragOffset: Point = { x: 0, y: 0 };
   let dragStartRotation: number = 0;
   let dragWasWallSnapped: boolean = false;
@@ -2260,6 +2261,7 @@
         selectElement(fi.id, e.shiftKey, e.ctrlKey || e.metaKey);
         if (!e.shiftKey && !fi.locked) {
           draggingFurnitureId = fi.id;
+          furnitureDidMove = false;
           commitFurnitureMove(); // snapshot before drag for undo
           dragOffset = { x: wp.x - fi.position.x, y: wp.y - fi.position.y };
           dragStartRotation = fi.rotation;
@@ -2656,6 +2658,7 @@
       return;
     }
     if (draggingFurnitureId) {
+      furnitureDidMove = true;
       const basePos = { x: mousePos.x - dragOffset.x, y: mousePos.y - dragOffset.y };
       const fi = currentFloor?.furniture.find(f => f.id === draggingFurnitureId);
       if (fi) {
@@ -2817,7 +2820,7 @@
     if (draggingZoneId) { draggingZoneId = null; endUndoGroup('Dời vùng'); markDirty(); }
     const movedId = draggingFurnitureId;
     if (draggingFurnitureId) commitFurnitureMove();
-    if (movedId) {
+    if (movedId && furnitureDidMove) {
       // Gán lại vùng/công đoạn sau khi dời tay (enforce). Với chính sách 'block'
       // ta KHÔNG gỡ item; assignZoneToItem đã đặt cờ outOfZone để hiển thị cảnh báo.
       const sc = worldToScreen(mousePos.x, mousePos.y);
