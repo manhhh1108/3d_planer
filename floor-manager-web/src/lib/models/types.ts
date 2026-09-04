@@ -91,6 +91,10 @@ export interface FurnitureItem {
   stageId?: string;
   /** Cờ tạm (không persist): đặt ngoài mọi vùng khi layout đã có vùng. */
   outOfZone?: boolean;
+  /** Khoảng cách yêu cầu quanh block, cm. Ghi đè global. */
+  marginCm?: number;
+  /** Cờ tạm (không persist): item đang va chạm/quá gần item khác. */
+  colliding?: boolean;
   width?: number;   // cm
   depth?: number;   // cm
   height?: number;  // cm
