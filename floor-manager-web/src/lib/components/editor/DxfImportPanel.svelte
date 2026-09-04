@@ -3,7 +3,7 @@
   import { api } from '$lib/services/api';
   import type { DxfInsertData } from '$lib/services/api';
   import { furnitureCatalog } from '$lib/utils/furnitureCatalog';
-  import { addFurniture, activeFloor, layoutDimsCm, revalidateZones } from '$lib/stores/project';
+  import { addFurniture, activeFloor, layoutDimsCm, assignZoneToItem } from '$lib/stores/project';
 
   let { layoutId, onClose }: { layoutId: string; onClose: () => void } = $props();
 
@@ -121,6 +121,7 @@
     let placed = 0;
     let duplicates = 0;
     const skipped = new Map<string, number>();
+    const newIds: string[] = [];
 
     for (const ins of inserts) {
       const catalogId = mapping[ins.blockName];
@@ -129,17 +130,20 @@
         duplicates++;
         continue;
       }
-      if (addFurniture(catalogId, { x: ins.xCm, y: ins.yCm }, ins.rotationDeg)) {
+      const newId = addFurniture(catalogId, { x: ins.xCm, y: ins.yCm }, ins.rotationDeg);
+      if (newId) {
         placed++;
+        newIds.push(newId);
       } else {
         skipped.set(ins.blockName, (skipped.get(ins.blockName) ?? 0) + 1);
       }
     }
 
-    // Nhập DXF là đường không thủ công (Q7): chỉ đặt cờ outOfZone cho các block
-    // vừa thêm, để người dùng tự gán công đoạn. Gọi revalidate một lần cho cả lô
-    // thay vì assignZoneToItem từng item (rẻ hơn, không bật popup).
-    if (placed > 0) revalidateZones();
+    // Nhập DXF là đường không thủ công (Q7): auto-gán vùng/công đoạn cho từng
+    // block vừa thêm giống nhân bản/dán — enforce=false nên chỉ cảnh báo, không
+    // bật popup: tự gán công đoạn khi lọt trọn một vùng đơn công đoạn, đánh dấu
+    // out-of-zone nếu ngoài vùng, để trống nếu vùng đa công đoạn.
+    for (const id of newIds) assignZoneToItem(id, false);
 
     // Nhớ mapping cho lần sau. Hỏng thì thôi — không được làm hỏng lần nhập vừa xong.
     try {

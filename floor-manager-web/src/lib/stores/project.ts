@@ -1094,6 +1094,10 @@ export function assignZoneToItem(itemId: string, enforce: boolean): ZoneAssignRe
     return { status: 'assigned', zoneId: zone.id, stageId: zone.allowedStageIds[0] };
   }
   if (zone.allowedStageIds.length >= 2) {
+    if (item.stageId && zone.allowedStageIds.includes(item.stageId)) {
+      setItemZone(itemId, item.stageId, false);
+      return { status: 'assigned', zoneId: zone.id, stageId: item.stageId };
+    }
     if (enforce) return { status: 'choose', zoneId: zone.id, stageIds: zone.allowedStageIds };
     setItemZone(itemId, undefined, false);
     return { status: 'choose', zoneId: zone.id, stageIds: zone.allowedStageIds };
@@ -1127,12 +1131,15 @@ export function revalidateZones() {
   const floor = p?.floors.find((f) => f.id === p.activeFloorId);
   if (!p || !floor) return;
   const zones = floor.zones ?? [];
+  let changed = false;
   for (const item of floor.furniture) {
-    if (zones.length === 0) { item.outOfZone = false; continue; }
-    const zone = resolveZoneForItem(itemFootprint(item), zones);
-    item.outOfZone = !zone && !item.stageId;
+    const next = zones.length === 0 ? false : (() => {
+      const zone = resolveZoneForItem(itemFootprint(item), zones);
+      return !zone && !item.stageId;
+    })();
+    if ((item.outOfZone ?? false) !== next) { item.outOfZone = next; changed = true; }
   }
-  currentProject.set({ ...p });
+  if (changed) currentProject.set({ ...p });
 }
 
 // Layer visibility store (used by LayersPanel and FloorPlanCanvas)

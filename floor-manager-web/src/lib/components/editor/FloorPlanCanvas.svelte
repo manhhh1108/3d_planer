@@ -14,6 +14,7 @@
   import ContextMenu from './ContextMenu.svelte';
   import StageChoicePopup from './StageChoicePopup.svelte';
   import { assignZoneToItem, setItemStage, revalidateZones } from '$lib/stores/project';
+  import { applyWithoutDirty } from '$lib/stores/saveStatus';
   import { projectSettings, formatLength, formatArea } from '$lib/stores/settings';
   import type { ProjectSettings } from '$lib/stores/settings';
   import type { CanvasState } from '$lib/utils/canvasInteraction';
@@ -87,14 +88,6 @@
 
   // Popup chọn công đoạn khi item rơi vào vùng có ≥2 công đoạn cho phép
   let stagePopup = $state<{ itemId: string; stageIds: string[]; x: number; y: number } | null>(null);
-
-  function handleAssign(itemId: string, screenX: number, screenY: number) {
-    const res = assignZoneToItem(itemId, true);
-    if (res.status === 'choose') {
-      stagePopup = { itemId, stageIds: res.stageIds, x: screenX, y: screenY };
-    }
-    markDirty();
-  }
 
   // Guide lines
   let selectedGuideId: string | null = $state(null);
@@ -1493,7 +1486,7 @@
       // revalidateZones() gọi currentProject.set nên guard bên dưới ngăn lặp vô hạn.
       if (!zonesRevalidated && f && f.furniture.length > 0) {
         zonesRevalidated = true;
-        revalidateZones();
+        applyWithoutDirty(() => revalidateZones());
       }
     });
     const unsub2 = selectedElementId.subscribe((id) => { currentSelectedId = id; markDirty(); });
