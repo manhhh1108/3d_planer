@@ -70,7 +70,7 @@ export interface Window {
  *  side   — nằm nghiêng, mặt bên chạm sàn
  *  end    — dựng đứng, mặt đầu chạm sàn
  */
-export type BlockOrientation = 'bottom' | 'top' | 'side' | 'end';
+export type BlockOrientation = 'bottom' | 'top' | 'side' | 'side2' | 'end' | 'end2';
 
 export interface FurnitureItem {
   id: string;

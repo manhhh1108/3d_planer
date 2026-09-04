@@ -23,8 +23,10 @@ export function orientedDims(
 ): { width: number; depth: number; height: number } {
 	switch (o) {
 		case 'side':
+		case 'side2':
 			return { width: def.width, depth: def.height, height: def.depth };
 		case 'end':
+		case 'end2':
 			return { width: def.height, depth: def.depth, height: def.width };
 		// Lật úp chỉ quay block 180°, ba chiều giữ nguyên như khi nằm đáy
 		case 'top':
@@ -46,9 +48,11 @@ export function unorientDims(
 ): { width: number; depth: number; height: number } {
 	switch (o) {
 		case 'side':
+		case 'side2':
 			// side: {w, h, d} <- gốc {w, d, h}
 			return { width: shown.width, depth: shown.height, height: shown.depth };
 		case 'end':
+		case 'end2':
 			// end: {h, d, w} <- gốc {w, d, h}
 			return { width: shown.height, depth: shown.depth, height: shown.width };
 		case 'top':

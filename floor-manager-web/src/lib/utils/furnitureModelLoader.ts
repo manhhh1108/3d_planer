@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { base } from '$app/paths';
 import { createFurnitureModel } from './furnitureModels3d';
+import { normalizeModelUpright } from './uprightNormalize';
 import type { FurnitureDef } from './furnitureCatalog';
 
 // Giống FILES_BASE trong services/api.ts: giữ nguyên /api để proxy forward được.
@@ -342,6 +343,10 @@ export function createFurnitureModelWithGLB(
             }
           });
           if (cadUrl) {
+            // Khối CAD có thể được dựng lệch trục trong file gốc → chuẩn hóa về
+            // thẳng trục thế giới (giữ trục đứng) TRƯỚC khi scale phi-đều, để lật
+            // side/end rơi đúng mặt và đáy phẳng chạm sàn. No-op nếu đã thẳng.
+            normalizeModelUpright(glbModel);
             // CAD mesh is in meters, scale to cm to match our coordinate system
             scaleToFit(glbModel, def, { file: 'cad', scale: 100 });
             // Chỉ tô cho mesh CAD. Model Kenney có vật liệu/texture riêng, tô
