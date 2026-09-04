@@ -279,7 +279,13 @@ export function drawWall(
 
 // ── Furniture drawing ────────────────────────────────────────────────
 
-export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected: boolean): void {
+export function drawFurnitureItem(
+  cs: CanvasState,
+  item: FurnitureItem,
+  selected: boolean,
+  stageColorOverride?: string,
+  outOfZone?: boolean,
+): void {
   const { ctx, zoom } = cs;
   const cat = getCatalogItem(item.catalogId);
   if (!cat) return;
@@ -295,7 +301,7 @@ export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected
   ctx.rotate(angle);
   ctx.scale(Math.sign(sx) || 1, Math.sign(sy) || 1);
 
-  const itemColor = item.color ?? cat.color;
+  const itemColor = stageColorOverride ?? item.color ?? cat.color;
   const strokeColor = selected ? '#3b82f6' : itemColor;
   ctx.lineWidth = selected ? 2 : 1;
   // Footprint từ CAD là hình chiếu của block khi NẰM ĐÁY. Lật nghiêng hay dựng
@@ -391,6 +397,14 @@ export function drawFurnitureItem(cs: CanvasState, item: FurnitureItem, selected
     ctx.lineTo(ax, rotY + ay);
     ctx.lineTo(ax - 1, rotY + ay - 2);
     ctx.stroke();
+  }
+
+  if (outOfZone) {
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(-w / 2 - 3, -d / 2 - 3, w + 6, d + 6);
+    ctx.setLineDash([]);
   }
 
   ctx.restore();

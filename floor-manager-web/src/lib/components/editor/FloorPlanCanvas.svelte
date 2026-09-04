@@ -529,7 +529,8 @@
   // ── Delegating wrappers to extracted modules ──────────────────────────
 
   function drawFurniture(item: FurnitureItem, selected: boolean) {
-    drawFurnitureItem(getCS(), item, selected);
+    const col = item.stageId ? currentStages.find((s) => s.id === item.stageId)?.color : undefined;
+    drawFurnitureItem(getCS(), item, selected, col, item.outOfZone);
   }
 
   function drawWall(w: Wall, selected: boolean) {
