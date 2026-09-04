@@ -19,6 +19,8 @@
   import TopBar from '$lib/components/toolbar/TopBar.svelte';
   import BuildPanel from '$lib/components/sidebar/BuildPanel.svelte';
   import PropertiesPanel from '$lib/components/sidebar/PropertiesPanel.svelte';
+  import ZonePropertiesPanel from '$lib/components/sidebar/ZonePropertiesPanel.svelte';
+  import { selectedZoneId } from '$lib/stores/project';
   import LayersPanel from '$lib/components/sidebar/LayersPanel.svelte';
 
   let showLayers = $state(false);
@@ -302,7 +304,11 @@
         {#if showLayers && mode === '2d'}
           <LayersPanel />
         {/if}
-        <PropertiesPanel is3D={mode === '3d'} />
+        {#if $selectedZoneId}
+          <ZonePropertiesPanel />
+        {:else}
+          <PropertiesPanel is3D={mode === '3d'} />
+        {/if}
         {#if showComments && backendLayoutId}
           <div class="w-72 flex-shrink-0 border-l border-gray-200 flex flex-col overflow-hidden">
             <CommentPanel
