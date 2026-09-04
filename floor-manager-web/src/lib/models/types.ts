@@ -87,6 +87,10 @@ export interface FurnitureItem {
   updatedAt?: string | null;
   // Per-item overrides (optional — falls back to catalog defaults)
   color?: string;
+  /** Công đoạn đang làm tại vị trí này (Stage.id). Chi phối màu hiển thị. */
+  stageId?: string;
+  /** Cờ tạm (không persist): đặt ngoài mọi vùng khi layout đã có vùng. */
+  outOfZone?: boolean;
   width?: number;   // cm
   depth?: number;   // cm
   height?: number;  // cm

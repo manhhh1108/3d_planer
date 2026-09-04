@@ -162,6 +162,7 @@ export interface ApiPosition {
 	orientation: string;
 	/** Cao độ đáy block so với sàn, mét */
 	elevationM?: number;
+	stageId?: string | null;
 	/** Email người thao tác cuối với block này */
 	updatedBy?: string | null;
 	updatedAt?: string | null;
@@ -414,6 +415,7 @@ export const api = {
 				scale?: number;
 				orientation?: string;
 				elevationM?: number;
+				stageId?: string | null;
 			}[];
 			zones?: ApiZone[];
 		}) => http<ApiSnapshot>('/snapshots', { method: 'POST', body: JSON.stringify(data) }),
