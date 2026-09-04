@@ -38,6 +38,19 @@ describe('/api/stages', () => {
     expect(all.body.some((s: any) => s.id === id)).toBe(true);
   });
 
+  it('PATCH/DELETE id không tồn tại trả 404', async () => {
+    const patched = await request(app)
+      .patch('/api/stages/nope')
+      .set('Cookie', admin())
+      .send({ name: 'Y' });
+    expect(patched.status).toBe(404);
+    expect(patched.body.error).toBe('Not found');
+
+    const del = await request(app).delete('/api/stages/nope').set('Cookie', admin());
+    expect(del.status).toBe(404);
+    expect(del.body.error).toBe('Not found');
+  });
+
   it('VIEWER được list nhưng không được tạo', async () => {
     const list = await request(app).get('/api/stages').set('Cookie', viewer());
     expect(list.status).toBe(200);

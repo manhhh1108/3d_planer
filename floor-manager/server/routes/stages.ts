@@ -47,14 +47,15 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const stage = await prisma.stage.update({
       where: { id: String(req.params.id) },
       data: {
-        ...(name !== undefined ? { name } : {}),
-        ...(color !== undefined ? { color } : {}),
-        ...(order !== undefined ? { order: Number(order) } : {}),
+        ...(typeof name === 'string' && name.trim() !== '' ? { name } : {}),
+        ...(typeof color === 'string' && color.trim() !== '' ? { color } : {}),
+        ...(Number.isFinite(Number(order)) ? { order: Number(order) } : {}),
         ...(active !== undefined ? { active } : {}),
       },
     });
     res.json(stage);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2025') return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: String(err) });
   }
 });
@@ -67,7 +68,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
       data: { active: false },
     });
     res.json(stage);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2025') return res.status(404).json({ error: 'Not found' });
     res.status(500).json({ error: String(err) });
   }
 });
