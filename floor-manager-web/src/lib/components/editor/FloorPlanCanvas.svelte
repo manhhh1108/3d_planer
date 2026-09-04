@@ -3,7 +3,7 @@
   import { activeFloor, selectedTool, selectedElementId, selectedElementIds, selectedRoomId, addWall, addDoor, addWindow, updateWall, moveWallEndpoint, updateDoor, updateWindow, addFurniture, moveFurniture, commitFurnitureMove, rotateFurniture, setFurnitureRotation, scaleFurniture, removeElement, placingFurnitureId, placingRotation, placingDoorType, placingWindowType, duplicateDoor, duplicateWindow, duplicateFurniture, duplicateWall, moveWallParallel, splitWall, snapEnabled, placingStair, addStair, moveStair, updateStair, placingColumn, placingColumnShape, addColumn, moveColumn, updateColumn, calibrationMode, calibrationPoints, updateBackgroundImage, setBackgroundImage, canvasZoom, canvasCamX, canvasCamY, panMode, showFurnitureStore, addGuide, moveGuide, removeGuide, beginUndoGroup, endUndoGroup, beginDrag, layerVisibility, updateRoom, addMeasurement, removeMeasurement, addAnnotation, removeAnnotation, updateAnnotation, addTextAnnotation, removeTextAnnotation, updateTextAnnotation, moveTextAnnotation, toggleFurnitureLock, createGroup, ungroupElements, findGroupForElement, elevationWallId, elevationPickMode, remainingQuantity, quantityLimitHit, duplicateBlockedReason, externalPlacements } from '$lib/stores/project';
   import { layoutBgFile, layoutDimsCm, layoutBgTransform } from '$lib/stores/project';
   import { hitLayoutBg, layoutBgBounds, layoutBgCenter, DEFAULT_LAYOUT_BG_TRANSFORM, type LayoutBgTransform } from '$lib/utils/layoutBackground';
-  import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation } from '$lib/models/types';
+  import type { Point, Wall, Door, Window as Win, FurnitureItem, Stair, Column, GuideLine, Measurement, Annotation, TextAnnotation, WorkingZone } from '$lib/models/types';
   import type { Floor, Room } from '$lib/models/types';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
@@ -18,7 +18,8 @@
   import { drawWall as _drawWall, wallLength, wallPointAt, wallTangentAt, wallThicknessScreen as _wallThicknessScreen, drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
   import { drawZones } from '$lib/utils/zoneRenderer';
-  import { selectedZoneId, addZone, removeZone } from '$lib/stores/project';
+  import { pointInPolygon as zonePointInPolygon, polygonArea } from '$lib/utils/zoneGeometry';
+  import { selectedZoneId, addZone, removeZone, moveZone, moveZoneVertex } from '$lib/stores/project';
   import { stages } from '$lib/stores/stages';
   import type { ApiStage } from '$lib/services/api';
 
@@ -75,6 +76,11 @@
   let dragWasWallSnapped: boolean = false;
   let draggingDoorId: string | null = $state(null);
   let draggingWindowId: string | null = $state(null);
+
+  // Zone drag state (di chuyển cả vùng / kéo đỉnh vùng)
+  let draggingZoneId: string | null = $state(null);
+  let zoneDragLast: Point = { x: 0, y: 0 };
+  let draggingZoneVertex: { zoneId: string; index: number } | null = $state(null);
 
   // Guide lines
   let selectedGuideId: string | null = $state(null);
@@ -1731,6 +1737,32 @@
     return _findFurnitureAt(p, currentFloor.furniture);
   }
 
+  /** Vùng đang chứa điểm (ưu tiên diện tích nhỏ nhất khi chồng). */
+  function findZoneAt(p: Point): WorkingZone | null {
+    if (!currentFloor?.zones) return null;
+    let best: WorkingZone | null = null;
+    let bestArea = Infinity;
+    for (const z of currentFloor.zones) {
+      if (zonePointInPolygon(p, z.points)) {
+        const a = polygonArea(z.points);
+        if (a < bestArea) { bestArea = a; best = z; }
+      }
+    }
+    return best;
+  }
+
+  /** Đỉnh vùng đang chọn gần con trỏ (để kéo). */
+  function findZoneVertexAt(p: Point): { zoneId: string; index: number } | null {
+    if (!currentFloor?.zones || !currentSelectedZoneId) return null;
+    const z = currentFloor.zones.find((z) => z.id === currentSelectedZoneId);
+    if (!z) return null;
+    const r = 8 / zoom;
+    for (let i = 0; i < z.points.length; i++) {
+      if (Math.hypot(p.x - z.points[i].x, p.y - z.points[i].y) < r) return { zoneId: z.id, index: i };
+    }
+    return null;
+  }
+
   function findColumnAt(p: Point): Column | null {
     if (!currentFloor?.columns) return null;
     for (const col of currentFloor.columns) {
@@ -2024,6 +2056,8 @@
           return;
         }
       }
+      const last = zonePoints[zonePoints.length - 1];
+      if (last && last.x === pt.x && last.y === pt.y) { return; }
       zonePoints = [...zonePoints, pt];
       markDirty();
       return;
@@ -2244,6 +2278,26 @@
           selectedElementIds.set(new Set());
           selectedRoomId.set(null);
         } else {
+          // Kéo đỉnh của vùng đang chọn trước, rồi tới chọn/kéo cả vùng.
+          // Đặt sau khi mọi phần tử (furniture/wall/door/window) đã trượt,
+          // ngay trước marquee, nên phần tử nằm trên vùng vẫn được chọn trước.
+          const zv = findZoneVertexAt(wp);
+          if (zv) {
+            draggingZoneVertex = zv;
+            beginUndoGroup();
+            return;
+          }
+          const zone = findZoneAt(wp);
+          if (zone) {
+            selectedElementId.set(null);
+            selectedElementIds.set(new Set());
+            selectedRoomId.set(null);
+            selectedZoneId.set(zone.id);
+            draggingZoneId = zone.id;
+            zoneDragLast = wp;
+            beginUndoGroup();
+            return;
+          }
           // Bấm trúng nền thì mở bảng chỉnh nền, giống hệt ảnh nền theo tầng.
           // Không nuốt cú bấm: nền phủ kín bản vẽ nên vẫn phải cho chọn vùng.
           if (overLayoutBg(wp)) layoutBgPanelOpen.set(true);
@@ -2550,6 +2604,19 @@
       const basePos = { x: mousePos.x - stairDragOffset.x, y: mousePos.y - stairDragOffset.y };
       moveStair(draggingStairId, { x: snap(basePos.x), y: snap(basePos.y) });
     }
+    if (draggingZoneVertex) {
+      moveZoneVertex(draggingZoneVertex.zoneId, draggingZoneVertex.index, { x: snap(mousePos.x), y: snap(mousePos.y) });
+      markDirty();
+      return;
+    }
+    if (draggingZoneId) {
+      const dx = mousePos.x - zoneDragLast.x;
+      const dy = mousePos.y - zoneDragLast.y;
+      moveZone(draggingZoneId, dx, dy);
+      zoneDragLast = mousePos;
+      markDirty();
+      return;
+    }
     if (draggingFurnitureId) {
       const basePos = { x: mousePos.x - dragOffset.x, y: mousePos.y - dragOffset.y };
       const fi = currentFloor?.furniture.find(f => f.id === draggingFurnitureId);
@@ -2708,6 +2775,8 @@
       marqueeEnd = null;
     }
 
+    if (draggingZoneVertex) { draggingZoneVertex = null; endUndoGroup('Sửa đỉnh vùng'); markDirty(); }
+    if (draggingZoneId) { draggingZoneId = null; endUndoGroup('Dời vùng'); markDirty(); }
     if (draggingFurnitureId) commitFurnitureMove();
     if (draggingHandle) commitFurnitureMove();
     if (draggingWallEndpoint) commitFurnitureMove();
