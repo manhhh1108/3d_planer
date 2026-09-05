@@ -13,5 +13,5 @@ export const currentUser = writable<AuthUser | null>(null);
 /** true nếu user có quyền tạo/sửa/xóa (ADMIN hoặc PLANNING) */
 export const canEdit = derived(currentUser, (u) => u?.role === 'ADMIN' || u?.role === 'PLANNING');
 
-/** true nếu user là ADMIN — quản lý site, layout, user */
+/** true nếu user là ADMIN — quản lý site, người dùng, công đoạn (layout thì PLANNING cũng làm được) */
 export const isAdmin = derived(currentUser, (u) => u?.role === 'ADMIN');

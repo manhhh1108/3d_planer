@@ -19,21 +19,12 @@ const upload = multer({ dest: TMP_DIR, limits: { fileSize: 50 * 1024 * 1024 } })
 /** Ảnh dùng làm nền mặt bằng — lưu nguyên bản, không qua bước dựng SVG như DXF */
 const IMAGE_BG_EXTS = ['png', 'jpg', 'jpeg', 'webp'];
 
-const WALLS_PATH = /^\/[^/]+\/walls\/?$/;
-const LOCK_PATH = /^\/[^/]+\/lock\/?$/;
-
+// Layout là mặt bằng thi công — người lập kế hoạch làm chủ nó: tạo, sửa kích
+// thước, dựng tường, thay nền bản vẽ, xoá. Còn Site (nhà máy, kho bãi chứa các
+// layout) vẫn chỉ ADMIN, xem routes/sites.ts.
 router.use((req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  // Tường là nội dung mặt bằng chứ không phải cấu hình layout, nên người lập
-  // kế hoạch sửa được — phần còn lại vẫn chỉ ADMIN.
-  if (req.method === 'PUT' && WALLS_PATH.test(req.path)) {
-    return requireRole('ADMIN', 'PLANNING')(req, _res, next);
-  }
-  // Giành/nhả khoá chỉnh sửa — ai sửa được mặt bằng thì giữ khoá được
-  if (LOCK_PATH.test(req.path)) {
-    return requireRole('ADMIN', 'PLANNING')(req, _res, next);
-  }
-  return requireRole('ADMIN')(req, _res, next);
+  return requireRole('ADMIN', 'PLANNING')(req, _res, next);
 });
 
 /** Số tường tối đa cho một layout — chặn client gửi blob khổng lồ */
