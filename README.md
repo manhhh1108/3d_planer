@@ -44,7 +44,25 @@ npm run dev
 
 Mở http://localhost:5173 → tạo mặt bằng (site) → tạo layout → tạo dự án + sản phẩm → kéo thả block → "Lưu Snapshot".
 
-Test backend: `npm test` trong `floor-manager/` (cần DB `floormanager_test` — script tự chạy migrate).
+## Test
+
+| Lệnh | Ở đâu | Kiểm gì |
+|---|---|---|
+| `npm test` | `floor-manager/` | API + hội tụ dữ liệu (vitest + supertest, DB `floormanager_test`, tự migrate) |
+| `npm test` | `floor-manager-web/` | Hàm thuần: hình học vùng, va chạm, biên dạng, quy tắc màu |
+| `npm run test:e2e` | `floor-manager-web/` | Giao diện thật qua Playwright — xem bên dưới |
+
+E2E tự dựng backend riêng ở cổng 4300 trên DB `floormanager_e2e` và web ở cổng
+5273, nên không đụng vào DB dev lẫn DB test. Dữ liệu do `floor-manager/scripts/e2eSeed.ts`
+dựng lại từ đầu mỗi lần chạy. Cần Postgres đang chạy và `npx playwright install chromium`
+một lần.
+
+Đọc màu trên canvas là cách duy nhất kiểm được "block đổi màu theo công đoạn" và
+"cảnh báo va chạm": canvas 2D so trực tiếp mã màu, còn 3D so TÔNG MÀU vì ánh sáng
+và tone mapping làm mã màu lệch xa màu gốc. Mỗi khẳng định đều dựng hai mặt bằng
+chỉ khác nhau đúng một điểm rồi so hai trạng thái, thay vì bám vào một ngưỡng
+số pixel tuyệt đối.
+
 
 ## Khái niệm chính
 

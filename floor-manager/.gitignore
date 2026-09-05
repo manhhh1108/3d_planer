@@ -5,3 +5,6 @@ uploads/
 *.log
 
 /generated/prisma
+
+# E2E storage (ảnh/CAD sinh ra khi chạy Playwright)
+/e2e-storage

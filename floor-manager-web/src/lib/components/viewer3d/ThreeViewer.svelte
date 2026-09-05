@@ -739,6 +739,8 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = false;
     renderer.toneMapping = THREE.NoToneMapping;
+    // Mốc bám cho test giao diện, cùng quy ước với canvas 2D (data-plan-canvas)
+    renderer.domElement.dataset.viewer3dCanvas = '';
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);

@@ -12,9 +12,12 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "vitest run"
+		"test": "vitest run",
+		"test:e2e": "npm --prefix ../floor-manager run e2e:prepare && playwright test",
+		"test:e2e:ui": "npm --prefix ../floor-manager run e2e:prepare && playwright test --ui"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.63.0",
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/adapter-node": "^5.5.3",
 		"@sveltejs/kit": "^2.50.2",
