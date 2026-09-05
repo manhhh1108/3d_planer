@@ -10,6 +10,7 @@ import type { ProjectSettings } from '$lib/stores/settings';
 import { formatLength } from '$lib/stores/settings';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
+import { blockColor } from '$lib/utils/blockColor';
 
 // ── Coordinate conversion (local helpers using CanvasState) ─────────
 
@@ -302,7 +303,7 @@ export function drawFurnitureItem(
   ctx.rotate(angle);
   ctx.scale(Math.sign(sx) || 1, Math.sign(sy) || 1);
 
-  const itemColor = stageColorOverride ?? item.color ?? cat.color;
+  const itemColor = blockColor(item, cat.color, () => stageColorOverride);
   const strokeColor = selected ? '#3b82f6' : itemColor;
   ctx.lineWidth = selected ? 2 : 1;
   // Footprint từ CAD là hình chiếu của block khi NẰM ĐÁY. Lật nghiêng hay dựng
