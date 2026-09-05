@@ -10,6 +10,9 @@
     "test": "npm run test:migrate && cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_test vitest run",
     "test:migrate": "cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_test prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
+    "e2e:prepare": "tsx scripts/e2eCreateDb.ts && npm run e2e:migrate && npm run e2e:seed",
+    "e2e:migrate": "cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_e2e prisma migrate deploy",
+    "e2e:seed": "cross-env DATABASE_URL=postgresql://floormanager:floormanager123@localhost:5432/floormanager_e2e tsx scripts/e2eSeed.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
