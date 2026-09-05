@@ -18,6 +18,7 @@
   import { decideCameraFit, initialCameraFitState, computeFitBox, type CameraFitState } from '$lib/utils/cameraFit';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
   import { propertiesPanelOpen } from '$lib/stores/ui';
+  import { stages, stageColor, loadStages } from '$lib/stores/stages';
 
   /**
    * Bảng thuộc tính (fixed, rộng 20rem) đè lên mép phải khung 3D. Khi nó mở,
@@ -1318,7 +1319,10 @@
         },
         orientation,
       );
-      const furnitureDef = { ...cat, color: fi.color ?? cat.color, ...base };
+      // Màu công đoạn (do vùng gán) đè lên màu riêng của block, đúng thứ tự ưu
+      // tiên như canvas 2D — hai khung nhìn phải cùng một màu cho cùng một block.
+      const stageCol = stageColor(fi.stageId);
+      const furnitureDef = { ...cat, color: stageCol ?? fi.color ?? cat.color, ...base };
 
       const model = createFurnitureModelWithGLB(fi.catalogId, furnitureDef, () => {
         // GLB thay chỗ mesh tạm -> hình khác, phải đặt lại mặt tiếp sàn
@@ -1587,6 +1591,13 @@
       if (f) rebuildScene();
     });
 
+    // Danh sách công đoạn nạp bất đồng bộ; nạp xong (hoặc admin đổi màu) thì
+    // phải dựng lại để block đổi sang màu công đoạn.
+    loadStages();
+    const unsubStages = stages.subscribe(() => {
+      if (scene && currentFloor) rebuildScene();
+    });
+
     // Nền DXF của layout -> mặt phẳng sàn 3D (hiển thị khi xem top-view)
     const unsubBg = layoutBgFile.subscribe((url) => {
       bgUrl = url;
@@ -1604,6 +1615,7 @@
     return () => {
       resizeObs.disconnect();
       unsub();
+      unsubStages();
       unsubBg();
       unsubBgT();
       unsubDims();
