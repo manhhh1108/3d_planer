@@ -19,6 +19,7 @@
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
   import { propertiesPanelOpen } from '$lib/stores/ui';
   import { stages, stageColor, loadStages } from '$lib/stores/stages';
+  import { blockColor } from '$lib/utils/blockColor';
 
   /**
    * Bảng thuộc tính (fixed, rộng 20rem) đè lên mép phải khung 3D. Khi nó mở,
@@ -1319,10 +1320,7 @@
         },
         orientation,
       );
-      // Màu công đoạn (do vùng gán) đè lên màu riêng của block, đúng thứ tự ưu
-      // tiên như canvas 2D — hai khung nhìn phải cùng một màu cho cùng một block.
-      const stageCol = stageColor(fi.stageId);
-      const furnitureDef = { ...cat, color: stageCol ?? fi.color ?? cat.color, ...base };
+      const furnitureDef = { ...cat, color: blockColor(fi, cat.color, stageColor), ...base };
 
       const model = createFurnitureModelWithGLB(fi.catalogId, furnitureDef, () => {
         // GLB thay chỗ mesh tạm -> hình khác, phải đặt lại mặt tiếp sàn
