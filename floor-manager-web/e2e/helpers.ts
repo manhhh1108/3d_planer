@@ -18,6 +18,7 @@ if (!fs.existsSync(fixturePath)) {
 
 export const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as {
   admin: { email: string; password: string };
+  planning: { email: string; password: string };
   date: string;
   siteId: string;
   projectId: string;
@@ -45,10 +46,11 @@ export function hexToRgb(hex: string): Rgb {
   ];
 }
 
-export async function login(page: Page) {
+export async function login(page: Page, who: 'admin' | 'planning' = 'admin') {
+  const account = fixture[who];
   await page.goto('/login');
-  await page.locator('input[type="email"]').fill(fixture.admin.email);
-  await page.locator('input[type="password"]').fill(fixture.admin.password);
+  await page.locator('input[type="email"]').fill(account.email);
+  await page.locator('input[type="password"]').fill(account.password);
   await page.locator('button[type="submit"]').click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
 }

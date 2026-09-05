@@ -75,6 +75,20 @@ số pixel tuyệt đối.
 - Đơn vị: editor dùng **cm**, backend dùng **mét** — quy đổi ở `floor-manager-web/src/lib/services/mapping.ts`
 - Xem ngày cũ trên timeline = chỉ đọc (không ghi đè snapshot hôm nay)
 
+## Phân quyền
+
+| | ADMIN | PLANNING | VIEWER |
+|---|:---:|:---:|:---:|
+| Xem tất cả | ✅ | ✅ | ✅ |
+| Bố trí block, lưu snapshot, tường, khoá chỉnh sửa | ✅ | ✅ | ❌ |
+| **Layout**: tạo, sửa, xoá, đổi nền bản vẽ | ✅ | ✅ | ❌ |
+| **Site**: tạo, sửa, xoá | ✅ | ❌ | ❌ |
+| Người dùng, công đoạn, cấu hình hệ thống | ✅ | ❌ | ❌ |
+
+Layout là mặt bằng thi công nên người lập kế hoạch làm chủ; Site là cơ sở vật
+chất (nhà máy, kho bãi) chứa các layout nên vẫn là cấu hình của quản trị. Lưu ý
+giao diện trang site gọi Site là "mặt bằng" — dễ lẫn với Layout.
+
 ## Chưa làm (theo spec)
 
 - Import CAD: DWG→SVG background, STEP/IFC→glTF (pipeline BullMQ — xem `docs/superpowers/specs/2026-08-10-floor-manager-design.md`)

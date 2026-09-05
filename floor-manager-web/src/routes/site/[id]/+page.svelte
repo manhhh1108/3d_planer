@@ -4,7 +4,7 @@
   import { base } from '$app/paths';
   import { goto } from '$app/navigation';
   import { api, FILES_BASE, type ApiLayout, type ApiSite } from '$lib/services/api';
-  import { isAdmin } from '$lib/stores/auth';
+  import { canEdit, isAdmin } from '$lib/stores/auth';
 
   const siteId = $page.params.id ?? '';
 
@@ -256,7 +256,7 @@
   <div class="max-w-5xl mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-5">
       <h2 class="text-base font-bold text-gray-800">Layout ({site?.layouts?.length ?? 0})</h2>
-      {#if $isAdmin}
+      {#if $canEdit}
       <button onclick={openCreateLayout} class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
         + Thêm layout
       </button>
@@ -298,7 +298,7 @@
               </div>
               <div class="mt-2 text-xs text-blue-600 font-medium">Mở editor →</div>
             </a>
-            {#if $isAdmin}
+            {#if $canEdit}
             <div class="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2" onclick={(e) => e.stopPropagation()}>
               {#if layout.backgroundFile}
                 <span class="text-[11px] text-green-600 font-medium flex items-center gap-1">

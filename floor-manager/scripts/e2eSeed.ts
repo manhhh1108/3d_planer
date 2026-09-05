@@ -13,6 +13,8 @@ import prisma from '../server/db.js';
 
 const ADMIN_EMAIL = 'e2e@test.local';
 const ADMIN_PASSWORD = 'E2ePass123!';
+const PLANNING_EMAIL = 'e2e-planning@test.local';
+const PLANNING_PASSWORD = 'E2ePass123!';
 
 const STAGES = [
   { name: 'Gá', color: '#f59e0b' },
@@ -40,13 +42,12 @@ await prisma.$executeRawUnsafe(
   'TRUNCATE TABLE "comments","plan_items","plans","positions","snapshots","layouts","sites","products","projects","assets","users","stages","app_settings" CASCADE',
 );
 
-await prisma.user.create({
-  data: {
-    email: ADMIN_EMAIL,
-    name: 'E2E Admin',
-    role: 'ADMIN',
-    passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 4), // cost thấp cho nhanh
-  },
+const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 4); // cost thấp cho nhanh
+await prisma.user.createMany({
+  data: [
+    { email: ADMIN_EMAIL, name: 'E2E Admin', role: 'ADMIN', passwordHash },
+    { email: PLANNING_EMAIL, name: 'E2E Planning', role: 'PLANNING', passwordHash },
+  ],
 });
 
 await prisma.stage.createMany({
@@ -156,6 +157,7 @@ const layout3dPlain = await bigBlockLayout('E2E 3D khong cong doan', 'BIG-PLAIN'
 
 const fixture = {
   admin: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  planning: { email: PLANNING_EMAIL, password: PLANNING_PASSWORD },
   date: todayStr(),
   siteId: site.id,
   projectId: project.id,

@@ -9,7 +9,7 @@
   import { productCatalog } from '$lib/stores/productCatalog';
   import { polygonArea } from '$lib/utils/zoneGeometry';
   import { api, FILES_BASE } from '$lib/services/api';
-  import { isAdmin } from '$lib/stores/auth';
+  import { canEdit } from '$lib/stores/auth';
 
   /** Rỗng nghĩa là editor đang chạy chế độ local (demo/offline) */
   let { layoutId = '' }: { layoutId?: string } = $props();
@@ -20,7 +20,7 @@
 
   // Backend chỉ cho ADMIN đổi nền layout. Khoá luôn ở giao diện, chứ để bấm
   // được rồi nhận 403 thì người dùng tưởng chức năng hỏng.
-  let canEditBg = $derived(!layoutId || $isAdmin);
+  let canEditBg = $derived(!layoutId || $canEdit);
 
   /**
    * Nền hiện tại có phải bản vẽ CAD không.
@@ -392,7 +392,7 @@
         <button
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={bgUploading || !canEditBg}
-          title={canEditBg ? undefined : 'Chỉ quản trị viên đổi được nền mặt bằng'}
+          title={canEditBg ? undefined : 'Tài khoản của bạn không đổi được nền mặt bằng'}
           onclick={onImportImage}
         >
           <div class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
