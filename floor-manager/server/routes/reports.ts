@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
+import { layoutAreaM2 } from '../zones.js';
+import { resolveStageName, stageNamesById } from '../stageLabel.js';
 
 const router = Router();
 
@@ -23,7 +25,9 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     const totalArea = snapshot.positions.reduce((sum, p) => sum + (p.product.areaM2 ?? 0), 0);
     const totalWeight = snapshot.positions.reduce((sum, p) => sum + (p.product.weightKg ?? 0), 0);
-    const layoutArea = snapshot.layout.widthM * snapshot.layout.heightM;
+    // Diện tích mặt bằng = tổng diện tích các vùng được phép đặt sản phẩm
+    // (thoái lui về khung bao khi chưa vẽ vùng nào).
+    const layoutArea = layoutAreaM2(snapshot.zones, snapshot.layout);
     const usageRate = layoutArea > 0 ? Math.round((totalArea / layoutArea) * 1000) / 10 : 0;
 
     res.json({
@@ -56,8 +60,9 @@ router.get('/by-process', async (req: Request, res: Response) => {
     if (!snapshot) return res.status(404).json({ error: 'Snapshot not found' });
 
     const byProcess: Record<string, { count: number; totalArea: number; totalWeight: number }> = {};
+    const stageNames = await stageNamesById();
     for (const pos of snapshot.positions) {
-      const stage = pos.product.processStage ?? 'Khac';
+      const stage = resolveStageName(pos, stageNames, 'Khac');
       if (!byProcess[stage]) byProcess[stage] = { count: 0, totalArea: 0, totalWeight: 0 };
       byProcess[stage].count++;
       byProcess[stage].totalArea += pos.product.areaM2 ?? 0;
@@ -234,10 +239,11 @@ router.get('/by-process-range', async (req: Request, res: Response) => {
       include: { positions: { include: { product: true } } },
     });
 
+    const stageNames = await stageNamesById();
     const result = snapshots.map((snap) => {
       const raw: Record<string, number> = {};
       for (const pos of snap.positions) {
-        const stage = pos.product.processStage ?? 'Khác';
+        const stage = resolveStageName(pos, stageNames, 'Khác');
         raw[stage] = (raw[stage] ?? 0) + (pos.product.areaM2 ?? 0);
       }
       const stages: Record<string, number> = {};

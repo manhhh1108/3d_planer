@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
+import { layoutAreaM2 } from '../zones.js';
+import { resolveStageName, stageNamesById } from '../stageLabel.js';
 
 const router = Router();
 
@@ -33,8 +35,10 @@ router.get('/', async (req: Request, res: Response) => {
       date: Date;
       createdAt: Date;
       createdBy: string | null;
+      zones: unknown;
       positions: {
         productId: string;
+        stageId: string | null;
         product: {
           areaM2: number | null;
           weightKg: number | null;
@@ -80,6 +84,7 @@ router.get('/', async (req: Request, res: Response) => {
     let totalWeightKg = 0;
     let totalAreaM2 = 0;
     const stageMap = new Map<string, { count: number; totalAreaM2: number; totalWeightKg: number }>();
+    const stageNames = await stageNamesById();
 
     for (const snap of snapshotsByLayout) {
       for (const pos of snap.positions) {
@@ -89,7 +94,7 @@ router.get('/', async (req: Request, res: Response) => {
         totalAreaM2 += area;
         totalWeightKg += weight;
 
-        const stage = pos.product.processStage ?? 'Khac';
+        const stage = resolveStageName(pos, stageNames, 'Khac');
         const entry = stageMap.get(stage) ?? { count: 0, totalAreaM2: 0, totalWeightKg: 0 };
         entry.count++;
         entry.totalAreaM2 += area;
@@ -104,14 +109,16 @@ router.get('/', async (req: Request, res: Response) => {
       const usedAreaM2 = snap
         ? snap.positions.reduce((sum, p) => sum + (p.product.areaM2 ?? 0), 0)
         : 0;
-      const layoutAreaM2 = layout.widthM * layout.heightM;
+      // Mẫu số là tổng diện tích các VÙNG được phép đặt sản phẩm; mặt bằng
+      // chưa vẽ vùng nào thì mới thoái lui về khung bao.
+      const areaM2 = layoutAreaM2(snap?.zones, layout);
       return {
         layoutId: layout.id,
         layoutName: layout.name,
         siteName: layout.site.name,
         usedAreaM2: Math.round(usedAreaM2 * 100) / 100,
-        totalAreaM2: Math.round(layoutAreaM2 * 100) / 100,
-        usagePercent: layoutAreaM2 > 0 ? Math.round((usedAreaM2 / layoutAreaM2) * 1000) / 10 : 0,
+        totalAreaM2: Math.round(areaM2 * 100) / 100,
+        usagePercent: areaM2 > 0 ? Math.round((usedAreaM2 / areaM2) * 1000) / 10 : 0,
         productCount: snap ? snap.positions.length : 0,
       };
     });
