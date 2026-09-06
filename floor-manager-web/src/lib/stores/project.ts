@@ -1060,20 +1060,37 @@ export function moveZoneVertex(id: string, index: number, pos: Point) {
   currentProject.set({ ...p });
 }
 
+/**
+ * Kết quả một lượt sắp xếp — để giao diện nói được vì sao không có gì đổi.
+ * Trước đây hàm im lặng thoát ra, người dùng bấm nút thấy y nguyên và không
+ * biết là chưa vẽ vùng, hay item nằm ngoài vùng, hay chỉ là không lọt.
+ */
+export type ArrangeSummary =
+  | { status: 'no-zones' }
+  | { status: 'no-items-in-zone' }
+  | { status: 'all-locked' }
+  | { status: 'done'; moved: number; skipped: number };
+
 /** Tự động xếp lại item trong từng vùng (hoặc chỉ các zoneIds cho trước). */
-export function autoArrangeZones(zoneIds?: string[]) {
+export function autoArrangeZones(zoneIds?: string[]): ArrangeSummary {
   const globalMargin = getDefaultMarginCm();
   const p = get(currentProject);
   const floor0 = p?.floors.find((f) => f.id === p.activeFloorId);
-  if (!floor0) return;
+  if (!floor0) return { status: 'no-zones' };
+
   const selZones = (floor0.zones ?? []).filter(
     (z) => (!zoneIds || zoneIds.includes(z.id)) && z.points.length >= 3,
   );
-  const hasWork = selZones.some((z) =>
-    floor0.furniture.some((it) => !it.locked && pointInPolygon(it.position, z.points)),
-  );
-  if (!hasWork) return;
+  if (selZones.length === 0) return { status: 'no-zones' };
 
+  const inAnyZone = floor0.furniture.filter((it) =>
+    selZones.some((z) => pointInPolygon(it.position, z.points)),
+  );
+  if (inAnyZone.length === 0) return { status: 'no-items-in-zone' };
+  if (inAnyZone.every((it) => it.locked)) return { status: 'all-locked' };
+
+  let moved = 0;
+  let skipped = 0;
   mutate((f) => {
     const zones = (f.zones ?? []).filter(
       (z) => (!zoneIds || zoneIds.includes(z.id)) && z.points.length >= 3,
@@ -1086,14 +1103,15 @@ export function autoArrangeZones(zoneIds?: string[]) {
         const cat = getCatalogItem(it.catalogId);
         return { id: it.id, width: it.width ?? cat?.width ?? 50, depth: it.depth ?? cat?.depth ?? 50 };
       });
-      const results = arrangeZone(zone.points, arrangeItems, margin);
-      for (const r of results) {
-        if (!r.placed) continue;
+      for (const r of arrangeZone(zone.points, arrangeItems, margin)) {
+        if (!r.placed) { skipped++; continue; }
         const item = f.furniture.find((i) => i.id === r.id);
-        if (item) { item.position = r.position; item.rotation = r.rotationDeg; }
+        if (item) { item.position = r.position; item.rotation = r.rotationDeg; moved++; }
       }
     }
   }, 'Tự động sắp xếp');
+
+  return { status: 'done', moved, skipped };
 }
 
 export type ZoneAssignResult =

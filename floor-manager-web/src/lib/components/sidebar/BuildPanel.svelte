@@ -67,6 +67,47 @@
   let currentTool = $state<Tool>('select');
   selectedTool.subscribe((t) => { currentTool = t; });
 
+  /**
+   * Bấm sắp xếp mà không có gì đổi là chuyện thường: chưa vẽ vùng, item nằm
+   * ngoài vùng, item bị khoá, hoặc vùng chật quá không nhét được. Trước đây
+   * hàm im lặng thoát ra nên người dùng tưởng nút hỏng — nay nói rõ lý do.
+   */
+  let arrangeMsg = $state<{ text: string; ok: boolean } | null>(null);
+  let arrangeMsgTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showArrangeMsg(text: string, ok: boolean) {
+    arrangeMsg = { text, ok };
+    if (arrangeMsgTimer) clearTimeout(arrangeMsgTimer);
+    arrangeMsgTimer = setTimeout(() => { arrangeMsg = null; }, 6000);
+  }
+
+  function runAutoArrange() {
+    const scope = $selectedZoneId ? 'vùng đang chọn' : 'mặt bằng này';
+    const res = autoArrangeZones($selectedZoneId ? [$selectedZoneId] : undefined);
+    revalidateZones();
+
+    switch (res.status) {
+      case 'no-zones':
+        showArrangeMsg(`Chưa có vùng nào trên ${scope} — vẽ vùng bằng công cụ Vùng ở trên rồi thử lại.`, false);
+        break;
+      case 'no-items-in-zone':
+        showArrangeMsg('Không sản phẩm nào nằm trong vùng — kéo sản phẩm vào vùng rồi thử lại.', false);
+        break;
+      case 'all-locked':
+        showArrangeMsg('Mọi sản phẩm trong vùng đang bị khoá 🔒 — mở khoá rồi thử lại.', false);
+        break;
+      case 'done':
+        if (res.moved === 0) {
+          showArrangeMsg(`Không xếp được sản phẩm nào — vùng chật hoặc khoảng cách yêu cầu quá lớn (${res.skipped} sản phẩm giữ nguyên).`, false);
+        } else if (res.skipped > 0) {
+          showArrangeMsg(`Đã xếp ${res.moved} sản phẩm; ${res.skipped} sản phẩm không lọt nên giữ nguyên chỗ cũ.`, false);
+        } else {
+          showArrangeMsg(`Đã xếp lại ${res.moved} sản phẩm.`, true);
+        }
+        break;
+    }
+  }
+
   let totalAreaM2 = $derived.by(() => {
     const f = $currentProject?.floors.find((f) => f.id === $currentProject?.activeFloorId);
     return (f?.zones ?? []).reduce((sum, z) => sum + polygonArea(z.points), 0) / 10000;
@@ -346,8 +387,11 @@
 
         <button
           class="w-full mt-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500"
-          onclick={() => { autoArrangeZones($selectedZoneId ? [$selectedZoneId] : undefined); revalidateZones(); }}
+          onclick={runAutoArrange}
         >Tự động sắp xếp{$selectedZoneId ? ' (vùng đang chọn)' : ' (tất cả vùng)'}</button>
+        {#if arrangeMsg}
+          <p class="px-3 mt-1.5 text-xs {arrangeMsg.ok ? 'text-gray-500' : 'text-amber-600'}">{arrangeMsg.text}</p>
+        {/if}
 
         <h3 class="text-xs font-semibold text-gray-400 uppercase mb-2 mt-3">Annotate</h3>
         <button
