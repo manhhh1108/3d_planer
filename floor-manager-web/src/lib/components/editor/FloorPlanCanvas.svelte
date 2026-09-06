@@ -22,6 +22,7 @@
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
   import { drawZones } from '$lib/utils/zoneRenderer';
   import { pointInPolygon as zonePointInPolygon, polygonArea } from '$lib/utils/zoneGeometry';
+  import { clampZoom } from '$lib/utils/zoom';
   import { selectedZoneId, addZone, removeZone, moveZone, moveZoneVertex } from '$lib/stores/project';
   import { stages } from '$lib/stores/stages';
   import type { ApiStage } from '$lib/services/api';
@@ -1723,8 +1724,8 @@
     const contentH = maxY - minY + padding * 2;
     camX = (minX + maxX) / 2;
     camY = (minY + maxY) / 2;
-    zoom = Math.min(width / contentW, height / contentH, 3);
-    zoom = Math.max(zoom, 0.1);
+    // Trần 3 để canh khung không phóng to quá mức với mặt bằng bé
+    zoom = clampZoom(Math.min(width / contentW, height / contentH, 3));
     markDirty();
   }
 
@@ -2881,7 +2882,7 @@
     if (e.ctrlKey) {
       // Pinch-to-zoom on trackpad (or Ctrl+scroll)
       const factor = e.deltaY > 0 ? 0.95 : 1.05;
-      const newZoom = Math.max(0.1, Math.min(10, zoom * factor));
+      const newZoom = clampZoom(zoom * factor);
       // Zoom towards cursor position
       const worldX = (sx - width / 2) / zoom + camX;
       const worldY = (sy - height / 2) / zoom + camY;
@@ -2895,7 +2896,7 @@
     } else {
       // Regular scroll wheel: zoom towards cursor
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.1, Math.min(10, zoom * factor));
+      const newZoom = clampZoom(zoom * factor);
       // Zoom towards cursor position
       const worldX = (sx - width / 2) / zoom + camX;
       const worldY = (sy - height / 2) / zoom + camY;
@@ -2958,7 +2959,7 @@
       const rect = canvas.getBoundingClientRect();
       const sx = cx - rect.left, sy = cy - rect.top;
       // Zoom about the pinch midpoint (same math as onWheel)
-      const newZoom = Math.max(0.1, Math.min(10, zoom * (dist / (pinchState.dist || dist))));
+      const newZoom = clampZoom(zoom * (dist / (pinchState.dist || dist)));
       const worldX = (sx - width / 2) / zoom + camX;
       const worldY = (sy - height / 2) / zoom + camY;
       camX = worldX - (sx - width / 2) / newZoom;
@@ -3933,7 +3934,7 @@
       title="Zoom Out (−)"
       aria-label="Zoom out"
       onclick={() => {
-        const newZoom = Math.max(0.1, zoom * 0.8);
+        const newZoom = clampZoom(zoom * 0.8);
         // Zoom towards canvas center
         const worldCX = (width / 2 - width / 2) / zoom + camX;
         const worldCY = (height / 2 - height / 2) / zoom + camY;
@@ -3953,7 +3954,7 @@
       title="Zoom In (+)"
       aria-label="Zoom in"
       onclick={() => {
-        const newZoom = Math.min(10, zoom * 1.25);
+        const newZoom = clampZoom(zoom * 1.25);
         zoom = newZoom;
       }}
     >+</button>
