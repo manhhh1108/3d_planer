@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { base } from '$app/paths';
 import { createFurnitureModel } from './furnitureModels3d';
-import { normalizeModelUpright } from './uprightNormalize';
 import type { FurnitureDef } from './furnitureCatalog';
+import { scaleToFit, type ModelMapping } from './modelFit';
 
 // Giống FILES_BASE trong services/api.ts: giữ nguyên /api để proxy forward được.
 const FILES_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
@@ -23,12 +23,6 @@ const loadingPromises = new Map<string, Promise<THREE.Group | null>>();
  * Map our catalog IDs to Kenney GLB filenames (without extension).
  * Each entry can also specify scale/rotation adjustments.
  */
-interface ModelMapping {
-  file: string;
-  scale?: number;       // uniform scale multiplier
-  rotateY?: number;     // additional Y rotation in radians
-  offsetY?: number;     // vertical offset
-}
 
 const MODEL_MAP: Record<string, ModelMapping> = {
   // Living Room
@@ -251,46 +245,6 @@ export function applyCadMaterial(model: THREE.Object3D, color: string): void {
  * Scale a GLB model to match our catalog dimensions.
  * Kenney models are unit-scale (~1m tall). We need to match our cm dimensions.
  */
-function scaleToFit(model: THREE.Group, def: FurnitureDef, mapping: ModelMapping): void {
-  // Compute the model's bounding box
-  const box = new THREE.Box3().setFromObject(model);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-
-  const EPSILON = 0.001;
-  if (size.x < EPSILON || size.y < EPSILON || size.z < EPSILON) return;
-
-  // Detect Z-up orientation: only rotate if Y is near-zero (truly flat/degenerate)
-  // Don't rotate models that are just naturally short (like beds, tables)
-  if (size.y < 0.01 && size.z > size.y * 10) {
-    model.rotation.x = -Math.PI / 2;
-    model.updateMatrixWorld(true);
-    // Recompute bounding box after rotation
-    box.setFromObject(model);
-    box.getSize(size);
-  }
-
-  // Scale to match our catalog dimensions (in cm) — non-uniform to fill exact footprint
-  // Our convention: width=X, height=Y, depth=Z
-  const scaleX = def.width / size.x;
-  const scaleY = def.height / size.y;
-  const scaleZ = def.depth / size.z;
-
-  model.scale.set(scaleX, scaleY, scaleZ);
-
-  // Re-center at origin after scaling
-  const scaledBox = new THREE.Box3().setFromObject(model);
-  const center = new THREE.Vector3();
-  scaledBox.getCenter(center);
-  model.position.sub(center);
-  // Put bottom on ground plane
-  model.position.y -= scaledBox.min.y;
-
-  // Recompute after repositioning
-  const finalBox = new THREE.Box3().setFromObject(model);
-  model.position.y -= finalBox.min.y;
-}
-
 /**
  * Create a furniture model — tries GLB first, falls back to procedural.
  * Returns immediately with procedural model, then replaces with GLB when loaded.
@@ -343,10 +297,11 @@ export function createFurnitureModelWithGLB(
             }
           });
           if (cadUrl) {
-            // Khối CAD có thể được dựng lệch trục trong file gốc → chuẩn hóa về
-            // thẳng trục thế giới (giữ trục đứng) TRƯỚC khi scale phi-đều, để lật
-            // side/end rơi đúng mặt và đáy phẳng chạm sàn. No-op nếu đã thẳng.
-            normalizeModelUpright(glbModel);
+            // KHÔNG xoay hình học CAD ở đây. Kích thước block do server tính từ
+            // AABB của mesh LÚC IMPORT; xoay ở client làm AABB đổi trong khi bộ
+            // số kia giữ nguyên, rồi scaleToFit kéo giãn từng trục để ép cho vừa
+            // -> khối bị méo và nghiêng. Muốn nắn khối dựng lệch trục thì phải
+            // nắn lúc import, để bbox tính ra từ mesh đã nắn.
             // CAD mesh is in meters, scale to cm to match our coordinate system
             scaleToFit(glbModel, def, { file: 'cad', scale: 100 });
             // Chỉ tô cho mesh CAD. Model Kenney có vật liệu/texture riêng, tô
