@@ -205,6 +205,55 @@ function loadGLBModel(catalogId: string): Promise<THREE.Group | null> {
 }
 
 /**
+ * Nạp mesh CAD do backend sinh, CÓ CACHE theo URL.
+ *
+ * Trước đây nhánh CAD tạo promise mới mỗi lần gọi nên cứ dựng lại scene 3D là
+ * tải + parse lại toàn bộ .glb: đổi mặt tiếp sàn hay kéo thả một block cũng làm
+ * MỌI block nháy về khối hộp thô rồi mới hiện lại hình thật. Cache theo URL cho
+ * phép tái dùng ngay (xem thêm đường tắt đồng bộ ở createFurnitureModelWithGLB).
+ *
+ * Bản trong cache luôn giữ nguyên trạng; nơi dùng nhận một clone để tự do
+ * scale/tô màu mà không ảnh hưởng các block khác.
+ */
+function loadCadModel(url: string): Promise<THREE.Group | null> {
+  if (modelCache.has(url)) {
+    return Promise.resolve(modelCache.get(url)!.clone());
+  }
+  if (loadingPromises.has(url)) {
+    return loadingPromises.get(url)!.then(() =>
+      modelCache.has(url) ? modelCache.get(url)!.clone() : null,
+    );
+  }
+
+  const promise = new Promise<THREE.Group | null>((resolve) => {
+    loader.load(
+      url,
+      (gltf) => {
+        const group = new THREE.Group();
+        gltf.scene.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        group.add(gltf.scene);
+        modelCache.set(url, group);
+        loadingPromises.delete(url);
+        resolve(group.clone());
+      },
+      undefined,
+      () => {
+        loadingPromises.delete(url);
+        resolve(null);
+      },
+    );
+  });
+
+  loadingPromises.set(url, promise);
+  return promise;
+}
+
+/**
  * Tô mesh CAD theo màu sản phẩm — cùng màu đang thấy ở 2D.
  *
  * GLB do backend sinh từ CAD không gắn vật liệu nào (xem server/cad/glb.ts).
@@ -227,10 +276,10 @@ export function applyCadMaterial(model: THREE.Object3D, color: string): void {
     const mesh = child as THREE.Mesh;
     if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
 
-    // Vật liệu cũ của GLB không còn ai dùng — giải phóng trước khi thay
-    const old = mesh.material;
-    if (Array.isArray(old)) old.forEach((m) => m.dispose());
-    else old?.dispose();
+    // KHÔNG dispose vật liệu cũ: mesh ở đây là clone từ bản cache, vật liệu
+    // dùng CHUNG với bản gốc và mọi clone khác — giải phóng nó sẽ làm hỏng các
+    // block đang hiển thị. Vật liệu gốc của GLB backend chỉ là material mặc
+    // định của three, số lượng cố định nên không tích tụ.
 
     if (mesh.geometry && !mesh.geometry.getAttribute('normal')) {
       mesh.geometry.computeVertexNormals();
@@ -257,31 +306,37 @@ export function createFurnitureModelWithGLB(
   const container = new THREE.Group();
   container.name = `furniture_${catalogId}`;
 
-  // Start with procedural model immediately
-  const procedural = createFurnitureModel(catalogId, def);
-  container.add(procedural);
-
-  // Try to load GLB async — prioritize CAD asset mesh over MODEL_MAP
+  // Xác định nguồn mesh trước — ưu tiên mesh CAD của sản phẩm, rồi tới model dựng sẵn.
   const cadUrl = def.file3dUrl
     ? (def.file3dUrl.startsWith('http') ? def.file3dUrl : `${FILES_BASE}${def.file3dUrl}`)
     : null;
   const mapping = MODEL_MAP[catalogId];
+  const cacheKey = cadUrl ?? (mapping ? mapping.file : null);
 
-  const glbPromise = cadUrl
-    ? new Promise<THREE.Group | null>((resolve) => {
-        loader.load(cadUrl, (gltf) => {
-          const group = new THREE.Group();
-          gltf.scene.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          group.add(gltf.scene);
-          resolve(group);
-        }, undefined, () => resolve(null));
-      })
-    : mapping ? loadGLBModel(catalogId) : null;
+  // Đã có trong cache thì dựng NGAY, bỏ qua hẳn bước khối hộp thô. Nhờ vậy đổi
+  // mặt tiếp sàn hay kéo thả không còn làm block nháy về hình hộp rồi mới hiện
+  // lại hình CAD.
+  //
+  // Không gọi onLoaded ở nhánh này: nơi gọi đang trong lúc gán biến `model` nên
+  // callback sẽ thấy undefined. Không cần thiết — nơi gọi tự applyOrientation
+  // ngay sau khi hàm này trả về.
+  if (cacheKey && modelCache.has(cacheKey)) {
+    const cached = modelCache.get(cacheKey)!.clone();
+    if (cadUrl) {
+      scaleToFit(cached, def, { file: 'cad', scale: 100 });
+      applyCadMaterial(cached, def.color);
+    } else if (mapping) {
+      scaleToFit(cached, def, mapping);
+    }
+    container.add(cached);
+    return container;
+  }
+
+  // Chưa có cache: hiện tạm khối hộp thô, thay bằng mesh thật khi tải xong.
+  const procedural = createFurnitureModel(catalogId, def);
+  container.add(procedural);
+
+  const glbPromise = cadUrl ? loadCadModel(cadUrl) : mapping ? loadGLBModel(catalogId) : null;
 
   if (glbPromise) {
     glbPromise.then((glbModel) => {
