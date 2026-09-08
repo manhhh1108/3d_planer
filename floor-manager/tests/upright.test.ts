@@ -80,3 +80,32 @@ describe('normalizeMeshesUpright (Z-up)', () => {
     expect(a.x * a.y * a.z).toBeCloseTo(40 * 20 * 10, 0);
   });
 });
+
+describe('normalizeMeshesUpright (Y-up, cho IFC)', () => {
+  it('khoi xoay 30 do quanh truc dung Y -> nan thang, giu kich thuoc', () => {
+    // cao theo Y = 40 (khoi dung), day 10 x 20
+    const m = rotate(box(10, 40, 20), 'y', 30);
+    const applied = normalizeMeshesUpright([m], 'y');
+    expect(applied).toBe(true);
+    const a = aabb(m);
+    expect(a.y).toBeCloseTo(40, 1);
+    const flat = [a.x, a.z].sort((p, q) => p - q);
+    expect(flat[0]).toBeCloseTo(10, 1);
+    expect(flat[1]).toBeCloseTo(20, 1);
+  });
+
+  it('khoi dung bi nghieng quanh X -> dung lai, GIU truc dung Y', () => {
+    const m = rotate(box(10, 40, 20), 'x', 25);
+    const applied = normalizeMeshesUpright([m], 'y');
+    expect(applied).toBe(true);
+    const a = aabb(m);
+    expect(a.y).toBeCloseTo(40, 1);
+    expect(a.y).toBeGreaterThan(a.x);
+    expect(a.y).toBeGreaterThan(a.z);
+  });
+
+  it('khoi da thang truc (Y-up) -> no-op', () => {
+    const m = box(10, 40, 20);
+    expect(normalizeMeshesUpright([m], 'y')).toBe(false);
+  });
+});
