@@ -6,6 +6,7 @@ import { meshesToGlb } from './glb.js';
 import { dxfToFootprint } from './convertDxf.js';
 import { stepLengthScaleToMetre } from './units.js';
 import { stepToMeshes } from './convertStep.js';
+import { normalizeMeshesUpright } from './upright.js';
 import { ifcToMeshes } from './convertIfc.js';
 import { dwgToDxfText } from './convertDwg.js';
 
@@ -44,6 +45,12 @@ export async function runConversion(assetId: string): Promise<void> {
       } else {
         meshes = await stepToMeshes(buf);
         upAxis = 'z';
+        // Nắn khối về thẳng trục NGAY TẠI ĐÂY — trước khi đo bbox/footprint và
+        // xuất glb — để mọi số đo và mesh cùng ra từ một hình học. Nắn ở client
+        // sẽ làm lệch bbox đã lưu và khiến scaleToFit kéo méo khối (xem 800505c).
+        if (asset.normalizeUpright !== false) {
+          normalizeMeshesUpright(meshes, upAxis);
+        }
         // occt trả toạ độ theo ĐƠN VỊ GỐC -> đọc đơn vị length của STEP (fallback mm=0.001).
         // Bỏ qua detect với file quá lớn để tránh giữ cả file trong RAM dạng string.
         const detected =
