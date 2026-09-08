@@ -71,6 +71,40 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /:id — bật/tắt nắn hướng (van an toàn khi heuristic đoán sai)
+router.patch('/:id', requireRole('ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const { normalizeUpright } = req.body as { normalizeUpright?: unknown };
+    if (typeof normalizeUpright !== 'boolean') {
+      return res.status(400).json({ error: 'normalizeUpright phải là boolean' });
+    }
+    const asset = await prisma.asset.update({
+      where: { id: String(req.params.id) },
+      data: { normalizeUpright },
+    });
+    res.json(serialize(asset));
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === 'P2025') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /:id/reconvert — chạy lại pipeline để áp thiết lập nắn hiện tại (backfill)
+router.post('/:id/reconvert', requireRole('ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const asset = await prisma.asset.findUnique({ where: { id } });
+    if (!asset) return res.status(404).json({ error: 'Not found' });
+    await prisma.asset.update({ where: { id }, data: { status: 'pending', error: null } });
+    convertQueue.enqueue(id);
+    res.status(202).json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // DELETE /:id — gỡ khỏi products (SetNull), xóa row + file
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
