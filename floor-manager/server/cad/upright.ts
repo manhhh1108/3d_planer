@@ -3,7 +3,35 @@ import type { CadMesh } from './geometry.js';
 /** Dưới góc này coi như đã thẳng trục -> không đụng vào khối. */
 const ANGLE_EPS = (3 * Math.PI) / 180;
 
+/** Nắn phải thu hộp bao xuống dưới ngưỡng này mới được nhận (2% lợi ích tối thiểu). */
+const VOLUME_GAIN = 0.98;
+
 type Vec3 = [number, number, number];
+
+/** Thể tích hộp bao trục toạ độ của toàn bộ mesh, tuỳ chọn xoay trước bằng R. */
+function aabbVolume(meshes: CadMesh[], R: Vec3[] | null): number {
+  const mn = [Infinity, Infinity, Infinity];
+  const mx = [-Infinity, -Infinity, -Infinity];
+  for (const mesh of meshes) {
+    const p = mesh.positions as ArrayLike<number>;
+    for (let i = 0; i + 2 < p.length; i += 3) {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      const v = R
+        ? [
+            R[0][0] * x + R[0][1] * y + R[0][2] * z,
+            R[1][0] * x + R[1][1] * y + R[1][2] * z,
+            R[2][0] * x + R[2][1] * y + R[2][2] * z,
+          ]
+        : [x, y, z];
+      for (let k = 0; k < 3; k++) {
+        if (v[k] < mn[k]) mn[k] = v[k];
+        if (v[k] > mx[k]) mx[k] = v[k];
+      }
+    }
+  }
+  if (!Number.isFinite(mn[0])) return Infinity;
+  return (mx[0] - mn[0]) * (mx[1] - mn[1]) * (mx[2] - mn[2]);
+}
 
 /** Jacobi eigen cho ma trận đối xứng 3x3. */
 function jacobiEigen(m: number[][]): { values: number[]; vectors: Vec3[] } {
@@ -119,6 +147,17 @@ export function normalizeMeshesUpright(meshes: CadMesh[], upAxis: 'z' | 'y'): bo
   const trace = R[0][0] + R[1][1] + R[2][2];
   const angle = Math.acos(Math.max(-1, Math.min(1, (trace - 1) / 2)));
   if (!Number.isFinite(angle) || angle < ANGLE_EPS) return false;
+
+  // CHỐT AN TOÀN: chỉ nhận phép nắn nếu nó THU NHỎ hộp bao.
+  //
+  // Heuristic pháp tuyến chọn "hướng mặt trội", nhưng khối thép thật có nhiều
+  // tấm/giằng nghiêng nên hướng đó có thể KHÔNG phải trục hộp — đo trên dữ liệu
+  // thật thấy có khối hộp bao phình hơn gấp đôi sau khi nắn. Hộp bao nhỏ hơn
+  // đúng là định nghĩa của OBB chặt, nên lấy nó làm trọng tài: nắn mà không
+  // gọn hơn thì giữ nguyên hình gốc.
+  const volBefore = aabbVolume(meshes, null);
+  const volAfter = aabbVolume(meshes, R);
+  if (!(volAfter < volBefore * VOLUME_GAIN)) return false;
 
   for (const mesh of meshes) {
     const p = mesh.positions as Float32Array;
