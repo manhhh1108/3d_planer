@@ -6,3 +6,4 @@ floor-manager/storage/
 *.log
 .vite/
 docs/
+tmp-step/

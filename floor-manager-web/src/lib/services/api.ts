@@ -52,6 +52,7 @@ export interface ApiAsset {
 	footprintUrl: string | null;
 	meshUrl: string | null;
 	thumbUrl: string | null;
+	normalizeUpright?: boolean;
 }
 
 export interface ApiProduct {
@@ -384,6 +385,10 @@ export const api = {
 	assets: {
 		get: (id: string) => http<ApiAsset>(`/assets/${id}`),
 		remove: (id: string) => http<void>(`/assets/${id}`, { method: 'DELETE' }),
+		update: (id: string, data: { normalizeUpright: boolean }) =>
+			http<ApiAsset>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+		reconvert: (id: string) =>
+			http<{ ok: boolean }>(`/assets/${id}/reconvert`, { method: 'POST' }),
 		upload: async (file: File, productId?: string, unitScale?: number): Promise<ApiAsset> => {
 			const fd = new FormData();
 			fd.append('file', file);

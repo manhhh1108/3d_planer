@@ -4,7 +4,7 @@
   import { base } from '$app/paths';
   import { api, FILES_BASE, type ApiAsset, type ApiProduct } from '$lib/services/api';
   import { shrinkImage, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXT } from '$lib/utils/imageThumb';
-  import { canEdit } from '$lib/stores/auth';
+  import { canEdit, isAdmin } from '$lib/stores/auth';
   import CadDropzone from '$lib/components/products/CadDropzone.svelte';
   import BulkCadImportDialog from '$lib/components/products/BulkCadImportDialog.svelte';
 
@@ -260,6 +260,25 @@
     ensurePolling();
   }
 
+  /** Chạy lại convert CAD — dùng khi đổi thiết lập nắn hướng hoặc convert lỗi */
+  async function reconvertAsset(assetId: string) {
+    try {
+      await api.assets.reconvert(assetId);
+      await refresh();
+      ensurePolling();
+    } catch { /* trạng thái asset sẽ tự cập nhật qua polling */ }
+  }
+
+  /** Bật/tắt nắn hướng rồi convert lại ngay để thấy kết quả */
+  async function toggleNormalize(assetId: string, value: boolean) {
+    try {
+      await api.assets.update(assetId, { normalizeUpright: value });
+      await api.assets.reconvert(assetId);
+      await refresh();
+      ensurePolling();
+    } catch { /* bỏ qua */ }
+  }
+
   async function deleteProduct(id: string) {
     await api.products.remove(id);
     confirmDeleteId = null;
@@ -372,6 +391,7 @@
                   {p.metadata?.widthM ? `${p.metadata.widthM} × ${p.metadata.depthM ?? '?'} × ${p.metadata.heightM ?? '?'}` : '—'}
                 </td>
                 <td class="px-3 py-2">
+                  <div class="flex flex-col items-start gap-1">
                   {#if p.asset?.status === 'ready'}
                     <span class="text-[11px] px-2 py-0.5 rounded-md bg-green-50 text-green-600 font-medium">{p.asset.fileType.toUpperCase()}</span>
                   {:else if p.asset?.status === 'failed'}
@@ -381,6 +401,25 @@
                   {:else}
                     <span class="text-[11px] text-gray-300">—</span>
                   {/if}
+                  {#if $isAdmin && p.asset}
+                    {@const asset = p.asset}
+                    <button
+                      type="button"
+                      class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      title="Chạy lại convert để áp thiết lập nắn hướng"
+                      onclick={() => reconvertAsset(asset.id)}>Convert lại</button>
+                    <label
+                      class="text-[11px] text-slate-500 flex items-center gap-1"
+                      title="Tắt nếu khối bị nắn sai hướng, rồi convert lại để giữ hình gốc"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={asset.normalizeUpright !== false}
+                        onchange={(e) => toggleNormalize(asset.id, e.currentTarget.checked)} />
+                      Nắn hướng
+                    </label>
+                  {/if}
+                  </div>
                 </td>
                 <td class="px-4 py-3">
                   {#if p.processStage}
