@@ -50,6 +50,9 @@ model Asset {
   bboxWidthM  Float?    @map("bbox_width_m")
   bboxHeightM Float?    @map("bbox_height_m")
   areaM2      Float?    @map("area_m2") // footprint area
+  /// Có nắn hướng khối về thẳng trục lúc convert không (chỉ áp dụng STEP).
+  /// Tắt khi heuristic đoán sai hướng, rồi convert lại để giữ hình gốc.
+  normalizeUpright Boolean @default(true) @map("normalize_upright")
   createdAt   DateTime  @default(now()) @map("created_at")
   products    Product[]
 
