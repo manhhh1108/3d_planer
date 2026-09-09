@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { page } from '$app/stores';
 	import { authApi } from '$lib/services/api';
 	import { currentUser } from '$lib/stores/auth';
@@ -43,7 +44,8 @@
 
 <div class="min-h-screen flex items-center justify-center bg-gray-50">
 	<div class="w-full max-w-sm bg-white rounded-xl shadow-md p-8">
-		<h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Floor Manager</h1>
+		<img src="{base}/vhe-logo.png" alt="VHE Engineering" class="h-12 w-auto mx-auto mb-4" />
+		<h1 class="text-xl font-bold text-gray-800 mb-6 text-center">Floor Manager</h1>
 
 		<form onsubmit={handleSubmit} class="space-y-4">
 			<div>

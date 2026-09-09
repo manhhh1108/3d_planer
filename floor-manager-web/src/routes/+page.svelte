@@ -132,7 +132,10 @@
   <!-- Header -->
   <div class="bg-gradient-to-r from-slate-800 to-slate-700 shadow-sm">
     <div class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white text-lg font-bold">◧</div>
+      <!-- Logo wordmark VHE co chu "Engineering" mau xanh tham -> dat tren chip trang
+           de doc duoc tren header slate toi. -->
+      <img src="{base}/vhe-logo.png" alt="VHE Engineering"
+           class="h-9 w-auto shrink-0 rounded-lg bg-white px-2 py-1 shadow-sm" />
       <div class="flex-1">
         <h1 class="text-2xl font-bold text-white">Floor Manager</h1>
         <p class="text-sm text-white/50 mt-0.5">Quản lý mặt bằng sản xuất · {sites.length} mặt bằng · {projects.length} dự án</p>
