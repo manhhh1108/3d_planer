@@ -1132,8 +1132,15 @@
         currentTool === 'zone' && zonePoints.length ? zonePoints : null,
         mousePos);
     }
-    // Mark dirty whenever active interactions are happening (wall drawing, dragging, etc.)
-    if (zonePoints.length || wallStart || draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
+    // Vẽ lại liên tục trong lúc đang có thao tác kéo/đặt dở dang.
+    //
+    // KHÔNG kể zonePoints/wallStart: vẽ vùng và vẽ tường là thao tác NHIỀU CÚ
+    // CLICK, cờ của chúng bật suốt từ điểm đầu tới lúc khép hình — kể cả khi
+    // người dùng bỏ tay ra nghĩ. Để chúng ở đây là canvas vẽ lại 60 lần/giây vô
+    // hạn, ghim chặt main thread trên mặt bằng nặng. Khung cao su vẫn chạy đúng
+    // vì onMouseMove đã markDirty() ở mọi lần chuột nhúc nhích, mà chuột đứng
+    // yên thì cũng chẳng có gì mới để vẽ.
+    if (draggingFurnitureId || draggingDoorId || draggingWindowId || draggingStairId ||
         draggingColumnId || draggingWallEndpoint || draggingWallParallel || draggingCurveHandle ||
         draggingHandle || draggingMultiSelect || draggingRoomId || draggingRoomLabelId ||
         draggingTextAnnotationId || draggingGuideId || measuring || annotating ||
