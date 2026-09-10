@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
@@ -56,4 +57,30 @@ export function layoutBgPaths(layoutId: string) {
     bgImageFile: (ext: string) => path.join(artifactDir, `background.${ext}`),
     bgImageUrl: (ext: string) => `/uploads/layouts/${layoutId}/background.${ext}`,
   };
+}
+
+/**
+ * Xoá đúng các file nền của một layout, GIỮ NGUYÊN thư mục con `snapshots/`.
+ *
+ * Ảnh xem trước của snapshot nằm bên trong thư mục artifact của layout, nên
+ * `rmSync(artifactDir, { recursive: true })` lúc đổi/xoá nền sẽ cuốn theo toàn
+ * bộ ảnh đó trong khi cột `thumbnail` trong DB vẫn trỏ tới chúng — người dùng
+ * nhận 404 ở trang mặt bằng. Chỉ xoá layout mới được quét cả cụm.
+ *
+ * Nền chỉ có thể là `background.svg` (dựng từ DXF/DWG) hoặc `background.<ext>`
+ * (ảnh tải thẳng), nên khớp theo tiền tố là đủ và không đụng thứ gì khác.
+ */
+export function removeLayoutBgFiles(layoutId: string): void {
+  const { artifactDir } = layoutBgPaths(layoutId);
+  let names: string[];
+  try {
+    names = fs.readdirSync(artifactDir);
+  } catch {
+    return; // chưa từng có nền
+  }
+  for (const name of names) {
+    if (name.startsWith('background.')) {
+      fs.rmSync(path.join(artifactDir, name), { force: true });
+    }
+  }
 }

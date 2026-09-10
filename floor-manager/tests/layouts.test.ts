@@ -143,7 +143,9 @@ describe('layout background', () => {
     expect(res.status).toBe(200);
     expect(res.body.backgroundFile).toBeNull();
     expect(res.body.widthM).toBeCloseTo(4, 1);
-    expect(fs.existsSync(path.resolve('./uploads/layouts', layout.id))).toBe(false);
+    // Chỉ file nền bị xoá. Thư mục layout còn nguyên vì ảnh xem trước của các
+    // snapshot nằm trong đó — xem nhóm test 'giữ ảnh snapshot' bên dưới.
+    expect(fs.existsSync(path.resolve('./uploads/layouts', layout.id, 'background.svg'))).toBe(false);
   });
 
   it('returns 404 when layout does not exist', async () => {
@@ -273,5 +275,63 @@ describe('layout walls', () => {
       .set('Cookie', `access_token=${adminToken()}`)
       .send({ walls: [] });
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Ảnh xem trước của snapshot nằm ở uploads/layouts/<id>/snapshots/, tức BÊN
+ * TRONG thư mục artifact của nền layout. Ba chỗ đổi/xoá nền từng xoá đệ quy cả
+ * thư mục cha, cuốn theo toàn bộ ảnh snapshot trong khi cột `thumbnail` trong
+ * DB vẫn trỏ tới chúng — sinh ra 404 trên production.
+ */
+describe('đổi/xoá nền phải giữ ảnh snapshot', () => {
+  async function layoutWithThumb() {
+    const layout = await makeLayout();
+    await request(app)
+      .post(`/api/layouts/${layout.id}/background`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'plan.dxf');
+
+    const snap = (await request(app)
+      .post('/api/snapshots')
+      .set('Cookie', `access_token=${adminToken()}`)
+      .send({ layoutId: layout.id, date: '2026-01-15', positions: [] })).body;
+
+    const put = await request(app)
+      .put(`/api/snapshots/${snap.id}/thumbnail`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', Buffer.from('anh gia'), 'thumb.jpg');
+    expect(put.status).toBe(200);
+
+    const thumb = path.resolve('./uploads/layouts', layout.id, 'snapshots', `${snap.id}.jpg`);
+    expect(fs.existsSync(thumb)).toBe(true);
+    return { layout, snap, thumb };
+  }
+
+  it('tải nền DXF mới không xoá ảnh snapshot', async () => {
+    const { layout, thumb } = await layoutWithThumb();
+    await request(app)
+      .post(`/api/layouts/${layout.id}/background`)
+      .set('Cookie', `access_token=${adminToken()}`)
+      .attach('file', fs.readFileSync(FIXTURE_DXF), 'plan.dxf');
+    expect(fs.existsSync(thumb)).toBe(true);
+  });
+
+  it('xoá nền không xoá ảnh snapshot', async () => {
+    const { layout, thumb } = await layoutWithThumb();
+    await request(app)
+      .delete(`/api/layouts/${layout.id}/background`)
+      .set('Cookie', `access_token=${adminToken()}`);
+    expect(fs.existsSync(thumb)).toBe(true);
+    expect(fs.existsSync(path.resolve('./uploads/layouts', layout.id, 'background.svg'))).toBe(false);
+  });
+
+  it('xoá cả layout thì dọn sạch, kể cả ảnh snapshot', async () => {
+    const { layout, thumb } = await layoutWithThumb();
+    await request(app)
+      .delete(`/api/layouts/${layout.id}`)
+      .set('Cookie', `access_token=${adminToken()}`);
+    expect(fs.existsSync(thumb)).toBe(false);
+    expect(fs.existsSync(path.resolve('./uploads/layouts', layout.id))).toBe(false);
   });
 });

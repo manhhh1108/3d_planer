@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { layoutBgPaths } from '../cad/paths.js';
+import { layoutBgPaths, removeLayoutBgFiles } from '../cad/paths.js';
 import { dxfToSvg } from '../cad/convertDxfSvg.js';
 import { dwgToDxfText } from '../cad/convertDwg.js';
 
@@ -382,7 +382,8 @@ router.post('/:id/background', upload.single('file'), async (req: Request, res: 
     if (isImage) {
       const p = layoutBgPaths(String(req.params.id));
       if (layout.backgroundFile) {
-        fs.rmSync(p.artifactDir, { recursive: true, force: true });
+        // Chỉ file nền — snapshots/ nằm trong artifactDir, quét cả cụm là mất ảnh.
+        removeLayoutBgFiles(String(req.params.id));
         fs.rmSync(p.sourceDir, { recursive: true, force: true });
       }
       fs.mkdirSync(p.artifactDir, { recursive: true });
@@ -410,7 +411,8 @@ router.post('/:id/background', upload.single('file'), async (req: Request, res: 
 
     const p = layoutBgPaths(String(req.params.id));
     if (layout.backgroundFile) {
-      fs.rmSync(p.artifactDir, { recursive: true, force: true });
+      // Chỉ file nền — snapshots/ nằm trong artifactDir, quét cả cụm là mất ảnh.
+      removeLayoutBgFiles(String(req.params.id));
     }
     fs.mkdirSync(p.sourceDir, { recursive: true });
     fs.mkdirSync(p.artifactDir, { recursive: true });
@@ -435,8 +437,8 @@ router.delete('/:id/background', async (req: Request, res: Response) => {
     const layout = await prisma.layout.findUnique({ where: { id: String(req.params.id) } });
     if (!layout) return res.status(404).json({ error: 'Layout not found' });
 
-    const p = layoutBgPaths(String(req.params.id));
-    fs.rmSync(p.artifactDir, { recursive: true, force: true });
+    // Bỏ nền thì chỉ bỏ file nền; ảnh xem trước của snapshot phải còn.
+    removeLayoutBgFiles(String(req.params.id));
 
     const updated = await prisma.layout.update({
       where: { id: String(req.params.id) },
