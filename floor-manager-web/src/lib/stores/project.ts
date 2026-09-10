@@ -1021,16 +1021,33 @@ export function addZone(points: Point[], allowedStageIds: string[] = []): string
   return id;
 }
 
-/** Cập nhật thuộc tính vùng (tên, công đoạn cho phép, điểm). */
-export function updateZone(id: string, patch: Partial<Pick<WorkingZone, 'name' | 'allowedStageIds' | 'points'>>) {
+/**
+ * Cập nhật thuộc tính vùng (tên, công đoạn cho phép, cờ khoá).
+ *
+ * KHÔNG nhận `points`: đổi hình vùng chỉ đi qua moveZone/moveZoneVertex, là nơi
+ * có chốt kiểm tra khoá. Bỏ 'points' khỏi kiểu patch để TypeScript chặn ngay lúc
+ * biên dịch thay vì phải kiểm tra lúc chạy.
+ *
+ * Hàm này CỐ Ý không bị chặn khi vùng đang khoá — đây là đường duy nhất bật/tắt
+ * `locked`, chặn thì khoá xong không mở ra được nữa.
+ */
+export function updateZone(
+  id: string,
+  patch: Partial<Pick<WorkingZone, 'name' | 'allowedStageIds' | 'locked'>>,
+) {
   mutate((f) => {
     const z = f.zones?.find((z) => z.id === id);
     if (z) Object.assign(z, patch);
   }, 'Sửa vùng');
 }
 
-/** Xoá vùng. */
+/** Xoá vùng. Vùng khoá thì không xoá. */
 export function removeZone(id: string) {
+  const p = get(currentProject);
+  const floor = p?.floors.find((f) => f.id === p.activeFloorId);
+  // Chốt PHẢI đứng trước mutate: mutate() gọi snapshot() trước khi chạy callback,
+  // nên chặn ở bên trong callback vẫn đẻ ra một mục undo "Xoá vùng" dù chẳng xoá gì.
+  if (floor?.zones?.find((z) => z.id === id)?.locked) return;
   mutate((f) => {
     if (f.zones) f.zones = f.zones.filter((z) => z.id !== id);
   }, 'Xoá vùng');
@@ -1042,7 +1059,7 @@ export function moveZone(id: string, dx: number, dy: number) {
   if (!p) return;
   const floor = p.floors.find((f) => f.id === p.activeFloorId);
   const z = floor?.zones?.find((z) => z.id === id);
-  if (!z) return;
+  if (!z || z.locked) return;
   z.points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
   p.updatedAt = new Date();
   currentProject.set({ ...p });
@@ -1054,7 +1071,8 @@ export function moveZoneVertex(id: string, index: number, pos: Point) {
   if (!p) return;
   const floor = p.floors.find((f) => f.id === p.activeFloorId);
   const z = floor?.zones?.find((z) => z.id === id);
-  if (!z || index < 0 || index >= z.points.length) return;
+  if (!z || z.locked) return;
+  if (index < 0 || index >= z.points.length) return;
   z.points[index] = pos;
   p.updatedAt = new Date();
   currentProject.set({ ...p });

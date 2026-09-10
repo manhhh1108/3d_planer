@@ -39,6 +39,13 @@ export interface WorkingZone {
   points: Point[];
   /** Id các công đoạn được phép làm trong vùng (1..n) */
   allowedStageIds: string[];
+  /**
+   * Khoá hình học: cấm kéo cả vùng, kéo đỉnh, xoá. Vẫn đổi được tên và công đoạn.
+   *
+   * Để optional: snapshot đã lưu trên production không có trường này, `undefined`
+   * tự hiểu là chưa khoá nên không cần migration hay backfill.
+   */
+  locked?: boolean;
 }
 
 export interface Door {
