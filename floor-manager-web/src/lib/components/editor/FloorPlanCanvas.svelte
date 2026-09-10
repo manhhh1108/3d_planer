@@ -1779,11 +1779,11 @@
     return best;
   }
 
-  /** Đỉnh vùng đang chọn gần con trỏ (để kéo). */
+  /** Đỉnh vùng đang chọn gần con trỏ (để kéo). Vùng khoá thì không có tay cầm. */
   function findZoneVertexAt(p: Point): { zoneId: string; index: number } | null {
     if (!currentFloor?.zones || !currentSelectedZoneId) return null;
     const z = currentFloor.zones.find((z) => z.id === currentSelectedZoneId);
-    if (!z) return null;
+    if (!z || z.locked) return null;
     const r = 8 / zoom;
     for (let i = 0; i < z.points.length; i++) {
       if (Math.hypot(p.x - z.points[i].x, p.y - z.points[i].y) < r) return { zoneId: z.id, index: i };
@@ -2339,9 +2339,14 @@
             selectedElementIds.set(new Set());
             selectedRoomId.set(null);
             selectedZoneId.set(zone.id);
-            draggingZoneId = zone.id;
-            zoneDragLast = wp;
-            beginUndoGroup();
+            // Vùng khoá vẫn CHỌN được — còn phải mở panel ra mà bỏ khoá.
+            // Chỉ bỏ qua khâu bắt kéo. beginUndoGroup phải nằm trong nhánh này:
+            // gọi rồi không kéo gì sẽ đẻ ra một mục undo rỗng.
+            if (!zone.locked) {
+              draggingZoneId = zone.id;
+              zoneDragLast = wp;
+              beginUndoGroup();
+            }
             return;
           }
           // Bấm trúng nền thì mở bảng chỉnh nền, giống hệt ảnh nền theo tầng.
@@ -3103,10 +3108,15 @@
       }
     }
 
-    // Delete selected zone
+    // Delete selected zone — vùng khoá thì bỏ qua hẳn, đừng bỏ chọn nó.
+    // Không có chốt này thì removeZone no-op nhưng selectedZoneId.set(null) vẫn
+    // chạy: vùng không xoá mà lại biến mất khỏi panel, tưởng đã xoá.
     if ((e.key === 'Delete' || e.key === 'Backspace') && currentSelectedZoneId && !inFormField) {
-      removeZone(currentSelectedZoneId);
-      selectedZoneId.set(null);
+      const z = currentFloor?.zones?.find((z) => z.id === currentSelectedZoneId);
+      if (!z?.locked) {
+        removeZone(currentSelectedZoneId);
+        selectedZoneId.set(null);
+      }
       e.preventDefault();
       return;
     }
