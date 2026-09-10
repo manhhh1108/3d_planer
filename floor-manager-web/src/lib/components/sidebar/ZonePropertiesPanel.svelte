@@ -29,7 +29,14 @@
 
 {#if zone}
   <div class="zone-panel">
-    <h3>Vùng</h3>
+    <div class="head">
+      <h3>Vùng</h3>
+      <button
+        class="lock {zone.locked ? 'on' : ''}"
+        title={zone.locked ? 'Bỏ khoá để sửa hình vùng' : 'Khoá để khỏi lỡ tay kéo lệch'}
+        onclick={() => updateZone(zone!.id, { locked: !zone!.locked })}
+      >{zone.locked ? '🔒 Đã khoá' : '🔓'}</button>
+    </div>
     <label>Tên
       <input value={zone.name ?? ''} onchange={(e) => { updateZone(zone!.id, { name: (e.currentTarget as HTMLInputElement).value }); revalidateZones(); }} />
     </label>
@@ -43,12 +50,26 @@
         </label>
       {/each}
     </div>
-    <button onclick={() => { removeZone(zone!.id); selectedZoneId.set(null); }}>Xoá vùng</button>
+    <button
+      disabled={zone.locked}
+      title={zone.locked ? 'Vùng đang khoá' : ''}
+      onclick={() => { removeZone(zone!.id); selectedZoneId.set(null); }}
+    >Xoá vùng</button>
   </div>
 {/if}
 
 <style>
   .zone-panel { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .head { display: flex; align-items: center; gap: 8px; }
+  .head h3 { margin: 0; }
+  /* Nút khoá dùng lại tông hổ phách của nút khoá item trong PropertiesPanel. */
+  .lock {
+    margin-left: auto; padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    border: 1px solid #e5e7eb; background: transparent; color: #6b7280; cursor: pointer;
+  }
+  .lock:hover { background: #f9fafb; }
+  .lock.on { background: #fef3c7; border-color: #fbbf24; color: #b45309; }
   .stage-item { display: flex; align-items: center; gap: 6px; }
   .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  button[disabled] { opacity: 0.45; cursor: not-allowed; }
 </style>
