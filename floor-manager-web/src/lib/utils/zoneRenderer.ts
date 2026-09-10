@@ -37,7 +37,13 @@ export function drawZones(
     ctx.globalAlpha = 1;
     ctx.strokeStyle = selected ? '#2563eb' : (firstColor ?? '#64748b');
     ctx.lineWidth = selected ? 2 : 1.2;
+    // Vùng khoá vẽ nét đứt chứ không đổi màu: màu viền đang dùng để báo "đang
+    // chọn", đổi màu thì vùng khoá lúc được chọn sẽ mất một trong hai tín hiệu.
+    // setLineDash([]) phải gọi ngay sau stroke, không thì nét đứt rò sang mọi
+    // thứ vẽ sau trên cùng context.
+    if (z.locked) ctx.setLineDash([6, 4]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
     const c = polygonCentroid(z.points);
     const cc = worldToScreen(cs, c.x, c.y);
@@ -45,7 +51,7 @@ export function drawZones(
     ctx.textBaseline = 'middle';
     ctx.font = '600 12px sans-serif';
     ctx.fillStyle = '#334155';
-    const label = z.name || 'Vùng';
+    const label = (z.locked ? '🔒 ' : '') + (z.name || 'Vùng');
     ctx.fillText(label, cc.x, cc.y - 8);
     const names = z.allowedStageIds
       .map((id) => stages.find((s) => s.id === id)?.name)
@@ -57,7 +63,9 @@ export function drawZones(
       ctx.fillText(names, cc.x, cc.y + 8);
     }
 
-    if (selected) {
+    // Vùng khoá không kéo đỉnh được (findZoneVertexAt bỏ qua), nên đừng vẽ tay
+    // cầm — vẽ ra là mời người ta kéo một thứ không kéo được.
+    if (selected && !z.locked) {
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = '#2563eb';
       ctx.lineWidth = 1.5;
