@@ -62,12 +62,22 @@ describe('vùng bị khoá', () => {
     expect(zoneOf('z')!.allowedStageIds).toEqual(['s1']);
   });
 
-  /**
-   * ZonePropertiesPanel lấy vùng bằng `$derived.by` rồi `.find()`. Svelte 5 so
-   * sánh kết quả derived bằng ===, nên nếu updateZone sửa tại chỗ thì panel
-   * không vẽ lại: bấm nút khoá xong chữ vẫn đứng im.
-   */
-  it('updateZone thay object vùng chứ không sửa tại chỗ', () => {
+  it('mở khoá xong thì dời lại bình thường', () => {
+    seed([zone('z', true)]);
+    updateZone('z', { locked: false });
+    moveZone('z', 50, 50);
+    expect(zoneOf('z')!.points[0]).toEqual({ x: 50, y: 50 });
+  });
+});
+
+/**
+ * ZonePropertiesPanel lấy vùng bằng `$derived.by` rồi `.find()`, và Svelte 5 so
+ * sánh kết quả derived bằng ===. Hàm nào sửa vùng TẠI CHỖ thì lần derive sau vẫn
+ * ra đúng object cũ, panel không vẽ lại — bấm nút khoá xong chữ đứng im, kéo đỉnh
+ * xong số diện tích đứng im. Nên mọi hàm sửa vùng phải THAY object.
+ */
+describe('sửa vùng thì thay object để panel vẽ lại', () => {
+  it('updateZone', () => {
     seed([zone('z')]);
     const before = zoneOf('z');
     updateZone('z', { locked: true });
@@ -76,11 +86,24 @@ describe('vùng bị khoá', () => {
     expect(after!.locked).toBe(true);
   });
 
-  it('mở khoá xong thì dời lại bình thường', () => {
-    seed([zone('z', true)]);
-    updateZone('z', { locked: false });
-    moveZone('z', 50, 50);
-    expect(zoneOf('z')!.points[0]).toEqual({ x: 50, y: 50 });
+  it('moveZoneVertex', () => {
+    seed([zone('z')]);
+    const before = zoneOf('z');
+    moveZoneVertex('z', 1, { x: 200, y: 0 });
+    const after = zoneOf('z');
+    expect(after).not.toBe(before);
+    expect(after!.points[1]).toEqual({ x: 200, y: 0 });
+    // Object cũ không bị sửa lây — diện tích tính từ nó vẫn là hình ban đầu.
+    expect(before!.points[1]).toEqual({ x: 100, y: 0 });
+  });
+
+  it('moveZone', () => {
+    seed([zone('z')]);
+    const before = zoneOf('z');
+    moveZone('z', 10, 20);
+    const after = zoneOf('z');
+    expect(after).not.toBe(before);
+    expect(after!.points[0]).toEqual({ x: 10, y: 20 });
   });
 });
 

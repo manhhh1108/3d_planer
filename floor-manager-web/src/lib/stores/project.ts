@@ -1064,8 +1064,10 @@ export function moveZone(id: string, dx: number, dy: number) {
   if (!p) return;
   const floor = p.floors.find((f) => f.id === p.activeFloorId);
   const z = floor?.zones?.find((z) => z.id === id);
-  if (!z || z.locked) return;
-  z.points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  if (!floor?.zones || !z || z.locked) return;
+  // THAY object vùng, không sửa tại chỗ — xem ghi chú ở updateZone.
+  const points = z.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  floor.zones = floor.zones.map((zz) => (zz.id === id ? { ...zz, points } : zz));
   p.updatedAt = new Date();
   currentProject.set({ ...p });
 }
@@ -1076,9 +1078,12 @@ export function moveZoneVertex(id: string, index: number, pos: Point) {
   if (!p) return;
   const floor = p.floors.find((f) => f.id === p.activeFloorId);
   const z = floor?.zones?.find((z) => z.id === id);
-  if (!z || z.locked) return;
+  if (!floor?.zones || !z || z.locked) return;
   if (index < 0 || index >= z.points.length) return;
-  z.points[index] = pos;
+  // THAY object vùng, không sửa tại chỗ — nếu không, số diện tích trong panel
+  // đứng im suốt lúc kéo đỉnh. Xem ghi chú ở updateZone.
+  const points = z.points.map((pt, i) => (i === index ? pos : pt));
+  floor.zones = floor.zones.map((zz) => (zz.id === id ? { ...zz, points } : zz));
   p.updatedAt = new Date();
   currentProject.set({ ...p });
 }
