@@ -62,6 +62,20 @@ describe('vùng bị khoá', () => {
     expect(zoneOf('z')!.allowedStageIds).toEqual(['s1']);
   });
 
+  /**
+   * ZonePropertiesPanel lấy vùng bằng `$derived.by` rồi `.find()`. Svelte 5 so
+   * sánh kết quả derived bằng ===, nên nếu updateZone sửa tại chỗ thì panel
+   * không vẽ lại: bấm nút khoá xong chữ vẫn đứng im.
+   */
+  it('updateZone thay object vùng chứ không sửa tại chỗ', () => {
+    seed([zone('z')]);
+    const before = zoneOf('z');
+    updateZone('z', { locked: true });
+    const after = zoneOf('z');
+    expect(after).not.toBe(before);
+    expect(after!.locked).toBe(true);
+  });
+
   it('mở khoá xong thì dời lại bình thường', () => {
     seed([zone('z', true)]);
     updateZone('z', { locked: false });

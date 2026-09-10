@@ -1030,14 +1030,19 @@ export function addZone(points: Point[], allowedStageIds: string[] = []): string
  *
  * Hàm này CỐ Ý không bị chặn khi vùng đang khoá — đây là đường duy nhất bật/tắt
  * `locked`, chặn thì khoá xong không mở ra được nữa.
+ *
+ * THAY object vùng chứ không Object.assign tại chỗ. ZonePropertiesPanel lấy vùng
+ * bằng `$derived.by` rồi `.find()`; sửa tại chỗ thì lần derive sau vẫn trả về
+ * đúng object cũ, Svelte 5 so sánh === thấy "không đổi" nên không vẽ lại — bấm
+ * nút khoá xong chữ đứng im tới khi chọn vùng khác rồi chọn lại.
  */
 export function updateZone(
   id: string,
   patch: Partial<Pick<WorkingZone, 'name' | 'allowedStageIds' | 'locked'>>,
 ) {
   mutate((f) => {
-    const z = f.zones?.find((z) => z.id === id);
-    if (z) Object.assign(z, patch);
+    if (!f.zones) return;
+    f.zones = f.zones.map((z) => (z.id === id ? { ...z, ...patch } : z));
   }, 'Sửa vùng');
 }
 
