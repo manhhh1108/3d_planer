@@ -2,7 +2,9 @@
   import { activeFloor, selectedElementId, updateFurniture, updateWall, updateBackgroundImage, setBackgroundImage, calibrationMode, calibrationPoints, updateTextAnnotation, toggleFurnitureLock, updateEntourageItem, removeElement } from '$lib/stores/project';
   import { getCatalogItem } from '$lib/utils/furnitureCatalog';
   import { projectSettings } from '$lib/stores/settings';
-  import type { BlockOrientation, Floor, FurnitureItem, TextAnnotation } from '$lib/models/types';
+  import type { BlockOrientation, Floor, FurnitureItem, RestPose, TextAnnotation } from '$lib/models/types';
+  import { isLaidOnSide } from '$lib/utils/restPose';
+  import { effectiveDims, itemRestRoll } from '$lib/utils/furnitureFootprint';
   import { orientedDims } from '$lib/services/mapping';
   import { api } from '$lib/services/api';
   import { loadProductCatalog } from '$lib/stores/productCatalog';
@@ -134,7 +136,7 @@
 
   function resetFurnitureDefaults() {
     if (!selectedFurniture) return;
-    updateFurniture(selectedFurniture.id, { color: undefined, width: undefined, depth: undefined, height: undefined, material: undefined, orientation: 'bottom', elevation: 0 });
+    updateFurniture(selectedFurniture.id, { color: undefined, width: undefined, depth: undefined, height: undefined, material: undefined, orientation: 'bottom', pose: undefined, elevation: 0 });
   }
 
   /**
@@ -150,11 +152,17 @@
     if (!def) return;
     const d = orientedDims(def, o);
     const sameAsCatalog = d.width === def.width && d.depth === def.depth && d.height === def.height;
+    // Tư thế nằm: vào nghiêng/dựng từ đáy/lật úp thì mặc định Úp, bấm một phát là
+    // khối cong nằm ngang ngay; qua lại giữa nghiêng/dựng thì giữ lựa chọn; về
+    // đáy/lật úp thì xoá vì không còn nghĩa. Khối hộp có tư thế cũng không đổi gì.
+    const pose: RestPose | undefined = !isLaidOnSide(o)
+      ? undefined
+      : isLaidOnSide(selectedFurniture.orientation) ? (selectedFurniture.pose ?? 'prone') : 'prone';
     updateFurniture(
       selectedFurniture.id,
       sameAsCatalog
-        ? { orientation: o, width: undefined, depth: undefined, height: undefined }
-        : { orientation: o, width: d.width, depth: d.depth, height: d.height },
+        ? { orientation: o, pose, width: undefined, depth: undefined, height: undefined }
+        : { orientation: o, pose, width: d.width, depth: d.depth, height: d.height },
     );
   }
 
@@ -324,6 +332,35 @@
           {/each}
         </div>
       </div>
+
+      <!-- Tư thế nằm: chỉ có nghĩa khi đã lật nghiêng/dựng. Tách tiêu đề riêng vì
+           lưới trên đã có nút "Úp" (lật ngược 180°) — khác hẳn tư thế Úp ở đây. -->
+      {#if isLaidOnSide(selectedFurniture.orientation)}
+        {@const rolled = itemRestRoll(selectedFurniture) !== 0}
+        {@const eff = effectiveDims(selectedFurniture)}
+        <div class="block">
+          <span class="text-xs text-gray-500">Tư thế nằm</span>
+          <div class="grid grid-cols-2 gap-1 mt-1">
+            {#each [
+              { p: 'prone', label: '⌒ Úp', hint: 'Vòm lên — dây cung chạm sàn' },
+              { p: 'supine', label: '◡ Ngửa', hint: 'Bụng cong chạm sàn — dây cung nằm ngang phía trên' },
+            ] as opt}
+              <button
+                onclick={() => { if (selectedFurniture) updateFurniture(selectedFurniture.id, { pose: opt.p as RestPose }); }}
+                class="px-1 py-1.5 border rounded text-xs transition-colors {selectedFurniture.pose === opt.p ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}"
+                title={opt.hint}
+              >{opt.label}</button>
+            {/each}
+          </div>
+          {#if rolled}
+            <!-- Lăn xong thì khuôn chiếm chỗ khác số W/D/H ở trên (đó là kích
+                 thước khối, không phải chỗ nó chiếm) — nói ra kẻo tưởng lệch. -->
+            <span class="text-[11px] text-gray-500">Chiếm chỗ: {Math.round(eff.width)} × {Math.round(eff.depth)} cm, cao {Math.round(eff.height)} cm</span>
+          {:else}
+            <span class="text-[11px] text-gray-400">Khối cong: dây cung song song mặt sàn.</span>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Công đoạn sản xuất (thuộc tính của sản phẩm) -->
       <label class="block">
