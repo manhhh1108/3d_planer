@@ -10,6 +10,8 @@
   import { layoutBgFile, layoutBgTransform } from '$lib/stores/project';
   import { DEFAULT_LAYOUT_BG_TRANSFORM } from '$lib/utils/layoutBackground';
   import { stages, loadStages } from '$lib/stores/stages';
+  import { selectedZoneId } from '$lib/stores/project';
+  import ZonePropertiesPanel from './ZonePropertiesPanel.svelte';
 
   loadStages();
 
@@ -161,9 +163,15 @@
   // Nền layout ăn theo cùng cơ chế với ảnh nền của tầng: có cờ mở thì bảng hiện,
   // vì bản thân nền không phải phần tử chọn được. Không loại trừ 3D — phép căn
   // nền áp cho cả 3D nên chỉnh ở đó cũng có nghĩa.
-  let hasLayoutBg = $derived(!!$layoutBgFile && $layoutBgPanelOpen);
+  let hasZone = $derived(!!$selectedZoneId);
+  /** Có một phần tử (item/tường/chữ/vùng) đang được chọn không. */
+  let hasElement = $derived(hasZone || !!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage);
+  // Nền được chọn như một phần tử: bảng chỉ hiện đúng MỘT thứ. Store đã tự tắt
+  // cờ nền khi chọn item/vùng (project.ts); điều kiện ở đây là lưới an toàn cho
+  // mọi đường chọn chưa đi qua store đó.
+  let hasLayoutBg = $derived(!!$layoutBgFile && $layoutBgPanelOpen && !hasElement);
 
-  let hasSelection = $derived(!!selectedFurniture || !!selectedWall || !!selectedTextAnnotation || !!selectedEntourage || (!is3D && hasBgImage) || hasLayoutBg);
+  let hasSelection = $derived(hasElement || (!is3D && hasBgImage) || hasLayoutBg);
 
   // Bảng fixed nên nó đè lên mép phải khung 3D — báo để các nút nổi ở đó né ra
   $effect(() => {
@@ -174,7 +182,9 @@
 
 <!-- Right sidebar on md+; slides up as a bottom sheet on phones -->
 <div class="{is3D ? 'w-80' : 'w-64'} shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-y-auto p-3 fixed right-0 top-12 bottom-9 z-40 shadow-lg max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:w-full max-md:max-h-[45vh] max-md:border-l-0 max-md:border-t max-md:rounded-t-xl max-md:shadow-2xl" class:hidden={!hasSelection}>
-  {#if selectedFurniture}
+  {#if hasZone}
+    <ZonePropertiesPanel />
+  {:else if selectedFurniture}
     <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
       <span class="w-6 h-6 bg-purple-100 rounded flex items-center justify-center text-xs">
         {getCatalogItem(selectedFurniture.catalogId)?.icon ?? '🪑'}
@@ -520,7 +530,7 @@
   {/if}
 
   {#if hasLayoutBg}
-    <div class="mt-4 pt-3 border-t border-gray-200">
+    <div class={hasBgImage && floor?.backgroundImage ? 'mt-4 pt-3 border-t border-gray-200' : ''}>
       <h3 class="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
         <span class="w-6 h-6 bg-emerald-100 rounded flex items-center justify-center text-xs">🗺️</span>
         Nền mặt bằng

@@ -20,8 +20,8 @@
   import type { CanvasState } from '$lib/utils/canvasInteraction';
   import { drawWall as _drawWall, wallLength, wallPointAt, wallTangentAt, wallThicknessScreen as _wallThicknessScreen, drawFurnitureItem, drawGuides as _drawGuides, drawPersistedMeasurements as _drawPersistedMeasurements, drawTextAnnotations as _drawTextAnnotations, drawAnnotation as _drawAnnotation, drawAnnotations as _drawAnnotations, drawMinimap as _drawMinimap, drawLayoutBackground as _drawLayoutBackground } from '$lib/utils/canvasRenderer';
   import { pointInPolygon, findHandleAt as _findHandleAt, findFurnitureAt as _findFurnitureAt, hitTestMeasurement as _hitTestMeasurement, hitTestAnnotation as _hitTestAnnotation, hitTestTextAnnotation as _hitTestTextAnnotation } from '$lib/utils/hitTesting';
-  import { drawZones } from '$lib/utils/zoneRenderer';
-  import { pointInPolygon as zonePointInPolygon, polygonArea } from '$lib/utils/zoneGeometry';
+  import { drawZones, zoneLabelRect } from '$lib/utils/zoneRenderer';
+  import { distanceToPolygonEdge } from '$lib/utils/zoneGeometry';
   import { clampZoom } from '$lib/utils/zoom';
   import { selectedZoneId, addZone, removeZone, moveZone, moveZoneVertex } from '$lib/stores/project';
   import { stages } from '$lib/stores/stages';
@@ -1772,16 +1772,32 @@
     return _findFurnitureAt(p, currentFloor.furniture);
   }
 
-  /** Vùng đang chứa điểm (ưu tiên diện tích nhỏ nhất khi chồng). */
-  function findZoneAt(p: Point): WorkingZone | null {
-    if (!currentFloor?.zones) return null;
+  /**
+   * Vùng bị bấm trúng NHÃN tên hoặc VIỀN (≤ 6px màn hình).
+   *
+   * Không tính bấm vào phần tô bên trong. Vùng phủ gần kín mặt nền, nên trước
+   * đây gần như mọi cú bấm lên nền đều chọn trúng một vùng — bảng thuộc tính
+   * bật/tắt liên tục. Giờ bấm bên trong vùng rơi xuống nền, như ở phần mềm CAD.
+   * Ẩn lớp vùng thì không bấm được: không thấy thì không chọn.
+   */
+  function findZoneHitAt(p: Point): WorkingZone | null {
+    if (!layerVis.zones || !currentFloor?.zones?.length) return null;
+    const cs = getCS();
+    const sp = worldToScreen(p.x, p.y);
+    // Nhãn trước: nó nằm gọn bên trong đúng vùng của nó. Duyệt ngược vì vùng
+    // vẽ sau nằm trên, nhãn chồng nhau thì cái đang nhìn thấy phải thắng.
+    for (let i = currentFloor.zones.length - 1; i >= 0; i--) {
+      const z = currentFloor.zones[i];
+      if (z.points.length < 3) continue;
+      const r = zoneLabelRect(cs, z, currentStages);
+      if (sp.x >= r.x && sp.x <= r.x + r.w && sp.y >= r.y && sp.y <= r.y + r.h) return z;
+    }
     let best: WorkingZone | null = null;
-    let bestArea = Infinity;
+    let bestD = 6 / zoom;
     for (const z of currentFloor.zones) {
-      if (zonePointInPolygon(p, z.points)) {
-        const a = polygonArea(z.points);
-        if (a < bestArea) { bestArea = a; best = z; }
-      }
+      if (z.points.length < 3) continue;
+      const d = distanceToPolygonEdge(p, z.points);
+      if (d <= bestD) { bestD = d; best = z; }
     }
     return best;
   }
@@ -2340,7 +2356,7 @@
             beginUndoGroup();
             return;
           }
-          const zone = findZoneAt(wp);
+          const zone = findZoneHitAt(wp);
           if (zone) {
             selectedElementId.set(null);
             selectedElementIds.set(new Set());
@@ -2356,15 +2372,17 @@
             }
             return;
           }
-          // Bấm trúng nền thì mở bảng chỉnh nền, giống hệt ảnh nền theo tầng.
-          // Không nuốt cú bấm: nền phủ kín bản vẽ nên vẫn phải cho chọn vùng.
-          if (overLayoutBg(wp)) layoutBgPanelOpen.set(true);
-          // Empty space — start marquee selection
+          // Bấm vào nền — kể cả vào phần tô bên trong một vùng — là CHỌN NỀN,
+          // như chọn một item: bảng bên phải chuyển hẳn sang thuộc tính nền.
+          // Bấm ra ngoài tấm nền thì bỏ chọn hết. Giữ Shift là đang cộng dồn
+          // khung chọn nên không đụng tới lựa chọn cũ.
           marqueeStart = { ...wp };
           marqueeEnd = { ...wp };
           if (!e.shiftKey) {
             selectedElementId.set(null);
             selectedElementIds.set(new Set());
+            selectedZoneId.set(null);
+            layoutBgPanelOpen.set(overLayoutBg(wp));
           }
           selectedRoomId.set(null);
         }
