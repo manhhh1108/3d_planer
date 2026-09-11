@@ -1,5 +1,6 @@
 import type { BlockOrientation, Floor, FurnitureItem, Project, Wall, WorkingZone } from '$lib/models/types';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
+import { isLaidOnSide } from '$lib/utils/restPose';
 import type { ApiLayout, ApiPosition, ApiSnapshot, ApiWall, ApiZone } from './api';
 
 /** Editor dùng cm, backend dùng mét */
@@ -75,6 +76,9 @@ export function positionToItem(p: ApiPosition): FurnitureItem {
 		elevation: (p.elevationM ?? 0) * M_TO_CM,
 		stageId: p.stageId ?? undefined,
 		marginCm: p.marginCm ?? undefined,
+		// Chỉ nhận đúng hai giá trị và chỉ khi đang nghiêng/dựng — chuỗi lạ từ DB
+		// hay tư thế sót lại trên block nằm đáy đều bỏ qua, không làm lăn nhầm.
+		pose: isLaidOnSide(orientation) && (p.pose === 'prone' || p.pose === 'supine') ? p.pose : undefined,
 		updatedBy: p.updatedBy ?? null,
 		updatedAt: p.updatedAt ?? null,
 	};
@@ -99,6 +103,7 @@ export function itemToPosition(it: FurnitureItem) {
 		rotation: it.rotation ?? 0,
 		scale: it.scale?.x ?? 1,
 		orientation: it.orientation ?? 'bottom',
+		pose: isLaidOnSide(it.orientation) ? (it.pose ?? null) : null,
 		elevationM: (it.elevation ?? 0) / M_TO_CM,
 		stageId: it.stageId ?? null,
 		marginCm: it.marginCm ?? null,

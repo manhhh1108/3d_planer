@@ -87,10 +87,21 @@ type IncomingPosition = {
   rotation?: number;
   scale?: number;
   orientation?: string;
+  pose?: string | null;
   elevationM?: number;
   stageId?: string | null;
   marginCm?: number | null;
 };
+
+/**
+ * Tư thế nằm Úp/Ngửa chỉ có nghĩa khi block đã lật nghiêng/dựng, và chỉ nhận đúng
+ * hai giá trị. Mọi thứ khác ghi null — DB không bao giờ chứa chuỗi rác làm client
+ * lăn nhầm khối.
+ */
+function normalizePose(pose: unknown, orientation: unknown): string | null {
+  const laid = orientation === 'side' || orientation === 'side2' || orientation === 'end' || orientation === 'end2';
+  return laid && (pose === 'prone' || pose === 'supine') ? pose : null;
+}
 
 /**
  * Khoá nhận dạng một block theo hình học, làm tròn tới mm.
@@ -103,12 +114,13 @@ type IncomingPosition = {
 function positionKey(p: {
   productId: string; x: number; y: number;
   rotation?: number | null; scale?: number | null;
-  orientation?: string | null; elevationM?: number | null;
+  orientation?: string | null; pose?: string | null; elevationM?: number | null;
 }): string {
   const r = (n: number | null | undefined, d = 0) => Math.round(((n ?? d) as number) * 1000);
   return [
     p.productId, r(p.x), r(p.y), r(p.rotation), r(p.scale, 1),
-    p.orientation ?? 'bottom', r(p.elevationM),
+    // Đổi Úp ↔ Ngửa là block vừa bị đụng tới → ghi người thao tác hiện tại.
+    p.orientation ?? 'bottom', normalizePose(p.pose, p.orientation ?? 'bottom') ?? '', r(p.elevationM),
   ].join('|');
 }
 
@@ -128,6 +140,7 @@ router.post('/', async (req: Request, res: Response) => {
         rotation?: number;
         scale?: number;
         orientation?: string;
+        pose?: string | null;
         elevationM?: number;
         stageId?: string | null;
         marginCm?: number | null;
@@ -172,6 +185,7 @@ router.post('/', async (req: Request, res: Response) => {
         rotation: p.rotation ?? 0,
         scale: p.scale ?? 1.0,
         orientation: p.orientation ?? 'bottom',
+        pose: normalizePose(p.pose, p.orientation ?? 'bottom'),
         elevationM: Number.isFinite(p.elevationM) ? Number(p.elevationM) : 0,
         stageId: p.stageId ?? null,
         marginCm: Number.isFinite(p.marginCm) ? Number(p.marginCm) : null,

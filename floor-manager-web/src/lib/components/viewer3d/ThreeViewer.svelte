@@ -15,6 +15,7 @@
   import { unorientDims } from '$lib/services/mapping';
   import { buildWallMesh } from '$lib/utils/wall3d';
   import { applyOrientation } from '$lib/utils/blockOrientation';
+  import { itemRestRoll } from '$lib/utils/furnitureFootprint';
   import { decideCameraFit, initialCameraFitState, computeFitBox, type CameraFitState } from '$lib/utils/cameraFit';
   import { addFurniture, moveFurniture, remainingQuantity, quantityLimitHit } from '$lib/stores/project';
   import { propertiesPanelOpen } from '$lib/stores/ui';
@@ -1323,13 +1324,16 @@
         orientation,
       );
       const furnitureDef = { ...cat, color: blockColor(fi, cat.color, stageColor), ...base };
+      // Tư thế Úp/Ngửa: lăn thêm cho dây cung khối cong nằm ngang. Cùng nguồn với
+      // khuôn 2D (effectiveDims) nên 2D và 3D không thể lệch nhau.
+      const roll = itemRestRoll(fi);
 
       const model = createFurnitureModelWithGLB(fi.catalogId, furnitureDef, () => {
         // GLB thay chỗ mesh tạm -> hình khác, phải đặt lại mặt tiếp sàn
-        applyOrientation(model, orientation);
+        applyOrientation(model, orientation, roll);
         if (renderer && scene && camera) renderer.render(scene, camera);
       });
-      applyOrientation(model, orientation);
+      applyOrientation(model, orientation, roll);
 
       // Yaw đặt trên group bọc ngoài để không trộn với phép lật ở trên
       const holder = new THREE.Group();

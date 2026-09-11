@@ -79,6 +79,12 @@ export interface Window {
  */
 export type BlockOrientation = 'bottom' | 'top' | 'side' | 'side2' | 'end' | 'end2';
 
+/**
+ * Tư thế nằm khi block đã lật nghiêng/dựng: Úp (prone, vòm lên, dây cung chạm sàn)
+ * hoặc Ngửa (supine, bụng cong chạm sàn). Xem utils/restPose.ts.
+ */
+export type RestPose = 'prone' | 'supine';
+
 export interface FurnitureItem {
   id: string;
   catalogId: string;
@@ -86,6 +92,8 @@ export interface FurnitureItem {
   rotation: number;
   scale: { x: number; y: number; z: number };
   orientation?: BlockOrientation;
+  /** Tư thế nằm — chỉ có nghĩa khi orientation là side/side2/end/end2. Rỗng = chỉ lật 90°. */
+  pose?: RestPose;
   /** Cao độ đáy block so với sàn, cm. 0 = đặt trực tiếp xuống sàn. */
   elevation?: number;
   /** Email người cuối cùng đặt/di chuyển block này (server suy ra, chỉ đọc) */

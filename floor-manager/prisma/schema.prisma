@@ -159,6 +159,8 @@ model Position {
   rotation    Float    @default(0)
   scale       Float    @default(1.0)
   orientation String   @default("bottom") // bottom | side | end - mat tiep san cua block
+  /// Tư thế nằm khi đã lật nghiêng/dựng: prone (úp) | supine (ngửa). Null = chỉ lật 90°.
+  pose        String?
   // Cao do dat block so voi san, tinh bang met (0 = dat truc tiep xuong san)
   elevationM  Float    @default(0) @map("elevation_m")
   /// Công đoạn đang làm với block tại vị trí này (Stage.id). Null = chưa gán.

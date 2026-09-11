@@ -161,6 +161,8 @@ export interface ApiPosition {
 	rotation: number;
 	scale: number;
 	orientation: string;
+	/** Tư thế nằm khi nghiêng/dựng: 'prone' (úp) | 'supine' (ngửa) */
+	pose?: string | null;
 	/** Cao độ đáy block so với sàn, mét */
 	elevationM?: number;
 	stageId?: string | null;
