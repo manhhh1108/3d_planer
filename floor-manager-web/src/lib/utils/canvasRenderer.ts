@@ -11,6 +11,7 @@ import { formatLength } from '$lib/stores/settings';
 import { getCatalogItem } from '$lib/utils/furnitureCatalog';
 import { drawFurnitureIcon } from '$lib/utils/furnitureIcons';
 import { blockColor } from '$lib/utils/blockColor';
+import { effectiveDims } from '$lib/utils/furnitureFootprint';
 
 // ── Coordinate conversion (local helpers using CanvasState) ─────────
 
@@ -294,8 +295,10 @@ export function drawFurnitureItem(
   const s = wts(cs, item.position.x, item.position.y);
   const sx = item.scale?.x ?? 1;
   const sy = item.scale?.y ?? 1;
-  const w = (item.width ?? cat.width) * Math.abs(sx) * zoom;
-  const d = (item.depth ?? cat.depth) * Math.abs(sy) * zoom;
+  // Khuôn chiếm chỗ thật (đã tính phép lăn Úp/Ngửa) — cùng nguồn với va chạm, xếp vùng
+  const eff = effectiveDims(item);
+  const w = eff.width * Math.abs(sx) * zoom;
+  const d = eff.depth * Math.abs(sy) * zoom;
   const angle = (item.rotation * Math.PI) / 180;
 
   ctx.save();

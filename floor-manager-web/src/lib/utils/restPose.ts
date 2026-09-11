@@ -15,8 +15,9 @@
  * ứng với (x = fx, z = −fy) vì GLB đổi trục CAD (x, y, z) → three (x, z, −y).
  */
 import * as THREE from 'three';
+import type { RestPose } from '$lib/models/types';
 
-export type RestPose = 'prone' | 'supine';
+export type { RestPose };
 export interface LocalPoint { x: number; z: number }
 
 const AX = new THREE.Vector3(1, 0, 0);
