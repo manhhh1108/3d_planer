@@ -77,3 +77,25 @@ export function polygonFullyInside(inner: Point[], outer: Point[]): boolean {
   }
   return true;
 }
+
+/**
+ * Khoảng cách nhỏ nhất từ điểm tới VIỀN đa giác (kể cả cạnh khép đỉnh cuối về
+ * đỉnh đầu). Điểm nằm sâu bên trong vùng vẫn cho số lớn — đúng ý: chọn vùng chỉ
+ * bằng cách bấm trúng viền, bấm vào phần tô bên trong thì coi như bấm nền.
+ */
+export function distanceToPolygonEdge(pt: Point, poly: Point[]): number {
+  let best = Infinity;
+  const n = poly.length;
+  if (n < 2) return best;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % n];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    // Chiếu điểm lên đoạn rồi kẹp vào [0,1] — ra ngoài đoạn thì đo tới đầu mút.
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+    const d = Math.hypot(pt.x - (a.x + t * dx), pt.y - (a.y + t * dy));
+    if (d < best) best = d;
+  }
+  return best;
+}

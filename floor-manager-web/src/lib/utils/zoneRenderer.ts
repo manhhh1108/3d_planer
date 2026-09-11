@@ -4,9 +4,50 @@
  */
 import type { CanvasState } from './canvasInteraction';
 import { worldToScreen } from './canvasInteraction';
-import type { Floor, Point } from '$lib/models/types';
+import type { Floor, Point, WorkingZone } from '$lib/models/types';
 import type { ApiStage } from '$lib/services/api';
 import { polygonCentroid } from './zoneGeometry';
+
+const TITLE_FONT = '600 12px sans-serif';
+const STAGE_FONT = '11px sans-serif';
+
+/** Chữ trên nhãn vùng. Dùng chung cho vẽ và bấm trúng để hai bên không lệch nhau. */
+export function zoneLabelLines(z: WorkingZone, stages: ApiStage[]): { title: string; stages: string } {
+  return {
+    title: (z.locked ? '🔒 ' : '') + (z.name || 'Vùng'),
+    stages: z.allowedStageIds
+      .map((id) => stages.find((s) => s.id === id)?.name)
+      .filter(Boolean)
+      .join(', '),
+  };
+}
+
+/**
+ * Khung (px màn hình) bao nhãn tên vùng ở trọng tâm. Bấm vào đây là chọn vùng —
+ * cùng với bấm trúng viền, vì bấm vào phần tô bên trong giờ được coi là bấm nền.
+ * Đo bằng chính font lúc vẽ, nên khung khớp đúng chữ đang hiện trên màn hình.
+ */
+export function zoneLabelRect(
+  cs: CanvasState, z: WorkingZone, stages: ApiStage[],
+): { x: number; y: number; w: number; h: number } {
+  const { ctx } = cs;
+  const c = polygonCentroid(z.points);
+  const cc = worldToScreen(cs, c.x, c.y);
+  const { title, stages: st } = zoneLabelLines(z, stages);
+  ctx.save();
+  ctx.font = TITLE_FONT;
+  let w = ctx.measureText(title).width;
+  const top = cc.y - 16;
+  let bottom = cc.y;
+  if (st) {
+    ctx.font = STAGE_FONT;
+    w = Math.max(w, ctx.measureText(st).width);
+    bottom = cc.y + 15;
+  }
+  ctx.restore();
+  const pad = 4;
+  return { x: cc.x - w / 2 - pad, y: top - pad, w: w + pad * 2, h: bottom - top + pad * 2 };
+}
 
 /** Vẽ tất cả vùng + đa giác đang vẽ dở. Vùng nằm dưới sản phẩm. */
 export function drawZones(
@@ -49,16 +90,12 @@ export function drawZones(
     const cc = worldToScreen(cs, c.x, c.y);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '600 12px sans-serif';
+    const { title, stages: names } = zoneLabelLines(z, stages);
+    ctx.font = TITLE_FONT;
     ctx.fillStyle = '#334155';
-    const label = (z.locked ? '🔒 ' : '') + (z.name || 'Vùng');
-    ctx.fillText(label, cc.x, cc.y - 8);
-    const names = z.allowedStageIds
-      .map((id) => stages.find((s) => s.id === id)?.name)
-      .filter(Boolean)
-      .join(', ');
+    ctx.fillText(title, cc.x, cc.y - 8);
     if (names) {
-      ctx.font = '11px sans-serif';
+      ctx.font = STAGE_FONT;
       ctx.fillStyle = '#64748b';
       ctx.fillText(names, cc.x, cc.y + 8);
     }

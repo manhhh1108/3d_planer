@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { polygonArea, pointInPolygon, polygonCentroid, polygonFullyInside } from './zoneGeometry';
+import { polygonArea, pointInPolygon, polygonCentroid, polygonFullyInside, distanceToPolygonEdge } from './zoneGeometry';
 
 const square = [
   { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
@@ -51,5 +51,36 @@ describe('polygonFullyInside', () => {
   it('hình hoàn toàn bên ngoài -> false', () => {
     const outside = [{ x: 200, y: 200 }, { x: 220, y: 200 }, { x: 220, y: 220 }, { x: 200, y: 220 }];
     expect(polygonFullyInside(outside, bigSquare)).toBe(false);
+  });
+});
+
+describe('distanceToPolygonEdge', () => {
+  // Hình vuông 0..100. Chọn vùng giờ chỉ bằng viền, nên hàm này quyết định cú
+  // click có trúng vùng hay rơi xuống nền.
+  const sq = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+
+  it('điểm nằm trên cạnh thì bằng 0', () => {
+    expect(distanceToPolygonEdge({ x: 50, y: 0 }, sq)).toBeCloseTo(0);
+  });
+
+  it('điểm ở GIỮA vùng thì xa viền — tức không được coi là trúng vùng', () => {
+    expect(distanceToPolygonEdge({ x: 50, y: 50 }, sq)).toBeCloseTo(50);
+  });
+
+  it('điểm bên ngoài đo tới cạnh gần nhất', () => {
+    expect(distanceToPolygonEdge({ x: 50, y: -7 }, sq)).toBeCloseTo(7);
+  });
+
+  it('tính cả cạnh khép từ đỉnh cuối về đỉnh đầu', () => {
+    // Cạnh (0,100)->(0,0) chỉ tồn tại nhờ khép vòng; quên nó là mất một cạnh.
+    expect(distanceToPolygonEdge({ x: -3, y: 50 }, sq)).toBeCloseTo(3);
+  });
+
+  it('ngoài phạm vi đoạn thẳng thì đo tới đầu mút, không đo tới đường kéo dài', () => {
+    expect(distanceToPolygonEdge({ x: 103, y: -4 }, sq)).toBeCloseTo(5);
+  });
+
+  it('đa giác suy biến không có cạnh thì trả Infinity', () => {
+    expect(distanceToPolygonEdge({ x: 0, y: 0 }, [])).toBe(Infinity);
   });
 });

@@ -7,6 +7,7 @@ import { resolveZoneForItem } from '$lib/utils/zoneAssignment';
 import { getOutsideZonePolicy, getDefaultMarginCm } from '$lib/stores/appSettings';
 import { pointInPolygon } from '$lib/utils/zoneGeometry';
 import { arrangeZone } from '$lib/utils/autoArrange';
+import { layoutBgPanelOpen } from '$lib/stores/ui';
 
 
 function uid(): string {
@@ -48,6 +49,15 @@ export const selectedElementId = writable<string | null>(null);
 export const selectedZoneId = writable<string | null>(null);
 /** Multi-select: set of element IDs currently selected (used alongside selectedElementId for marquee/shift-click) */
 export const selectedElementIds = writable<Set<string>>(new Set());
+
+// Bảng thuộc tính bên phải hiện ĐÚNG MỘT thứ đang chọn: item, vùng, hoặc nền.
+// Nền không phải phần tử nên dùng cờ riêng (layoutBgPanelOpen); trước đây cờ đó
+// "dính" — mở rồi nằm lì, xếp chồng dưới thuộc tính item. Giờ chọn item hay vùng
+// thì tắt nó. Chỉ tắt khi CHỌN, không bật lại khi bỏ chọn: bấm Esc mà bảng nền
+// nhảy ra thì còn khó chịu hơn.
+selectedElementId.subscribe((id) => { if (id) layoutBgPanelOpen.set(false); });
+selectedElementIds.subscribe((ids) => { if (ids.size > 0) layoutBgPanelOpen.set(false); });
+selectedZoneId.subscribe((id) => { if (id) layoutBgPanelOpen.set(false); });
 export const viewMode = writable<'2d' | '3d'>('2d');
 
 // Undo / Redo
